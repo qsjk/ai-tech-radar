@@ -1,9 +1,7 @@
 # Partie VI — Interfaces
 
-2026-09-22
-
 > **Partie VI — Interfaces.** Version durcie issue de la revue §31–§34.
-> Remplace la Partie VI de SPEC.md V0.3. Prend les Parties I, II, III, IV, V-A et V-B durcies comme acquis.
+> Dernière révision : 2026-09-22. Prend les Parties I, II, III, IV, V-A et V-B durcies comme acquis.
 
 > **Déjà tranché ailleurs, non repris ici** : l'app insère des `AIJob` de types prédéfinis (`enrich_article`, `resolve_event`) et n'en exécute jamais aucun ; elle répond immédiatement (Partie II §8.3, V-A §23.6) · coordination app ↔ worker par la base, sans IPC (Partie II §8.2) · alertes émises par le worker, sans reprise en V1 (Partie II §9.4) · tables `UserPreference`, `Setting`, `ReadState`, `EmergingDecision`, `AlertLog` (Partie III §11.12–11.13) · formule d'importance, fusion d'Events, catégories de tendance, cycle des candidats émergents (V-B) · repli / enrichi (`summary_origin`, `title_origin`, V-A §27.6–27.7) · le dashboard, la recherche, la hotness et les alertes déterministes fonctionnent sans la couche AI (Partie II §6).
 
@@ -35,7 +33,6 @@
 22. **Bandeau d'état système**, **page des jobs en échec** et **historique des alertes** dans le dashboard, en lecture seule de la base.
 
 ---
-
 
 ## 31. Dashboard
 
@@ -224,6 +221,7 @@ Lecture de `SystemState`, affiché en permanence tant qu'une condition est vraie
 | warm-up émergence en cours | « Détection des sujets émergents active à partir du <date> » |
 | `dead_letter` > 0 | « N jobs en échec » (lien vers §31.9.3) |
 | alertes `failed` sur 24 h > 0 | « N alertes non envoyées » (lien vers §33.10) |
+| condition `system` active (Partie VII §39.5), au minimum `backup_*`, `restore_test_*`, `disk_*` et `no_alert_channel` | nom de la condition et « depuis <since> » |
 
 Le bandeau ne fait **aucun appel** au gateway ni au worker : il ne lit que la base.
 
@@ -273,7 +271,8 @@ Le bandeau ne fait **aucun appel** au gateway ni au worker : il ne lit que la ba
 | `GET /api/sources` | sources avec état suivi / muet et santé (`last_success_at`, `last_error`) |
 | `GET /api/entities?q=` | autocomplétion pour le filtre Entité (20 au plus) |
 | `GET /api/emerging` | liste §31.8, paginée |
-| `GET /api/status` | bandeau §31.10 |
+| `GET /api/status` | bandeau §31.10 ; calculé par le même module que `/api/health` et `/health` (Partie VII §40.1) |
+| `GET /api/health` | santé détaillée par composant, conditions actives, métriques (Partie VII §40.3) |
 | `GET /api/jobs/dead-letters` | page §31.9.3, paginée |
 | `GET /api/alerts` | historique §33.10, paginé, filtres `type`, `status`, `channel` |
 | `GET /api/settings` | tous les réglages §34.3, valeur effective (stockée ou défaut) |
@@ -306,7 +305,7 @@ Mono-utilisateur. **Un seul mécanisme : basic_auth Caddy.** Le `DASHBOARD_TOKEN
 |---|---|
 | `/` (SPA statique) · `/api/*` | **basic_auth** |
 | `/health` | **public**, réponse minimale `{"status": "ok" \| "degraded" \| "down"}` |
-| Détail de santé (composants, `last_backup`…) | derrière l'auth — impact Partie VII |
+| Détail de santé (composants, `last_backup`…) | derrière l'auth : `GET /api/health` (Partie VII §40.3) |
 
 - Identifiant et **hash bcrypt** fournis par l'environnement (`DASHBOARD_USER`, `DASHBOARD_PASSWORD_HASH`), injectés dans le `Caddyfile`. Jamais de mot de passe en clair dans le dépôt.
 - Mot de passe **aléatoire d'au moins 20 caractères**. Pas de limitation de tentatives en V1 : la longueur suffit pour un usage mono-utilisateur.
@@ -360,6 +359,7 @@ Pas de CORS : l'app et la SPA sont servies par la même origine. Aucun en-tête 
 | `emerging_topic` | candidat | candidat en `follow`, non muet, avec `last_significant_at > decided_at` (évolution significative postérieure au suivi, V-B §30.5) |
 | `daily_digest` | jour | §33.7 |
 | `weekly_digest` | semaine | §33.7 |
+| `system` | condition d'exploitation | début d'un épisode d'une condition de la table Partie VII §39.5, émise par `ops.tick` (Partie VII §39.6) |
 
 **`important_event`** — toutes les conditions :
 
@@ -383,6 +383,7 @@ Pas de CORS : l'app et la SPA sont servies par la même origine. Aucun en-tête 
 | `emerging_topic` | `emerging:{candidate_id}:{last_significant_at}:{channel}` |
 | `daily_digest` | `daily:{date locale AAAA-MM-JJ}:{channel}` |
 | `weekly_digest` | `weekly:{année ISO}-W{semaine ISO}:{channel}` |
+| `system` | `system:{condition}:{since}:{channel}`, `since` = début de l'épisode |
 
 `{event_id}` est l'Event **cible** au moment de l'envoi. La condition 5 du §33.3 couvre les fusions postérieures.
 
@@ -397,7 +398,7 @@ T2  (BEGIN IMMEDIATE)  UPDATE AlertLog SET status = 'sent' | 'failed', error = �
 
 - **Garantie au plus une fois** : le log précède l'envoi. Un crash entre T1 et T2 perd l'alerte, ce qui est cohérent avec « V1 sans reprise ».
 - **Au démarrage du worker** : toute ligne `sending` passe en `failed`, `error = 'interrupted'`.
-- **Échec d'envoi** : `failed` + `error` (sans secret), log structuré, métrique par type et par canal. Jamais rejoué.
+- **Échec d'envoi** : `failed` + `error`, passé par le nettoyage des secrets par valeur (Partie VII §42.4), log structuré, métrique par type et par canal. Jamais rejoué.
 - Aucune requête réseau dans une transaction (Partie IV §14.2).
 
 ### 33.6 Fréquence
@@ -407,6 +408,7 @@ Pilotée par les `Setting` du §34.3 :
 - **Mode** `alerts.mode` : `immediate` (défaut) ou `digest_only`. En `digest_only`, aucune alerte instantanée (`important_event`, `emerging_topic`) n'est évaluée ; les digests continuent.
 - **Heures calmes** `alerts.quiet_hours` (`{start, end}` en heure locale, ou `null`) : aucune alerte instantanée n'est émise pendant la plage. À la sortie, les conditions sont réévaluées normalement ; `max_age` borne ce qui est encore envoyé. Les digests ne sont pas concernés.
 - **Plafond** `alerts.max_per_day` (20) : nombre d'alertes instantanées distinctes (sujets, tous canaux confondus) par jour local. Au-delà, l'alerte est écrite avec `status = suppressed` (sans envoi) : elle ne sera jamais émise, et reste visible dans l'historique. Ses stories apparaissent dans le digest suivant.
+- **Alertes `system`** : hors de ces réglages. Ni le mode, ni les heures calmes, ni le plafond ne s'y appliquent, et elles ne comptent pas dans le plafond (Partie VII §39.6).
 
 ### 33.7 Digests
 
@@ -442,7 +444,7 @@ weekly : digest.weekly.enabled
 
 ### 33.9 Routage
 
-`alerts.routing` associe chaque type à une liste de canaux. Défaut : `important_event` et `emerging_topic` → `telegram` ; `daily_digest` et `weekly_digest` → `email`. Un type routé vers une liste vide est désactivé.
+`alerts.routing` associe chaque type à une liste de canaux. Défaut : `important_event` et `emerging_topic` → `telegram` ; `daily_digest` et `weekly_digest` → `email` ; `system` → `[telegram, email]`, pour qu'un canal en panne ne rende pas l'exploitation aveugle. Un type routé vers une liste vide est désactivé.
 
 ### 33.10 Historique et test
 
@@ -525,63 +527,3 @@ Hors V1 (Partie I §5.1). La structure le permet sans refonte : une personnalisa
 - **Colonne `origin`** de `UserPreference` et personnalisation automatique (déjà reportée par la Partie I).
 - **Digests par topic** ou par source.
 - **Recherche sémantique** (déjà reportée par la Partie I).
-
----
-
-## Impacts à répercuter dans les autres parties
-
-À traiter lors de la revue des parties concernées — **hors Partie VI**.
-
-### SPEC.md — décisions V0.3
-
-- **Décision 5** (« token unique + basic_auth Caddy ») : remplacée par « basic_auth Caddy seul, anti-CSRF côté app » (§32).
-
-### Partie II — Architecture
-
-- **§8.3** : `Setting` n'a qu'un écrivain (app) ; le worker le lit à chaque tick. L'app lit `SystemState` (`trends_since`, `llm_gateway`, `embeddings`, heartbeat) pour le lu / non lu et le bandeau d'état.
-- **§8.4** : le scheduler porte un tick `alerts.tick` (60 s) qui gère les alertes instantanées **et** les digests (pas de cron de digest).
-- **§9.4** : la ligne « canal d'alerte indisponible » renvoie à la séquence §33.5 (au plus une fois, statut `sending` requalifié au boot).
-
-### Partie III — Données
-
-- **`AlertLog.status`** : `CHECK {sending, sent, failed, suppressed}`.
-- **`AlertLog.dedup_key`** : inclut le canal (§33.4) ; `UNIQUE` inchangé.
-- **`Setting`** : clés et défauts du registre §34.3.
-- **Index de lecture** pour les stories : `Article(status, event_id, published_at)` · `Event(status, last_seen_at)` · `Event(status, importance)` · `ReadState(subject_type, subject_id)` (déjà unique) · `AlertLog(alert_type, subject_type, subject_id)`.
-- **`EmergingDecision`** : pas de suppression en V1 ; `create_topic` définitif (déjà acquis en V-B).
-
-### Partie V-B — Clustering, trends, émergents
-
-- **Alerte `emerging_topic`** : condition précisée `last_significant_at > decided_at` — l'évolution significative à la création du candidat, antérieure au suivi, ne déclenche pas d'alerte.
-
-### Partie VII — Ops
-
-- **Caddy** : basic_auth sur `/` et `/api/*` avec `DASHBOARD_USER` / `DASHBOARD_PASSWORD_HASH` ; `/health` exempté ; logs sans `Authorization` ; en-têtes de sécurité (`Content-Security-Policy: default-src 'self'`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin`).
-- **`/health`** : version publique réduite à `{status}` ; le détail (composants, `last_backup`, budget LLM…) est servi derrière l'auth (par exemple `/api/health`). Le monitoring externe (§41) n'utilise que le statut.
-- **FastAPI** : `/docs`, `/redoc` et `/openapi.json` désactivés en production.
-- **§43 Sécurité** : retirer `DASHBOARD_TOKEN` ; ajouter l'anti-CSRF (§32.2).
-- **`.env.example`** : `DASHBOARD_URL` · `DASHBOARD_USER` · `DASHBOARD_PASSWORD_HASH` · `SMTP_HOST` · `SMTP_PORT` · `SMTP_USER` · `SMTP_PASSWORD` · `SMTP_FROM` · `ALERT_EMAIL_TO` · `TELEGRAM_BOT_TOKEN` · `TELEGRAM_CHAT_ID`, les variables d'alerte étant optionnelles (canal désactivé si absentes).
-- **Monitoring** : alertes par type, canal et statut (`sent`, `failed`, `suppressed`) ; canaux désactivés faute de configuration ; lignes `sending` requalifiées au boot.
-- **`pipeline.yaml`** : `alerts.tick` (60 s) et `alerts.send_timeout` (10 s).
-- **Runbook** : génération du hash bcrypt (`caddy hash-password`), rotation du mot de passe, commande `send-test-alert`.
-
-### Partie VIII — Livraison
-
-- **Lint frontend** : interdiction de `dangerouslySetInnerHTML`.
-- **Tests** :
-  - story : un Event multi-sources n'apparaît qu'une fois dans l'Overview, jamais sous forme de ses membres ; `duplicate` jamais affiché ;
-  - lu / non lu : ré-ouverture sur progression de `last_seen_at` ; historique antérieur à `trends_since` réputé lu ; « tout marquer lu » par lots et reprise sur `remaining` ;
-  - Event fusionné : redirection sur une chaîne de deux fusions ; état de lecture de la cible ;
-  - sourdine : règle « tous » sur sources et topics ; héritage parent → enfant ; `follow` explicite d'un enfant prioritaire ; même résultat côté app et côté worker ;
-  - pagination keyset stable sous insertion concurrente ; `limit > 50` refusé ;
-  - recherche : saisie contenant la syntaxe FTS5 (`"`, `*`, `NEAR`, `-`) sans erreur ;
-  - régénération : 202 immédiat, `already_active` sur un job actif, boutons masqués sur Event mono-source, `archived`, `merged` et LLM `not_configured` ;
-  - `dead_letter` : relance, abandon, 409 si le statut a changé ;
-  - API complète gateway éteint et gateway non configuré ;
-  - auth : 401 sans identifiants ; 403 sur écriture sans `X-Radar-Client` ou avec `Origin` étranger ; `/health` public minimal ; `/docs` absent ;
-  - alertes : aucune alerte deux fois par canal ; email **et** Telegram pour une même alerte ; pas de réémission après fusion d'un Event déjà alerté ; aucune rafale après baisse du seuil (fenêtre `max_age`) ; attente du titre LLM bornée, envoi immédiat si le disjoncteur est ouvert ; heures calmes ; plafond → `suppressed` ; `sending` requalifié en `failed` au boot ; canal non configuré → worker démarré, canal désactivé ;
-  - digests : envoi unique par jour et par canal ; digest vide non envoyé ; worker arrêté à l'heure prévue puis redémarré le même jour → un seul envoi, le lendemain → aucun rattrapage ; changement d'horaire pris en compte ;
-  - sortie LLM contenant du HTML ou des balises : rendue en texte brut dans le dashboard, l'email et Telegram.
-
----
-
