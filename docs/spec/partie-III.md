@@ -1,15 +1,11 @@
 # Partie III — Données
 
-2026-09-22
-
 > **Partie III — Données.** Version durcie issue de la revue §10–§13.
-> Remplace la Partie III de SPEC.md V0.3. Prend les Parties I et II durcies comme acquis.
+> Dernière révision : 2026-09-22. Prend les Parties I et II durcies comme acquis.
 
 ---
 
 ## Décisions tranchées dans cette revue (Partie III)
-
-Les points marqués **(proposé)** n'ont pas été discutés explicitement : ils découlent des décisions validées et sont à confirmer à la relecture.
 
 1. **Topics et entités à double origine.** Un rattachement article↔topic ou article↔entité est produit soit **de façon déterministe** (mots-clés de `config/topics.yaml`, dictionnaire `config/entities.yaml`), soit par le **LLM**. Champ `method` ∈ `{keyword, llm}` sur les tables de liaison. Garantit que **les tendances et le clustering par entités fonctionnent sans LLM**, et corrige une incohérence de la Partie II.
 2. **Nouveau fichier `config/entities.yaml`** : dictionnaire d'entités connues + motifs simples (dépôts GitHub `owner/repo`, noms de modèles).
@@ -17,7 +13,7 @@ Les points marqués **(proposé)** n'ont pas été discutés explicitement : ils
 4. **`Article.event_id`** matérialise enfin la relation Article → Event (absente en V0.3).
 5. **Le résumé a sa colonne** : `Article.summary` + `summary_origin` ∈ `{fallback, llm}`. Il est initialisé au repli déterministe **dès l'insertion** : un article `ready` n'a jamais de résumé vide.
 6. **Statuts d'article réduits à `{ready, filtered, duplicate}`.** `discovered` / `normalized` étaient des étapes en mémoire, jamais persistées. Un **doublon exact n'est pas inséré** (il est seulement compté) ; `duplicate` ne désigne que le doublon **sémantique rétroactif**. Un item malformé n'est pas persisté non plus.
-7. **`Source.type` en texte libre**, validé par le registre des collectors côté code — pas de contrainte en base. Ajouter un canal ne touche pas au schéma (Partie I §2.4). Valeurs V1 : `rss · github · hackernews · reddit · youtube`.
+7. **`Source.type` en texte libre**, validé par le registre des collectors côté code — pas de contrainte en base. Ajouter un canal ne touche pas au schéma (Partie I §2.4). Valeurs V1 : `rss · github · hackernews · reddit · youtube · webpage`.
 8. **Accès base asynchrone** dans les deux processus : SQLAlchemy 2.x async + `aiosqlite`.
 9. **Toute transaction d'écriture démarre en `BEGIN IMMEDIATE`** (deux fabriques de sessions : lecture / écriture).
 10. **SQLite ≥ 3.35 et FTS5 obligatoires**, vérifiés au démarrage des deux processus (arrêt immédiat avec message clair sinon).
@@ -25,14 +21,13 @@ Les points marqués **(proposé)** n'ont pas été discutés explicitement : ils
 12. **Modèle d'embedding multilingue** (sources EN + FR), 384 dimensions, vecteurs normalisés.
 13. **Tables ajoutées** : `CollectorRun` · `Setting` · `UserPreference` · `ReadState` · `EmergingCandidate` · `EmergingDecision` · `AlertLog` · `SystemState` · index `article_fts`.
 14. **Rétention** : jobs terminés purgés à 30 j (sauf `dead_letter`) · embeddings conservés indéfiniment · articles `filtered` supprimés à 30 j · contenu des `filtered` / `duplicate` purgé immédiatement.
-15. **(proposé)** Service Docker **one-shot `migrate`** qui applique les migrations avant le démarrage de `app` et `worker` — évite que deux processus migrent en même temps. Chaque processus refuse de démarrer si le schéma n'est pas à jour.
-16. **(proposé)** `Event.distinct_channel_count` (nombre de **types** de canaux distincts) en plus de `distinct_source_count` : alimente l'indicateur « écosystèmes » des sujets émergents.
-17. **(proposé)** Statut `AIJob` **`cancelled`** : un `dead_letter` peut être abandonné depuis le dashboard, ce qui débloque la purge de l'article (règle Partie II §8.5).
-18. **(proposé)** `AlertLog.dedup_key` unique : garantit qu'une même alerte n'est jamais envoyée deux fois.
-19. **(proposé)** `Signal` : historique horaire conservé 30 jours, puis **une valeur par jour** et par topic/fenêtre.
+15. Service Docker **one-shot `migrate`** qui applique les migrations avant le démarrage de `app` et `worker` — évite que deux processus migrent en même temps. Chaque processus refuse de démarrer si le schéma n'est pas à jour.
+16. `Event.distinct_channel_count` (nombre de **types** de canaux distincts) en plus de `distinct_source_count` : alimente l'indicateur « écosystèmes » des sujets émergents.
+17. Statut `AIJob` **`cancelled`** : un `dead_letter` peut être abandonné depuis le dashboard, ce qui débloque la purge de l'article (règle Partie II §8.5).
+18. `AlertLog.dedup_key` unique : garantit qu'une même alerte n'est jamais envoyée deux fois.
+19. `Signal` : historique horaire conservé 30 jours, puis **une valeur par jour** et par topic/fenêtre.
 
 ---
-
 
 ## 10. SQLite
 
@@ -56,11 +51,12 @@ PRAGMA journal_mode=WAL;
 PRAGMA synchronous=NORMAL;
 PRAGMA busy_timeout=5000;   -- ms, configurable
 PRAGMA foreign_keys=ON;
+PRAGMA journal_size_limit=67108864;  -- 64 Mo, valeur initiale
 ```
 
 **Conséquence assumée de `synchronous=NORMAL` en WAL** : en cas de coupure électrique, les toutes dernières transactions validées peuvent être perdues ; la base n'est **jamais corrompue**. Acceptable pour ce produit.
 
-L'auto-checkpoint WAL reste à sa valeur par défaut ; la taille du fichier `-wal` est surveillée (Partie II §8.6).
+L'auto-checkpoint WAL reste à sa valeur par défaut ; la taille du fichier `-wal` est surveillée (Partie II §8.6). `journal_size_limit` fait tronquer le `-wal` après checkpoint : sa taille reste ainsi une métrique lisible.
 
 ### 10.3 Accès et transactions
 
@@ -78,16 +74,18 @@ La mise en œuvre suit la technique documentée par SQLAlchemy (désactivation d
 
 - Le fichier SQLite vit sur un **volume Docker local**, monté par `app` et `worker`, **sur le même hôte** (le mode WAL repose sur une mémoire partagée, fichier `-shm`).
 - **Interdit** : tout système de fichiers réseau (NFS, SMB, volume distant).
+- `/data` est **toujours un volume nommé**, jamais un bind mount, en développement comme en production, quel que soit l'OS de développement.
 
 ### 10.5 Migrations
 
 - Alembic avec **`render_as_batch=True`** (SQLite ne sait pas modifier une contrainte par `ALTER`).
-- **(proposé)** Les migrations sont appliquées par un **service one-shot `migrate`** (`alembic upgrade head`) ; `app` et `worker` démarrent après sa réussite (`depends_on` + `service_completed_successfully`). Aucun des deux processus applicatifs ne migre lui-même.
+- Les migrations sont appliquées par un **service one-shot `migrate`** (`alembic upgrade head`) ; `app` et `worker` démarrent après sa réussite (`depends_on` + `service_completed_successfully`). Aucun des deux processus applicatifs ne migre lui-même.
 
 ### 10.6 Dates et heures
 
 - **Tout en UTC** en base, stocké en texte ISO-8601.
 - Un type SQLAlchemy dédié (`UTCDateTime`) **refuse les datetimes sans fuseau** à l'écriture et renvoie des datetimes UTC à la lecture. Conversion en heure locale **uniquement à l'affichage**.
+- **Aucune expression temporelle SQL** (`CURRENT_TIMESTAMP`, `datetime('now')`) dans le code ni dans les requêtes : l'instant est toujours fourni par l'application, via la `Clock` (Partie VIII décision 7). Les valeurs par défaut de colonnes, comme celle de `AIJob.next_attempt_at`, restent un filet de sécurité.
 
 ### 10.7 Transactions courtes
 
@@ -113,11 +111,13 @@ Rappel des contraintes de la Partie II §8.6 : transactions d'écriture découp�
 |---|---|---|
 | `key` | texte, **UNIQUE** | identifiant stable défini dans `sources.yaml`, clé de l'upsert au démarrage |
 | `name` | texte | libellé affiché |
-| `type` | texte (validé par le code) | V1 : `rss · github · hackernews · reddit · youtube` |
+| `type` | texte (validé par le code) | V1 : `rss · github · hackernews · reddit · youtube · webpage` |
 | `url` | texte | endpoint ou flux |
 | `config` | JSON | paramètres propres au collector (subreddit, dépôt, requête…) |
 | `enabled` | booléen | |
 | `poll_interval` | entier (secondes) | |
+| `relevance` | `CHECK {filter, always}` | `always` : source de confiance, article toujours `ready` (Partie IV §20.3) |
+| `extract` | `CHECK {auto, never}` | extraction ciblée autorisée ou non (Partie IV §17.1) |
 | `checkpoint` | JSON | reprise de collecte : curseur, `ETag`, `Last-Modified`, date de dernière collecte |
 | `last_success_at` · `last_error` · `last_http_status` | | état de santé |
 | `rate_limit_remaining` · `rate_limit_reset_at` | nullable | `NULL` = quota inconnu |
@@ -131,7 +131,7 @@ Rappel des contraintes de la Partie II §8.6 : transactions d'écriture découp�
 | `url` · `canonical_url` | texte ; `canonical_url` **UNIQUE** | URL **propre à l'item** — base de la dédup exacte |
 | `link_url` · `canonical_link_url` | texte, nullable ; index | URL **pointée** (lien externe) — critère « URL croisée » du clustering |
 | `title` · `author` · `language` | | |
-| `published_at` · `discovered_at` | `UTCDateTime` ; index sur `published_at` | |
+| `published_at` · `discovered_at` | `UTCDateTime`, **non nuls** ; index sur `published_at` | `published_at` absent → repli sur `discovered_at` (Partie IV §18.4) |
 | `content` | texte, nullable | **tampon de traitement**, purgé (Partie II §8.5) |
 | `content_hash` | texte ; index (non unique) | conservé après purge |
 | `content_purged_at` | nullable | |
@@ -139,12 +139,18 @@ Rappel des contraintes de la Partie II §8.6 : transactions d'écriture découp�
 | `status` | `CHECK {ready, filtered, duplicate}` ; index | |
 | `duplicate_of_id` | FK `Article`, nullable | renseigné si `duplicate` |
 | `event_id` | FK `Event`, nullable ; index | appartenance à un événement |
-| `summary` | texte, **non nul** si `ready` | aperçu : repli à l'insertion, puis synthèse LLM |
+| `summary` | texte, **non nul** | aperçu : repli à l'insertion (articles `ready` **et** `filtered`), puis synthèse LLM |
 | `summary_origin` | `CHECK {fallback, llm}` | |
 | `summary_lang` | texte | |
 | `processed_at` | nullable | posé quand **tous** les traitements de l'article sont terminés ; point de départ du délai de grâce |
+| `metrics` | JSON, validé par Pydantic | engagement fourni par le provider à la collecte (points HN, vues YouTube…) ; instantané, **jamais mis à jour** (Partie IV §15.4) |
+| `clustered_at` | nullable | posé quand l'article a été évalué par le clustering (Partie V-B §28.2) |
+| `clustered_semantic` | booléen, défaut `false` | le critère cosine a été évalué pour l'article |
+| `importance` | réel, nullable | importance de l'article hors Event (Partie V-B §28.9) |
 
 **Contraintes** : `UNIQUE(canonical_url)` · `UNIQUE(source_id, external_id)` partielle, `WHERE external_id IS NOT NULL`.
+
+**Index** : partiel sur `clustered_at` `WHERE clustered_at IS NULL AND status = 'ready'` (sélection du clustering) · `(status, event_id, published_at)` (stories, Partie VI).
 
 **Transitions de `status`** : l'insertion se fait en `ready` ou `filtered`. Seule transition autorisée ensuite : `ready → duplicate` (dédup sémantique rétroactive). Un article `duplicate` **conserve** ses topics et son résumé ; il est seulement **masqué à l'affichage**.
 
@@ -157,14 +163,19 @@ Rappel des contraintes de la Partie II §8.6 : transactions d'écriture découp�
 | `description` | nullable | produite par `resolve_event` |
 | `representative_article_id` | FK `Article` | article le plus ancien du groupe |
 | `first_seen_at` · `last_seen_at` | | |
-| `article_count` | entier | |
+| `article_count` | entier | nombre de membres `ready` |
 | `distinct_source_count` | entier, non nul, défaut 1 | **hotness** |
-| `distinct_channel_count` | entier, non nul, défaut 1 | **(proposé)** nombre de types de canaux distincts |
-| `importance` · `novelty` | réels, nullable | |
+| `distinct_channel_count` | entier, non nul, défaut 1 | nombre de canaux distincts (Partie V-B §28.9) |
+| `importance` | réel, **non nul**, défaut 0 | Partie V-B §28.9 |
+| `resolve_enqueued_count` | entier, nullable | `article_count` au dernier enqueue de `resolve_event` (Partie V-B §28.10) |
 | `status` | `CHECK {active, merged, archived}` | |
 | `merged_into_id` | FK `Event`, nullable | renseigné si `merged` |
 
-**Invariant** : `distinct_source_count` = nombre de `source_id` distincts parmi les articles `ready` rattachés. Il est mis à jour **dans la même transaction** que le rattachement ; un contrôle de cohérence peut le recalculer. L'invariant est testé.
+`novelty` n'existe pas sur `Event` : c'est une fonction du temps, calculable à la lecture depuis `first_seen_at` (Partie V-B §28.9).
+
+**Index** : `(status, last_seen_at)` · `(status, importance)` (stories, Partie VI).
+
+**Invariant** : `distinct_source_count` = nombre de `source_id` distincts parmi les articles `ready` rattachés (étendu à `article_count` et `distinct_channel_count` par la Partie V-B §28.9). Il est mis à jour **dans la même transaction** que le rattachement ; un contrôle de cohérence peut le recalculer. L'invariant est testé.
 
 ### 11.4 Topic — *écrit par le worker*
 
@@ -182,6 +193,8 @@ Rappel des contraintes de la Partie II §8.6 : transactions d'écriture découp�
 `type` (validé par le code : `company · product · person · project · technology · model · repository`) · `name` · `canonical_name` · `origin` `CHECK {dictionary, llm}`.
 **Contrainte** : `UNIQUE(type, canonical_name)`.
 
+Les **alias** d'entités ne sont pas en base : ils vivent dans `config/entities.yaml`, chargés en mémoire par le worker (Partie IV §16.4).
+
 ### 11.7 ArticleEntity — *écrit par le worker*
 
 `article_id` · `entity_id` · `method` `CHECK {keyword, llm}` · `confidence`.
@@ -189,29 +202,33 @@ Rappel des contraintes de la Partie II §8.6 : transactions d'écriture découp�
 
 ### 11.8 Signal — *écrit par le worker*
 
-`topic_id` · `period` `CHECK {24h, 7d, 30d}` · `computed_at` · `window_start` · `window_end` · `mentions` · `unique_sources` · `unique_authors` · `unique_companies` · `growth_rate` · `velocity` · `novelty` · `momentum` · `category` `CHECK {established, trending, emerging, declining}`.
+`topic_id` · `period` `CHECK {24h, 7d, 30d}` · `computed_at` · `window_start` · `window_end` · `mentions` · `unique_sources` · `unique_authors` · `unique_companies` · `growth_rate` · `velocity` · `novelty` · `momentum` · `category` nullable, `CHECK {established, trending, rising, declining}` (`NULL` = support insuffisant, Partie V-B §29.6).
+**Contrainte** : `UNIQUE(topic_id, period, window_end)` (upsert horaire, Partie V-B §29.4).
 **Index** : `(topic_id, period, computed_at)`.
 
 ### 11.9 Embedding — *écrit par le worker*
 
-`article_id` · `model` · `dim` · `vector` (BLOB, `float32`, **normalisé**) · `created_at`.
+`article_id` · `model` · `dim` (nullable) · `vector` (BLOB, `float32`, **normalisé**, nullable) · `error` (texte, nullable) · `created_at`.
 **Contrainte** : `UNIQUE(article_id, model)`. Détails en §12.
+
+Une ligne **sans vecteur** (`vector` `NULL`, `error` renseigné) enregistre un échec définitif d'embedding (Partie V-A §24.4) : elle compte comme traitée et elle est **exclue de la similarité**.
 
 ### 11.10 AIJob — *créé par le worker ou l'app ; exécuté par le worker*
 
 | Colonne | Type / contrainte | Rôle |
 |---|---|---|
-| `job_type` | texte (validé par le code) | `classify_article · extract_topics · extract_entities · summarize_article · resolve_event · discover_topics · analyze_trend` |
-| `entity_type` · `entity_id` | texte · entier (sans FK) | cible du job |
+| `job_type` | texte (validé par le code) | V1 : `enrich_article · resolve_event · discover_topics` (Partie V-A §23.2) |
+| `entity_type` · `entity_id` | texte (validé par le code : `article · event · emerging_candidate`) · entier (sans FK) | cible du job |
 | `priority` | entier | |
-| `status` | `CHECK {pending, processing, completed, failed, retry, dead_letter, cancelled}` | |
+| `status` | `CHECK {pending, processing, completed, failed, retry, dead_letter, cancelled, skipped}` | |
+| `skip_reason` | texte, nullable (validé par le code) | motif d'un `skipped` (Partie V-A §23.3) |
 | `attempts` · `max_attempts` | entiers | |
 | `next_attempt_at` | non nul, défaut = maintenant | |
 | `last_error` | texte | |
 | `created_by` | `CHECK {worker, app}` | |
 | `started_at` · `completed_at` | nullable | |
 
-**Statuts terminaux** : `completed` · `failed` (erreur non rejouable, ex. `job_type` inconnu) · `dead_letter` (tentatives épuisées) · `cancelled` **(proposé)** — `dead_letter` abandonné par l'utilisateur. Un `dead_letter` peut aussi être **remis en `pending`** depuis le dashboard.
+**Statuts terminaux** : `completed` · `failed` (erreur non rejouable, ex. `job_type` inconnu) · `dead_letter` (tentatives épuisées) · `cancelled` — `dead_letter` abandonné par l'utilisateur · `skipped` — job sauté par sa garde d'éligibilité, sans appel LLM (Partie V-A §23.3). Un `dead_letter` peut aussi être **remis en `pending`** depuis le dashboard.
 
 **Contraintes** :
 
@@ -222,17 +239,17 @@ Rappel des contraintes de la Partie II §8.6 : transactions d'écriture découp�
 
 ### 11.11 CollectorRun — *écrit par le worker* (nouveau)
 
-Une ligne par exécution d'un collector : `source_id` · `started_at` · `finished_at` · `status` `CHECK {success, partial, failed}` · `items_fetched` · `items_created` · `items_duplicate` · `items_filtered` · `items_skipped` · `http_status` · `error`.
-Alimente les métriques par source (§39) ; `items_skipped` compte les items malformés, non persistés.
+Une ligne par exécution d'un collector : `source_id` · `started_at` · `finished_at` · `status` `CHECK {success, partial, failed}` · `items_fetched` · `items_created` · `items_duplicate` · `items_filtered` · `items_skipped` · `items_too_old` · `extractions_attempted` · `extractions_failed` · `requests_count` · `http_status` · `error`.
+Alimente les métriques par source (§39) ; `items_skipped` compte les items malformés, non persistés. Définition des compteurs et invariant : Partie IV §14.4.
 
 ### 11.12 Tables écrites par l'app (nouvelles)
 
 | Table | Colonnes | Contrainte |
 |---|---|---|
 | **`UserPreference`** | `subject_type` `CHECK {topic, source}` · `subject_id` · `action` `CHECK {follow, mute}` | `UNIQUE(subject_type, subject_id)` |
-| **`Setting`** | `key` (PK) · `value` (JSON) · `updated_at` | réglages globaux : seuil d'importance, fréquence des alertes… |
-| **`ReadState`** | `subject_type` `CHECK {event, article}` · `subject_id` · `read_at` | `UNIQUE(subject_type, subject_id)` |
-| **`EmergingDecision`** | `candidate_id` (FK) · `decision` `CHECK {follow, ignore, mute, create_topic}` · `decided_at` | `UNIQUE(candidate_id)` |
+| **`Setting`** | `key` (PK) · `value` (JSON) · `updated_at` | réglages globaux ; clés, schémas et défauts dans le registre en code (Partie VI §34.3) |
+| **`ReadState`** | `subject_type` `CHECK {event, article}` · `subject_id` · `read_at` | `UNIQUE(subject_type, subject_id)`, qui sert aussi d'index de lecture |
+| **`EmergingDecision`** | `candidate_id` (FK) · `decision` `CHECK {follow, ignore, mute, create_topic}` · `decided_at` | `UNIQUE(candidate_id)` ; **upsert** autorisé, sauf après `create_topic`, définitif ; pas de suppression en V1 (Partie V-B §30.7) |
 
 **Règle « lu »** : un article rattaché à un Event est lu quand son Event est lu ; `ReadState` sur un article ne sert qu'aux articles sans Event.
 
@@ -240,9 +257,23 @@ Alimente les métriques par source (§39) ; `items_skipped` compte les items mal
 
 | Table | Colonnes | Contrainte |
 |---|---|---|
-| **`EmergingCandidate`** | `key` (terme normalisé) · `label` · `first_detected_at` · `last_evidence_at` · `evidence` (JSON : mentions, sources, écosystèmes, croissance) · `topic_id` (FK, renseigné quand le worker crée le topic suite à `create_topic`) | `UNIQUE(key)` |
-| **`AlertLog`** | `alert_type` `CHECK {important_event, emerging_topic, daily_digest, weekly_digest}` · `subject_type` · `subject_id` · `channel` `CHECK {email, telegram}` · `status` `CHECK {sent, failed}` · `error` · `dedup_key` | **(proposé)** `UNIQUE(dedup_key)` — une alerte n'est jamais émise deux fois, même en échec (pas de reprise en V1) |
-| **`SystemState`** | `key` (PK) · `value` (JSON) · `updated_at` | clés : `worker_heartbeat`, `last_backup`… ; chaque clé a un seul écrivain |
+| **`EmergingCandidate`** | `key` (terme normalisé) · `kind` `CHECK {ngram, repository}` · `label` · `first_detected_at` · `last_evidence_at` · `evidence` (JSON validé par Pydantic, Partie V-B §30.4) · `ref_mentions` · `ref_channel_count` · `last_significant_at` · `resurfaced_at` · `backfilled_at` · `topic_id` (FK, renseigné quand le worker crée le topic suite à `create_topic`) · résultat de `discover_topics` : `llm_label` · `llm_description` · `covered_by_topic_id` (FK `Topic`, nullable) · `suggested_keywords` (JSON) · `assessed_at` | `UNIQUE(key)` |
+| **`AlertLog`** | `alert_type` `CHECK {important_event, emerging_topic, daily_digest, weekly_digest, system}` · `subject_type` · `subject_id` · `channel` `CHECK {email, telegram}` · `status` `CHECK {sending, sent, failed, suppressed}` · `error` · `dedup_key` | `UNIQUE(dedup_key)` — une alerte n'est jamais émise deux fois sur un même canal, même en échec (pas de reprise en V1) ; `dedup_key` inclut le canal (Partie VI §33.4) ; index `(alert_type, subject_type, subject_id)` |
+| **`SystemState`** | `key` (PK) · `value` (JSON) · `updated_at` | chaque clé a un seul écrivain ; clés ci-dessous |
+
+Pour le type `system`, `subject_type = 'system'` et `subject_id` est `NULL` : la condition est portée par `dedup_key` (Partie VII §39.6).
+
+**Clés `SystemState`**, toutes écrites par le worker :
+
+| Clé | Valeur | Référence |
+|---|---|---|
+| `worker_heartbeat` | `{at, started_at, version, pid}` | Partie VII §39.3 |
+| `last_backup` | `{at, snapshot_id, size_bytes, duration_s}` | Partie VII §38.2 |
+| `backup_last_attempt` · `last_restore_test` | dernier essai de backup · dernier test de restauration | Partie VII §38 |
+| `ops_metrics` · `ops_conditions` · `alerting` | instantané des métriques · conditions actives · état des canaux | Partie VII §39.3 |
+| `llm_gateway` · `llm_usage` · `embeddings` | disjoncteur LLM · budget quotidien · état du moteur d'embeddings | Partie V-A §24 |
+| `trends_since` | première insertion d'un article `ready`, écrite une fois par le runner | Partie V-B §29.3 |
+| `trends_last_run` | dernier calcul du Trend Engine | Partie V-B §29.1 |
 
 Le candidat émergent et la décision de l'utilisateur sont **deux tables distinctes** pour respecter la règle d'un seul écrivain par table.
 
@@ -258,7 +289,7 @@ Les embeddings appartiennent à la **couche cœur** (Partie II §6.1) : calcul l
 
 - **Moteur** : `fastembed` (onnxruntime). Pas de PyTorch ni d'environnement HuggingFace lourd.
 - **Modèle** : **multilingue**, obligatoire — les sources sont EN + FR, et un modèle anglais seul ne rapprocherait pas un article français de son équivalent anglais.
-- **Cible** : `paraphrase-multilingual-MiniLM-L12-v2`, 384 dimensions. Sa disponibilité dans `fastembed` est **à vérifier au sprint concerné** ; à défaut, un autre modèle multilingue de 384 dimensions au plus, supporté par `fastembed`, choix tracé en ADR.
+- **Cible** : `paraphrase-multilingual-MiniLM-L12-v2`, 384 dimensions. Sa disponibilité dans `fastembed` est **vérifiée au Sprint 0** (Partie IX §57.4) ; à défaut, un autre modèle multilingue de 384 dimensions au plus, supporté par `fastembed`. La **révision et l'empreinte** du modèle sont épinglées au build ; le choix est consigné dans l'ADR-0008.
 - Le modèle est **chargé une fois** au démarrage du worker et reste en mémoire ; son empreinte RAM fait partie des mesures à réaliser avant production (Partie II §8.7).
 
 ### 12.2 Ce qui est embeddé
@@ -296,8 +327,8 @@ Un nouveau modèle produit de nouvelles lignes (`model` différent). Les anciens
 | Ligne `Article` — `filtered` | **supprimée à 30 jours** |
 | `Event` · `Topic` · `Entity` · tables de liaison | indéfinie |
 | `Embedding` | indéfinie (volume faible ; utile pour la recherche sémantique V2) |
-| `Signal` | **(proposé)** valeurs horaires conservées 30 jours, puis une valeur par jour et par topic/fenêtre, conservée indéfiniment |
-| `AIJob` — `completed` · `failed` · `cancelled` | supprimé à 30 jours |
+| `Signal` | valeurs horaires conservées 30 jours, puis seule la ligne de `window_end` = 00:00 UTC est conservée, indéfiniment (une valeur par jour et par topic/fenêtre) |
+| `AIJob` — `completed` · `failed` · `cancelled` · `skipped` | supprimé à 30 jours |
 | `AIJob` — `dead_letter` | conservé jusqu'à action de l'utilisateur (relance ou abandon) |
 | `CollectorRun` | 30 jours |
 | `AlertLog` | 1 an (sert à la dédup des alertes) |
@@ -315,44 +346,3 @@ Un nouveau modèle produit de nouvelles lignes (`model` différent). Les anciens
 - **Recherche sémantique** de l'historique (déjà reportée par la Partie I) — les embeddings conservés indéfiniment la rendront possible.
 - **Alias et fusion d'entités** (ex. « Claude Code » / « claude-code » / « CC ») au-delà du `canonical_name`.
 - **Ré-embedding complet** lors d'un changement de modèle.
-
----
-
-## Impacts à répercuter dans les autres parties
-
-À traiter lors de la revue des parties concernées — **hors Partie III**.
-
-### Partie II — Architecture (corrections)
-
-- **§7.1 et §9.3** : remplacer « item malformé → `status=error` » par « item malformé **non persisté**, compté dans `CollectorRun.items_skipped` » (le statut `error` n'existe plus).
-- **§8.3 Propriété des tables** : compléter avec `CollectorRun`, `Setting`, `UserPreference`, `ReadState`, `EmergingCandidate`, `EmergingDecision`, `AlertLog`, `SystemState`.
-- **§9.1** : la phrase « clustering par entités continue sans LLM » devient vraie grâce à `entities.yaml` (`method=keyword`) — y faire référence.
-- **Impacts Partie III de la Partie II** : la « contrainte d'unicité (`entity_id`, `job_type`) » est remplacée par l'index unique partiel sur les jobs actifs + l'idempotence par remplacement des résultats (§11.10).
-- **§8.5** : « job résolu ou abandonné » = relancé en `pending` ou passé en `cancelled`.
-
-### Partie IV — Pipeline d'ingestion
-
-- **Relevance filter** : écrit les `ArticleTopic` (`method=keyword`) des articles `ready`, et les `ArticleEntity` (`method=keyword`) à partir de `entities.yaml`.
-- **Dédup exacte** : un doublon exact **n'est pas inséré** (compté dans `CollectorRun`) — supprimer le statut `duplicate` de ce stade (§19 V0.3).
-- **Dédup par `content_hash`** : appliquée seulement au-delà d'une longueur minimale de contenu, pour éviter les collisions sur des extraits vides ou très courts.
-- **Normalisation** : chaque collector remplit `url` (page propre de l'item) **et** `link_url` (lien externe éventuel).
-- **Checkpoint** : stocké dans `Source.checkpoint` ; `sources.yaml` porte une `key` unique par source.
-- **Résumé de repli** : initialisé à l'insertion (`summary_origin=fallback`).
-- **Nouveau fichier** `config/entities.yaml` à décrire au §16.
-
-### Partie V — Intelligence
-
-- **`Event.importance`** : aucune formule n'est définie — à spécifier.
-- **Longueur maximale du résumé de repli** (troncature) : à fixer.
-- **Fréquence de calcul des `Signal`** : à fixer (le modèle suppose un calcul horaire).
-- **Sujets émergents** : `distinct_channel_count` fournit l'indicateur « écosystèmes ».
-- **Jobs LLM** : chaque job **remplace** ses résultats `method=llm` pour sa cible ; `resolve_event` passe `title_origin` à `llm`.
-
-### Partie VII — Ops
-
-- **Service one-shot `migrate`** dans Docker Compose, avant `app` et `worker`.
-- **Backup** : utiliser l'API de sauvegarde en ligne de SQLite ou `VACUUM INTO` — **jamais une copie brute** du fichier pendant que la base est ouverte. Le backup écrit `SystemState.last_backup`.
-- **Volume** : local, jamais sur un système de fichiers réseau.
-
----
-
