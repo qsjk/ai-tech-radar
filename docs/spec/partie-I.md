@@ -1,7 +1,7 @@
 # Partie I — Vision & Objectifs
 
 > **Partie I — Vision & Objectifs.** Version durcie issue de la revue §1–§5.
-> Remplace la Partie I de SPEC.md V0.3. Les décisions tranchées lors de la revue
+> Dernière révision : 2026-09-22. Les décisions tranchées lors de la revue
 > sont récapitulées ci-dessous, puis intégrées au fil des sections.
 
 ---
@@ -11,14 +11,13 @@
 1. **Objectif = 3 piliers**, pas un arbitrage recall *vs* precision : **recall à l'ingestion** · **precision à la présentation** · **hotness** (corroboration multi-sources rendue visible). Cf. §1.
 2. **Exhaustivité = non-objectif V1**, explicitement **reportée en V2**. Cf. §5 et « Reporté en V2 ».
 3. **Langues V1 = EN + FR.** Aperçu rendu **en français** quand l'AI est disponible, **repli déterministe** (titre ou extrait d'origine) sinon. Autres langues → V2.
-4. **Canaux V1 = RSS + GitHub + Hacker News + Reddit + YouTube.** **Newsletters (email) → V2.**
+4. **Canaux V1 = RSS + GitHub + Hacker News + Reddit + YouTube**, plus le collector **`webpage`** en dernier recours (Partie IV). **Newsletters (email) → V2.**
 5. **Recherche = 13ᵉ fonction** explicite, **déterministe** (plein-texte simple + filtres structurés). Recherche sémantique **hors V1**.
 6. **« Sans refonte »** défini en **3 niveaux** (config / config / nouveau collector) + garde-fou « toucher au modèle core ou au pipeline = refonte ». Cf. §2.
 7. **Portable** et **Provider-independent** traités comme **contraintes transverses** (toujours vraies), hors ordre de priorité §4.
 8. Chaque **fonction (§3) est étiquetée** *core déterministe* ou *AI-dépendante*.
 
 ---
-
 
 ## 1. Objectif
 
@@ -64,11 +63,17 @@ cybersecurity · DevOps · software engineering · infrastructure · autres doma
 
 ### 2.2 Canaux d'acquisition (V1)
 
-RSS (blogs / releases / flux) · GitHub · Hacker News · Reddit · YouTube.
+RSS (blogs / releases / flux) · GitHub · Hacker News · Reddit · YouTube ·
+**`webpage`** — dernier recours pour un site sans flux : une seule page de liste,
+jamais de suivi de liens, soumise à `robots.txt` (Partie IV §15.4).
+
+Reddit et YouTube sont lus par leurs flux RSS publics : **aucune credential**
+n'est requise pour eux en V1 (Partie IV §22).
 
 **Reportés (V2)** : newsletters par **email** · autres réseaux (Mastodon, X…).
 V1 ne traite que des sources exposant un **flux** exploitable par les collectors
-ci-dessus ; l'ingestion email n'est pas au périmètre V1.
+ci-dessus, ou à défaut une page de liste lisible par `webpage` ; l'ingestion
+email n'est pas au périmètre V1.
 
 ### 2.3 Langues
 
@@ -167,10 +172,10 @@ Parties VII/VIII ; la Partie I n'en fixe que la **définition de succès** :
 
 | Qualité | Critère de succès (mesurable) |
 |---|---|
-| **Simple** | ≤ 3–4 services Docker ; démarrage local en **une** commande (`docker compose up`) ; aucune techno bannie (§5). |
+| **Simple** | ≤ 3–4 services Docker **permanents** (le service one-shot `migrate` n'est pas compté, Partie VII §36.2) ; démarrage local en **une** commande (`docker compose up`) ; aucune techno bannie (§5). |
 | **Portable** | Migration vers un autre VPS = copie du volume persistant + `docker compose up`, **sans modification de code**. |
 | **Observable** | Tout incident majeur (source / worker / LLM down, disque plein) est détectable via `/health` ou une alerte, **sans SSH**. |
-| **Résilient** | Les tests de résilience de la Partie VIII passent (LLM down · 429 · source down · worker restart · VPS reboot · backup restore). |
+| **Résilient** | Les tests de résilience de la Partie VIII passent (LLM down · 429 · source down · worker restart · VPS reboot · backup restore) : tableau de la Partie VIII §50.6. |
 | **Low-cost** | Coût récurrent ≤ **12 €/mois** ; le produit **fonctionne avec un LLM à 0 €**. |
 | **Provider-independent** | Changer de provider LLM = modifier `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` ; **zéro** changement de code métier. |
 
@@ -226,24 +231,3 @@ Points **explicitement repoussés**, à ne pas traiter en V1 mais à garder en v
 - **Newsletters email** et autres canaux (Mastodon, X…) (§2.2).
 - **Recherche sémantique** de l'historique (§3, fonction 13).
 - **Personnalisation automatique** / recommandation (§5.1).
-
----
-
-## Impacts à répercuter dans les autres parties (notes, hors Partie I)
-
-À traiter lors de la revue des parties concernées :
-
-- **Relevance filter (Partie IV)** : ne filtre **jamais** sur la faible
-  diffusion — uniquement sur la pertinence thématique (pilier *recall*).
-- **Hotness déterministe (Partie V — clustering / tendances)** : le comptage de
-  sources distinctes par événement alimente la *hotness* et doit rester
-  calculable sans LLM.
-- **Normalisation (Partie IV)** : **détection de langue** requise (champ
-  `language` déjà prévu).
-- **Aperçu (Partie V — LLM tasks)** : formaliser le **repli** (b) et un moyen de
-  **distinguer l'aperçu enrichi de l'aperçu de repli** (flag d'état et/ou
-  re-traitement via un job `summarize_article` quand le LLM revient) ; border la
-  **longueur / troncature** de l'extrait de repli.
-
----
-
