@@ -1,9 +1,7 @@
 # Partie II — Architecture
 
-2026-09-22
-
 > **Partie II — Architecture.** Version durcie issue de la revue §6–§9.
-> Remplace la Partie II de SPEC.md V0.3. Prend la Partie I durcie comme acquis
+> Dernière révision : 2026-09-22. Prend la Partie I durcie comme acquis
 > (objectif à 3 piliers, garantie transverse « fonctionner sans AI », hotness déterministe).
 
 ---
@@ -15,7 +13,7 @@ Ces points étaient absents, implicites ou contradictoires en V0.3. Ils sont tra
 1. **§6 reformulé** : le principe fondamental n'est plus « les collectors ne sont jamais bloqués par le LLM » (trop étroit) mais une **architecture à deux couches** — un **cœur déterministe** complet de bout en bout, et une **couche d'enrichissement AI asynchrone**. La règle sur les collectors en devient un corollaire. Cf. §6.
 2. **Un `Event` est créé de façon déterministe**, sans LLM, avec un **titre de repli** (titre de l'article représentatif). Le job `resolve_event` **enrichit** (titre de synthèse, description) et arbitre les cas ambigus — il ne conditionne jamais l'existence de l'événement.
 3. **La hotness est matérialisée** : compteur de **sources distinctes** porté par l'`Event`, mis à jour à chaque rattachement d'article. Calculable et affichable **sans LLM**.
-4. **La déduplication sémantique sort du pipeline synchrone.** Le pipeline ne fait que de la **dédup exacte** (URL canonique · external ID · content hash). La similarité vit dans l'**étage asynchrone embeddings/clustering**, avec **deux seuils sur un unique calcul cosine** : seuil haut → `duplicate` rétroactif ; seuil médian → même `Event`.
+4. **La déduplication sémantique sort du pipeline synchrone.** Le pipeline ne fait que de la **dédup exacte** (URL canonique · external ID · content hash). La similarité vit dans l'**étage asynchrone embeddings/clustering**, avec **deux seuils sur un unique calcul cosine** : seuil haut → `duplicate` rétroactif ; seuil médian → même `Event`. Le `duplicate` rétroactif est restreint à la **même source** et aux titres normalisés égaux (Partie V-B §28.7) : entre sources différentes, un cosine ≥ seuil haut ne produit qu'un candidat « même Event ».
 5. **Tout travail CPU-bound du worker s'exécute hors de l'event-loop** (`asyncio.to_thread` / `ThreadPoolExecutor` borné). Cf. §8.4.
 6. **L'API peut déposer des jobs, jamais les exécuter.** Elle insère des `AIJob` de **types prédéfinis** (liste fermée §11.10) pour les actions du dashboard, et répond immédiatement.
 7. **Caddy sert le frontend statique** et proxie `/api` + `/health` vers FastAPI. **FastAPI ne sert pas la SPA.**
@@ -28,7 +26,6 @@ Ces points étaient absents, implicites ou contradictoires en V0.3. Ils sont tra
 14. **Alertes V1 sans reprise** : un échec d'envoi est journalisé et compté, l'alerte n'est pas rejouée. L'outbox avec retry est **reportée en V2**.
 
 ---
-
 
 ## 6. Principe fondamental
 
@@ -58,13 +55,15 @@ Le schéma unique de la V0.3 mélangeait **étages de traitement** et **tables**
 
 ```
   SOURCES
-  RSS · GitHub · Hacker News · Reddit · YouTube
+  RSS · GitHub · Hacker News · Reddit · YouTube · webpage
      │  (scheduler, poll_interval par source)
      ▼
   COLLECTOR            → RawItem  (isolé par source ET par item)
      ▼
   NORMALISATION        → Article  (URL, titre, auteur, date, external_id,
      │                             contenu du flux, détection de langue)
+     ▼
+  CONTRÔLE D'ÂGE       → item trop ancien → too_old (compté, non persisté)
      ▼
   CANONICALISATION     → canonical_url
      ▼
@@ -75,16 +74,19 @@ Le schéma unique de la V0.3 mélangeait **étages de traitement** et **tables**
      ▼
   EXTRACTION CIBLÉE    → fetch + trafilatura, UNIQUEMENT si relevant (§17)
      ▼
+  LIAISONS KEYWORD     → topics + entités keyword, sur le texte final (§20.4)
+     ▼
   DATABASE             → Article persisté (status=ready)
      ▼
-  ENQUEUE              → AIJob + Embedding job
+  ENQUEUE              → 1 AIJob enrich_article par article ready ;
+                         embeddings par file dérivée (§24.4), sans AIJob
 ```
 
 **Propriétés contractuelles de ce pipeline** :
 
 - **Aucun appel LLM**, à aucune étape.
 - **Aucune attente d'un traitement asynchrone** : le pipeline se termine à l'`INSERT`, il ne dépend pas du résultat d'un embedding ni d'un job.
-- **Isolation à deux niveaux** : une panne de source n'arrête pas les autres sources ; un `RawItem` malformé n'arrête pas le reste de son lot (il est journalisé, compté, `status=error`).
+- **Isolation à deux niveaux** : une panne de source n'arrête pas les autres sources ; un `RawItem` malformé n'arrête pas le reste de son lot (il est journalisé, **non persisté**, compté dans `CollectorRun.items_skipped`).
 - **Idempotent** : rejouer une collecte ne crée pas de doublon (garanti par `external_id` / `canonical_url`).
 
 ### 7.2 Post-base — la base est le pivot
@@ -110,7 +112,7 @@ Après l'`INSERT`, l'architecture n'est plus un tuyau : c'est un **hub**. Des pr
   │                │     ▼       │       resolve_event, analyse)
   │                │ ┌───┴────┐  │
   │                │ │ seuil  │  │
-  │                │ │ haut   │→ duplicate (rétroactif)
+  │                │ │ haut   │→ duplicate (rétroactif, même source)
   │                │ │ médian │→ EVENT CLUSTERING
   │                │ └────────┘       ▼
   │                │              distinct_source_count  ← HOTNESS [cœur]
@@ -124,8 +126,8 @@ Après l'`INSERT`, l'architecture n'est plus un tuyau : c'est un **hub**. Des pr
 | Étage | Couche | Rôle |
 |---|---|---|
 | **Embeddings** | cœur | calcul local CPU, asynchrone, sur les seuls articles `ready` |
-| **Similarité (cosine)** | cœur | **un seul calcul, deux seuils** : haut → `duplicate` rétroactif ; médian → candidat même `Event` |
-| **Event clustering** | cœur | crée l'`Event` **sans LLM**, titre de repli = titre de l'article le plus ancien du groupe |
+| **Similarité (cosine)** | cœur | **un seul calcul, deux seuils** : haut **et même source** (titres normalisés égaux) → `duplicate` rétroactif ; médian, ou haut entre sources différentes → candidat même `Event` (Partie V-B §28.7) |
+| **Event clustering** | cœur | crée l'`Event` **sans LLM**, titre de repli = titre de l'article le plus ancien du groupe. Deux voies de déclenchement : après chaque lot d'embeddings, et par un tick pour les articles restés sans embedding (Partie V-B §28.2) |
 | **Hotness** | cœur | `distinct_source_count` matérialisé sur l'`Event`, incrémenté à chaque rattachement |
 | **Trend Engine** | cœur | produit les `Signal` par topic et par fenêtre |
 | **Purge** | cœur | efface `Article.content` après traitement + délai de grâce (§8.5) |
@@ -149,7 +151,9 @@ Aucun maillon n'appelle le LLM. Le job `resolve_event` remplace ensuite le titre
 
 ## 8. Architecture des processus
 
-### 8.1 Les trois conteneurs
+### 8.1 Les services
+
+Trois services **permanents**, plus un one-shot et un service optionnel (Partie VII §36.2) :
 
 ```
 caddy                    app                         worker
@@ -161,10 +165,18 @@ caddy                    app                         worker
                                                       ├── trend calculations
                                                       ├── AI job processing
                                                       ├── purge
-                                                      └── alerting
+                                                      ├── alerting
+                                                      ├── heartbeat + watchdog
+                                                      ├── ops.tick (métriques, conditions)
+                                                      └── backup + test de restauration
+
+migrate   one-shot : alembic upgrade head, avant app et worker
+gateway   gateway LLM auto-hébergé, optionnel (profil Compose gateway)
 ```
 
 **Décision** : le frontend est servi **par Caddy** en fichiers statiques. FastAPI n'expose que l'API et `/health`, et ne sert pas la SPA. Aucun conteneur applicatif n'expose de port public (§37).
+
+**Segmentation réseau** (Partie VII §36.2) : `app` n'a **aucune sortie Internet** et n'est joignable que par Caddy ; `worker` **ne peut pas joindre** `app` ; `migrate` n'a aucun réseau.
 
 ### 8.2 Contrat d'interface app ↔ worker
 
@@ -192,10 +204,16 @@ Le raccourci « le worker écrit, l'app lit » est **faux** : les deux processus
 | Index FTS5 | **worker** (triggers) | app |
 | `AIJob` — claim, exécution, statuts terminaux | **worker** | app |
 | `AIJob` — **création** | **worker** et **app** | — |
-| Heartbeat worker | **worker** | app (`/health`) |
-| Préférences utilisateur (§34) | **app** | worker |
-| État de lecture (`unread`, §31) | **app** | — |
-| Décisions sur sujets émergents (Follow / Ignore / Mute / Create topic, §30) | **app** | worker |
+| `CollectorRun` | **worker** | app |
+| `EmergingCandidate` (dont `resurfaced_at`) | **worker** | app |
+| `AlertLog` | **worker** | app |
+| `SystemState` (heartbeat, `trends_since`, `llm_gateway`, `embeddings`…) | **worker** | app (`/health`, lu / non lu, bandeau d'état) |
+| `UserPreference` — préférences utilisateur (§34) | **app** | worker |
+| `Setting` — réglages (§34.3) | **app** | worker (relu à chaque tick) |
+| `ReadState` — état de lecture (`unread`, §31) | **app** | — |
+| `EmergingDecision` — décisions sur sujets émergents (Follow / Ignore / Mute / Create topic, §30), modifiables par upsert (§30.7) | **app** | worker |
+
+**Exception documentée** : l'app peut faire passer un `AIJob` de `dead_letter` à `pending` ou à `cancelled`, et **uniquement** ces deux transitions (Partie V-A §23.6).
 
 **Deux conséquences à ne pas manquer** :
 
@@ -214,7 +232,9 @@ Le worker est un **processus `asyncio` unique**.
 > Aucune opération CPU-bound ne s'exécute directement dans une coroutine du scheduler ou de la boucle de jobs. Sans cette règle, un embedding de deux secondes gèle le scheduler, les collecteurs et la boucle AI pendant toute sa durée.
 
 - **Concurrence bornée** : sémaphore sur les jobs AI simultanés (2–4, configurable).
-- **Scheduler** : APScheduler déclenche collectes, calculs de tendances et purge selon leurs périodes propres. **Coalescence des misfires** : au démarrage, les exécutions manquées pendant l'arrêt sont regroupées en **une seule** exécution, jamais rejouées en rafale.
+- **Collectors sans accès à la base** : un collector ne touche jamais la base ; toute écriture passe par le **runner** du pipeline, et **aucun appel réseau n'a lieu dans une transaction d'écriture** (Partie IV §14.2).
+- **Scheduler** : APScheduler déclenche collectes, calculs de tendances et purge selon leurs périodes propres. Il porte notamment un job **analytique horaire** (trends → émergence → archivage des Events) et trois ticks de 60 s : clustering, « Create topic » (Partie V-B §28.2, §30.8) et `alerts.tick`, qui gère les alertes instantanées **et** les digests, sans cron de digest (Partie VI §33.1, §33.7). **Coalescence des misfires** : au démarrage, les exécutions manquées pendant l'arrêt sont regroupées en **une seule** exécution, jamais rejouées en rafale.
+- **Supervision fail-fast** (Partie VII §36.6) : si une tâche permanente (boucle AI, file d'embeddings, scheduler, heartbeat) meurt sur une exception non gérée, le worker se termine en erreur et Docker le relance ; un watchdog arrête le processus si l'event-loop est gelée.
 
 ### 8.5 Étage de purge
 
@@ -225,9 +245,12 @@ Règle : **`Article.content` est un tampon de traitement, pas une donnée conser
 | Cas | Action sur `content` |
 |---|---|
 | Article `ready`, tous traitements terminés (embedding + résumé + extractions) | purge après **délai de grâce de 1 jour** (configurable) |
-| Article ayant **un job en `dead_letter`** | **jamais purgé** tant que le job n'est pas résolu ou abandonné |
+| Article ayant **un job en `dead_letter`** | **jamais purgé** tant que le job n'est pas relancé (`pending`) ou abandonné (`cancelled`) |
 | Article `filtered` (sous le seuil de pertinence) | purge immédiate |
 | Article `duplicate` | purge immédiate |
+
+- **« Tous traitements terminés »** est matérialisé par `Article.processed_at`, posé par une **passe unique** de l'étage purge, avant la purge proprement dite (Partie V-A §24.5).
+- Les statuts terminaux d'un job (`completed`, `failed`, `cancelled` et **`skipped`**) ne bloquent pas la purge ; seul `dead_letter` la bloque.
 
 **Conservé indéfiniment** : titre · URL d'origine · auteur · date · source · langue · statut · `content_hash` · aperçu/résumé · rattachements topics / entités / `Event` · `Signal`. Un `Event` conserve la **liste des liens** de ses articles — y compris si la page d'origine disparaît.
 
@@ -259,8 +282,9 @@ Chaque mode de panne est spécifié sur **quatre colonnes** : ce qui se dégrade
 
 | Panne | Dégradation | Détection | Reprise | Idempotence |
 |---|---|---|---|---|
-| **LLM Gateway indisponible** | résumés, topics, entités, `resolve_event` suspendus. **Ingestion, dédup, events, hotness, trends, dashboard, recherche, alertes déterministes → OK.** Aperçus et titres d'`Event` restent en **repli déterministe**. | échecs de jobs répétés + `llm_gateway` dans `/health` | jobs en `pending`/`retry`, repris automatiquement au retour du gateway | **chaque `job_type` est rejouable sans effet de bord** : l'écriture du résultat est un **upsert** par (`entity_id`, `job_type`). Un job ayant écrit son résultat puis mort avant `completed` est rejoué sans dupliquer. |
-| **Moteur d'embeddings indisponible** *(distinct du LLM : local, CPU)* | similarité sémantique perdue → pas de `duplicate` rétroactif, pas de candidat par cosine. **Dédup exacte et clustering par entités / URL croisées continuent → la hotness survit.** | échec des jobs d'embedding | jobs d'embedding en `retry` ; le clustering tourne en mode dégradé sur les critères restants | rejouer un embedding écrase la ligne `Embedding` (clé `article_id` + `model`) |
+| **LLM Gateway indisponible** | résumés, topics, entités, `resolve_event` suspendus. **Ingestion, dédup, events, hotness, trends, dashboard, recherche, alertes déterministes → OK.** Aperçus et titres d'`Event` restent en **repli déterministe**. | disjoncteur LLM ouvert, exposé par `llm_gateway` dans `/health` | jobs en `pending`/`retry` **sans consommer de tentative**, repris automatiquement au retour du gateway ; familles d'échec et disjoncteur : Partie V-A §26 | **chaque `job_type` est rejouable sans effet de bord** : un seul job actif par cible et par type (index unique partiel), et chaque job **remplace** ses propres résultats pour sa cible (Partie III §11.10). Un job ayant écrit son résultat puis mort avant `completed` est rejoué sans dupliquer. |
+| **Gateway non configuré** (`LLM_BASE_URL` absent) | aucun enrichissement : le produit tourne à 0 € sans LLM, aperçus et titres en repli | `llm_gateway` = `not_configured` | aucune : disjoncteur ouvert en permanence, jobs créés et laissés en `pending` (Partie V-A §24.2) | — |
+| **Moteur d'embeddings indisponible** *(distinct du LLM : local, CPU)* | similarité sémantique perdue → pas de `duplicate` rétroactif, pas de candidat par cosine. **Dédup exacte et clustering par entités / URL croisées continuent → la hotness survit** : les liaisons d'entités `method=keyword` issues de `config/entities.yaml` ne dépendent d'aucun LLM (Partie III décision 1). | échec des jobs d'embedding | jobs d'embedding en `retry` ; le clustering tourne en mode dégradé sur les critères restants | rejouer un embedding écrase la ligne `Embedding` (clé `article_id` + `model`) |
 | **Réponse LLM malformée** (JSON invalide) | le job échoue | validation Pydantic | `retry`, puis `dead_letter` après `max_attempts` | aucune écriture partielle : la validation précède l'écriture |
 
 ### 9.2 Pannes de processus
@@ -276,7 +300,7 @@ Chaque mode de panne est spécifié sur **quatre colonnes** : ce qui se dégrade
 | Panne | Dégradation | Détection | Reprise | Idempotence |
 |---|---|---|---|---|
 | **Une source indisponible** | isolée : une erreur GitHub n'arrête ni Reddit ni RSS | `last_error` / `last_http_status` par source | backoff exponentiel, reprise au cycle suivant | re-fetch sans doublon |
-| **Item malformé dans un lot** | **l'item seul** est écarté (`status=error`), le lot continue | compteur `items_skipped` + log | aucune | isolation **au niveau item**, pas seulement au niveau source |
+| **Item malformé dans un lot** | **l'item seul** est écarté, **non persisté** et compté dans `CollectorRun.items_skipped` ; le lot continue | compteur `items_skipped` + log | aucune | isolation **au niveau item**, pas seulement au niveau source |
 | **Quota / 429** | collecte ralentie sur cette source | code HTTP | respect de `Retry-After`, sinon backoff | — |
 
 ### 9.4 Pannes d'infrastructure
@@ -286,22 +310,25 @@ Chaque mode de panne est spécifié sur **quatre colonnes** : ce qui se dégrade
 | **`database is locked` après `busy_timeout`** | écriture refusée | **métrique dédiée** + log | retry borné côté appelant ; au-delà, l'échec est compté et visible | l'opération est rejouable (aucune écriture partielle : transaction annulée) |
 | **Disque plein** | **toute écriture SQLite échoue** ; WAL bloqué | seuils §39 (`> 80 %` warning, `> 90 %` critical) — **l'alerte doit précéder la saturation** | libération d'espace (purge, logs, images Docker) puis reprise | aucune corruption : SQLite échoue proprement, il ne dégrade pas la base |
 | **Corruption SQLite / échec de checkpoint** | base inexploitable | `/health` en échec sur `database` | **restauration du dernier backup** (§38) | la procédure de restore est documentée et testée mensuellement |
-| **Backup échoué** | aucune dégradation immédiate, **risque différé** | `last_backup` périmé dans `/health` | relance manuelle | — |
-| **Canal d'alerte indisponible** (SMTP / Telegram) | **l'alerte est perdue** — décision V1 assumée | log + métrique d'échec d'envoi | aucune reprise en V1 | — *(outbox avec retry → V2)* |
+| **Backup échoué** | aucune dégradation immédiate, **risque différé** | conditions `backup_failed` / `backup_stale` et alerte `system` (Partie VII §39.5) | reprise automatique au job suivant, ou relance manuelle par `backup-now` | — |
+| **Canal d'alerte indisponible** (SMTP / Telegram) | **l'alerte est perdue** — décision V1 assumée | log + métrique d'échec d'envoi | aucune reprise en V1 ; séquence d'envoi « au plus une fois », ligne `sending` requalifiée en `failed` au démarrage (Partie VI §33.5) | — *(outbox avec retry → V2)* |
 
 ### 9.5 Tests de résilience obligatoires
 
-Chaque ligne ci-dessus doit avoir un test. Les scénarios de bout en bout à automatiser :
+Chaque ligne ci-dessus doit avoir un test. Les scénarios de bout en bout à automatiser, avec leurs identifiants du catalogue (Partie VIII §50.5) :
 
 ```
-reboot → containers restart → DB available → worker resumes → scheduler resumes
-       → aucun job dupliqué, aucun misfire en rafale
+T-RES-06  reboot simulé → containers restart → DB available → worker resumes
+          → scheduler resumes → aucun job dupliqué, aucun misfire en rafale
 
-gateway down → ingestion continue → events créés → hotness affichée
-             → jobs en retry → gateway up → reprise sans doublon
+T-RES-01  gateway down → ingestion continue → events créés → hotness affichée
+          → jobs en retry → gateway up → reprise sans doublon
 
-worker kill -9 pendant un job → restart → job requalifié retry → rejoué → résultat unique
+T-RES-05  worker kill -9 pendant un job → restart → job requalifié retry
+          → rejoué → résultat unique
 ```
+
+Le test de reboot est scindé : **reboot simulé** en CI (T-RES-06) et **reboot réel** du VPS en pré-production (T-RES-09, mesure M10).
 
 > **Critère de validation de la Partie II** : gateway LLM éteint, le produit doit rester utilisable de bout en bout — collecte, déduplication, événements, **hotness**, dashboard, recherche et alertes déterministes. Si l'une de ces fonctions tombe, la séparation des deux couches (§6) n'est pas respectée.
 
@@ -312,42 +339,3 @@ worker kill -9 pendant un job → restart → job requalifié retry → rejoué 
 - **Outbox et reprise des alertes** : en V1, un échec d'envoi (SMTP / Telegram) est journalisé et compté, l'alerte n'est pas rejouée. La file d'envoi persistante avec retry est reportée.
 - **Re-collecte d'un article déjà ingéré** : le pipeline est one-shot et la dédup exacte écarterait une seconde collecte. Un mécanisme de reprise explicite (utile si un contenu purgé devait être régénéré) n'est pas au périmètre V1 ; le cas se traite manuellement, l'URL d'origine restant conservée.
 - **Deuxième worker / parallélisation des jobs** : le claim atomique (§23) le rend possible sans changement de modèle, mais V1 reste à **un seul processus worker**.
-
----
-
-## Impacts à répercuter dans les autres parties
-
-À traiter lors de la revue des parties concernées — **hors Partie II**.
-
-### Partie III — Données
-
-- **`Event`** : ajouter `distinct_source_count` (compteur de sources distinctes, matérialisé) et un **indicateur d'état du titre** (repli déterministe / synthèse LLM), pour savoir ce qui reste à enrichir au retour du gateway.
-- **Tables manquantes côté app** : préférences utilisateur (§34), état de lecture (`unread`, §31) et décisions sur sujets émergents (§30) n'existent pas dans le modèle §11 — elles sont pourtant écrites par l'API.
-- **Heartbeat worker** : prévoir la table ou la ligne d'état portant la preuve de vie, avec son horodatage.
-- **Index FTS5** : table virtuelle SQLite alimentée par triggers, à intégrer au modèle et aux migrations (`render_as_batch`).
-- **Statut `duplicate` rétroactif** : le cycle de `Article.status` doit autoriser le passage de `ready` à `duplicate`. Décider du sort des topics / résumés déjà produits — **recommandation : les conserver, masquer seulement l'article à l'affichage**.
-- **Rétention** : formaliser la purge de `Article.content` (§8.5) dans la politique de conservation, avec le délai de grâce configurable.
-- **Contrainte d'unicité** supportant l'upsert d'idempotence des jobs : (`entity_id`, `job_type`).
-
-### Partie IV — Pipeline d'ingestion
-
-- **§19 Déduplication** : retirer la « semantic similarity » de la liste ordonnée des étapes du pipeline. Le pipeline synchrone ne fait que de la dédup **exacte** ; la similarité est un traitement asynchrone (§7.2).
-- **Isolation au niveau item** : §15 n'isole qu'au niveau source ; ajouter l'isolation par `RawItem`.
-- **Normalisation** : confirmer la **détection de langue** (déjà signalée par la Partie I).
-
-### Partie V — Intelligence
-
-- **§28 Event clustering** : reformuler — `resolve_event` ne **produit** plus `title` + `description`, il les **enrichit**. L'`Event` existe avant lui, avec un titre de repli.
-- **Seuils configurables** : fenêtre temporelle, nombre d'entités communes, seuil de cosine haut (`duplicate`) et médian (`Event`) vivent en configuration. Leurs valeurs initiales sont des **points de départ à calibrer empiriquement**, pas des vérités.
-- **§27 LLM Tasks** : préciser le contrat d'**idempotence par `job_type`** (upsert du résultat).
-- **Alertes** : le worker doit lire les préférences de `mute` écrites par l'app avant d'émettre.
-
-### Partie VII — Ops
-
-- **Caddy** sert le build statique du frontend et proxie `/api` + `/health` (§37 à préciser).
-- **`/health`** : le champ `worker` se calcule sur la **fraîcheur du heartbeat**, pas sur l'activité.
-- **Monitoring** : ajouter les métriques `database is locked` (échecs après `busy_timeout`), échecs d'envoi d'alerte, et taille du fichier `-wal`.
-- **Mesures à réaliser avant production** : RAM du moteur d'embeddings, durée du cosine en régime nominal, taille du `-wal`, durée de la plus longue transaction du worker (§8.7).
-
----
-
