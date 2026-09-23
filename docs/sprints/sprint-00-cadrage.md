@@ -456,16 +456,67 @@ Dans toutes les commandes ci-dessous : `IMG=python:3.12.14-slim-trixie@sha256:2f
 
 | # | Vérification | Attendu | Si échec | Résultat |
 |---|---|---|---|---|
-| V-01 | `paraphrase-multilingual-MiniLM-L12-v2` disponible dans `fastembed`, sur l'architecture cible (`amd64`, **IX décision 27**) | modèle chargé, 384 dimensions ; révision et empreinte sha256 du modèle notées pour épinglage au build | repli : autre modèle multilingue ≤ 384 dimensions supporté par fastembed, consigné dans l'ADR-0008 | à faire en T0.3 (#6) |
+| V-01 | `paraphrase-multilingual-MiniLM-L12-v2` disponible dans `fastembed`, sur l'architecture cible (`amd64`, **IX décision 27**) | modèle chargé, 384 dimensions ; révision et empreinte sha256 du modèle notées pour épinglage au build | repli : autre modèle multilingue ≤ 384 dimensions supporté par fastembed, consigné dans l'ADR-0008 | **concluant** — fastembed 0.8.1, dimension 384 mesurée ; dépôt `qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q`, révision `faf4aa42…` (détail en V-01) |
 | V-02 | SQLite de l'image de base Python retenue (voir E16) | ≥ 3.35, FTS5 et JSON1 compilés | autre image de base ou wheel SQLite, consigné | **concluant** — SQLite 3.46.1 ; FTS5 et JSON1 prouvés par requêtes réelles |
 | V-03 | `BEGIN IMMEDIATE` avec SQLAlchemy 2.x async et aiosqlite | transaction d'écriture ouverte en `IMMEDIATE`, mécanisme noté (gestion des transactions du driver) | proposition alternative, question au propriétaire | **concluant** — SQLAlchemy 2.0.54, aiosqlite 0.22.1 ; événements `connect` + `begin` sur `engine.sync_engine` ; verrou pris dès le `BEGIN`, pas en lecture seule |
 | V-04 | WAL sur **volume nommé** Docker | `journal_mode=wal` effectif, fichiers `-wal` / `-shm` créés sur le volume | bloquant | **concluant** — `wal` effectif, `-wal` et `-shm` sur le volume ; 2 conteneurs pendant 75 s, 0 erreur ; `integrity_check` = `ok` |
 | V-05 | restic en binaire statique pour l'architecture cible | version épinglée disponible | bloquant | à faire en T0.3 (#6) |
-| V-06 | onnxruntime et lingua pour l'architecture cible | wheels disponibles | bloquant | à faire en T0.3 (#6) |
+| V-06 | onnxruntime et lingua pour l'architecture cible | wheels disponibles | bloquant | **concluant** — wheels binaires cp312 manylinux x86_64 : onnxruntime 1.30.0, lingua-language-detector 2.2.0 |
 | V-07 | APScheduler 3.x sur Python 3.12 | dernière 3.x compatible, version notée | bloquant | à faire en T0.3 (#6) |
 | V-08 | Outils CI (analyse de secrets, audit backend et frontend) | outil retenu et version | outil équivalent, consigné | à faire en T0.3 (#6) |
 
 ### 3.C Détail par vérification
+
+#### V-01 — Modèle d'embeddings dans fastembed
+
+```sh
+docker run --rm --platform linux/amd64 --name radar-t03-v01 -v ~/radar-t03:/w:ro -v radar-t03-cache:/cache $IMG \
+  sh -c 'pip install -q fastembed && python /w/v01.py'
+```
+
+Le script charge `TextEmbedding(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", cache_dir="/cache")`
+deux fois (avec puis sans téléchargement), calcule trois embeddings, puis hache les fichiers du cache Hugging Face.
+
+- **Versions** : fastembed 0.8.1, onnxruntime 1.30.0, huggingface_hub 1.32.0, tokenizers 0.23.2, numpy 2.5.3.
+- **Sortie** (extrait) :
+
+```text
+description fastembed: {'model': 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
+  'sources': {'hf': 'qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q'}, 'model_file': 'model_optimized.onnx',
+  'license': 'apache-2.0', 'size_in_GB': 0.22, 'dim': 384}
+chargement (téléchargement compris): 9.41s
+chargement (depuis le cache): 1.66s ; RSS après chargement (kB): 1059452
+embed 3 textes: 0.023s ; dimension mesurée = (384,) dtype=float64
+cosinus FR/EN (même sens) = 0.962 ; FR/autre = 0.210
+RSS après embed (kB): 1060416 ; ru_maxrss (kB): 1263460
+dépôt HF en cache: /cache/models--qdrant--paraphrase-multilingual-MiniLM-L12-v2-onnx-Q
+  ref main = faf4aa4225822f3bc6376869cb1164e8e3feedd0
+```
+
+- **Mesures indicatives pour M1** (un seul processus, CPU, sans limite mémoire) : chargement 1,7 s depuis le cache ;
+  mémoire résidente d'environ 1,0 Gio après chargement, pic à 1,2 Gio. Point d'attention pour R-10 (RAM du worker).
+- **Conclusion** : concluant. Le modèle est servi par fastembed et produit des vecteurs de 384 dimensions. Le
+  rapprochement FR/EN d'une même phrase (cosinus 0,96) confirme le caractère multilingue.
+
+> **À reprendre dans l'ADR-0008**
+>
+> - Nom du modèle dans fastembed : `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, licence Apache-2.0, 384 dimensions.
+> - Dépôt Hugging Face réellement téléchargé : **`qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q`** (conversion ONNX
+>   publiée par Qdrant, fichier `model_optimized.onnx`), et non le dépôt `sentence-transformers` d'origine.
+> - Révision (commit, `refs/main` au 2026-09-23) : **`faf4aa4225822f3bc6376869cb1164e8e3feedd0`**.
+> - Empreintes sha256 des fichiers de cette révision :
+>
+>   | Fichier | Taille (octets) | sha256 |
+>   |---|---|---|
+>   | `model_optimized.onnx` | 235 052 644 | `634d0f66c29dc934c8fa72b8a4fe91dd4d420a22f1d82a241058d4316e659a99` |
+>   | `tokenizer.json` | 17 083 009 | `fa685fc160bbdbab64058d4fc91b60e62d207e8dc60b9af5c002c5ab946ded00` |
+>   | `config.json` | 673 | `c8ec081fdad2df991bf5abbf18418fec7a5cdaa421f60ffb060a30040b8c376f` |
+>   | `special_tokens_map.json` | 964 | `8c785abebea9ae3257b61681b4e6fd8365ceafde980c21970d001e834cf10835` |
+>   | `tokenizer_config.json` | 1 416 | `0666eebf692422757e1dddf3c9fb1ded73ba3dc726c5828671fc89e45bf3609f` |
+>
+> - Versions testées : fastembed 0.8.1, onnxruntime 1.30.0, sur `python:3.12.14-slim-trixie` `linux/amd64`.
+> - fastembed renvoie des vecteurs `float64` : le type de stockage (par exemple `float32`) est à fixer avec le modèle SQL (T0.4).
+> - Mesures indicatives : chargement 1,7 s depuis le cache, RSS ≈ 1,0 Gio, pic ≈ 1,2 Gio.
 
 #### V-02 — SQLite de l'image
 
@@ -606,6 +657,34 @@ count 78200
   erreur (aucun « database is locked »), et `PRAGMA integrity_check` renvoie `ok`. À la fermeture de la dernière
   connexion, SQLite fait un checkpoint et supprime `-wal` et `-shm` : comportement normal. Rejouée sur le VPS en
   pré-production (seule vérification dépendante de l'hôte Docker).
+
+#### V-06 — Wheels onnxruntime et lingua
+
+```sh
+docker run --rm --platform linux/amd64 --name radar-t03-v06 -v ~/radar-t03:/w:ro $IMG sh -c '
+  pip download -q --only-binary=:all: --no-deps -d /tmp/wh onnxruntime lingua-language-detector && ls /tmp/wh &&
+  pip install -q --only-binary=:all: /tmp/wh/*.whl onnxruntime lingua-language-detector && python /w/v06.py'
+```
+
+`--only-binary=:all:` interdit toute compilation depuis les sources : l'installation échoue si aucune wheel ne
+correspond. Le script importe les deux paquets, liste les fournisseurs d'exécution d'onnxruntime et détecte la langue
+de trois phrases.
+
+- **Versions** : onnxruntime **1.30.0**, lingua-language-detector **2.2.0**.
+- **Sortie** :
+
+```text
+lingua_language_detector-2.2.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+onnxruntime-1.30.0-cp312-cp312-manylinux_2_28_x86_64.whl
+onnxruntime 1.30.0 | providers ['AzureExecutionProvider', 'CPUExecutionProvider'] | device CPU
+lingua-language-detector 2.2.0
+  Language.FRENCH <- Le radar suit les modèles de langage.
+  Language.ENGLISH <- The radar tracks language models.
+  Language.GERMAN <- Das Radar verfolgt Sprachmodelle.
+```
+
+- **Conclusion** : concluant. Les deux paquets existent en wheels binaires `cp312` `manylinux` `x86_64`, compatibles
+  avec la glibc de Debian trixie (manylinux 2.28 requis pour onnxruntime), et fonctionnent dans l'image.
 
 ---
 
