@@ -941,7 +941,50 @@ CREATE TABLE system_state (
 );
 ```
 
-<!-- TABLES -->
+### 3.20 `article_fts` — index plein texte *(écrit par le worker, via triggers)*
+
+Table virtuelle **FTS5** sur `title` et `summary`, en mode *external content* adossé à `article`, tokenizer
+`unicode61 remove_diacritics 2`. Maintenue par **trois triggers** sur insertion, mise à jour et suppression
+d'`article` : la mise à jour d'un résumé par le LLM met l'index à jour automatiquement (III §11.14, T-DB-11). La
+recherche accepte toute saisie, syntaxe FTS5 comprise (VI §31.4.1, VIII §47.2 Sprint 3).
+
+| Élément | Définition | Réf. | Sprint |
+|---|---|---|---|
+| table virtuelle | `article_fts` (`title`, `summary`), `content='article'`, `content_rowid='id'` | III §11.14 | 3 |
+| trigger d'insertion | `AFTER INSERT ON article` | III §11.14 | 3 |
+| trigger de mise à jour | `AFTER UPDATE ON article` | III §11.14 | 3 |
+| trigger de suppression | `AFTER DELETE ON article` (dont la suppression des `filtered` à 30 j) | III §11.14 · §13 | 3 |
+
+- **Sprint 3** : la migration crée la table et les triggers alors que des articles existent déjà (Sprint 2) ; elle
+  remplit l'index par la commande FTS5 `rebuild`.
+- L'index couvre toutes les lignes d'`article` (mode *external content*) ; le filtrage par `status` se fait dans la
+  requête de recherche, jointe à `article`.
+
+```sql
+CREATE VIRTUAL TABLE article_fts USING fts5(
+  title, summary,
+  content='article', content_rowid='id',
+  tokenize='unicode61 remove_diacritics 2'
+);
+
+CREATE TRIGGER article_fts_ai AFTER INSERT ON article BEGIN
+  INSERT INTO article_fts(rowid, title, summary) VALUES (new.id, new.title, new.summary);
+END;
+
+CREATE TRIGGER article_fts_ad AFTER DELETE ON article BEGIN
+  INSERT INTO article_fts(article_fts, rowid, title, summary)
+  VALUES ('delete', old.id, old.title, old.summary);
+END;
+
+CREATE TRIGGER article_fts_au AFTER UPDATE ON article BEGIN
+  INSERT INTO article_fts(article_fts, rowid, title, summary)
+  VALUES ('delete', old.id, old.title, old.summary);
+  INSERT INTO article_fts(rowid, title, summary) VALUES (new.id, new.title, new.summary);
+END;
+
+-- à la création, sur une table article déjà remplie (Sprint 3)
+INSERT INTO article_fts(article_fts) VALUES ('rebuild');
+```
 
 ---
 
@@ -968,7 +1011,45 @@ CREATE TABLE system_state (
 - **Changement de modèle** : nouvelles lignes pour le nouveau `model` ; pas de ré-embedding automatique de
   l'historique (sélection sur `content_purged_at IS NULL`, V-A §24.4 ; III §12.5).
 
-<!-- SECTIONS -->
+## 5. Migrations
+
+- **Alembic**, avec `render_as_batch=True` : SQLite ne sait pas modifier une contrainte par `ALTER`, le mode batch
+  reconstruit la table (III §10.5).
+- **Une migration par sprint au moins** : chaque sprint ajoute ses tables, colonnes, index et triggers ; le schéma
+  cible de ce document n'est pas créé d'un bloc (VIII §47.1). Les colonnes « Sprint » du §3 donnent l'ordre.
+- **Service one-shot `migrate`** (`alembic upgrade head`, image backend, sans réseau) : `app` et `worker` démarrent
+  après sa réussite (`depends_on: condition: service_completed_successfully`). **Aucun des deux processus
+  applicatifs ne migre** (III §10.5, décision 15 ; VII §36.2, §36.3).
+- **Vérification au démarrage** : `app` et `worker` comparent la révision en base à la révision `head` du code et
+  **refusent de démarrer** si elles diffèrent (III §10.1, VII §36.3, T-DB-02). Au reboot du VPS, `migrate` n'est pas
+  rejoué : cette vérification est le garde-fou (VII §36.3).
+- **Réversibilité** : chaque migration fournit un `downgrade`, **ou se déclare irréversible dans son en-tête**
+  (VII §36.9, T-DB-08). `scripts/deploy.sh` refuse un rollback à travers une migration ; la procédure IX §56.6-P2
+  s'applique (*downgrade* avec l'image courante, ou restauration du snapshot pris au déploiement) (VIII §49.5).
+- **Points de vigilance** (constats SQLite, non tranchés par la spec) :
+  - la table virtuelle `article_fts` et ses triggers ne sont pas produits par l'autogénération d'Alembic : ils
+    s'écrivent en SQL explicite dans la migration du Sprint 3 ;
+  - une migration qui reconstruit `article` en mode batch supprime l'ancienne table, et avec elle ses triggers :
+    les trois triggers de `article_fts` sont à recréer dans la même migration ;
+  - reconstruction de table et `PRAGMA foreign_keys=ON` : voir §7, I-16.
+
+## 6. Rétention
+
+La table de rétention fait foi : **III §13**. Toute suppression est exécutée par l'**étage de purge** du worker,
+journalisée à chaque passage ; aucune donnée métier n'est supprimée hors de ce tableau (II §8.5, III §13).
+
+En résumé, pour le schéma :
+
+- **Contenu** (`article.content`) : tampon de traitement. Purgé immédiatement pour `filtered` et `duplicate` ; pour
+  un `ready`, après `processed_at` + délai de grâce, jamais tant qu'un job de l'article est en `dead_letter`.
+  `content_purged_at` trace la purge, `content_hash` est conservé.
+- **Lignes supprimées** : articles `filtered` (les liaisons et embeddings suivent par `CASCADE`, l'index
+  `article_fts` par son trigger), jobs terminaux hors `dead_letter`, `CollectorRun`, puis `AlertLog` au-delà de son
+  délai ; `Signal` horaires réduits à une valeur par jour.
+- **Conservé indéfiniment** : articles `ready` et `duplicate` (sans contenu), `Event`, `Topic`, `Entity`, liaisons,
+  `Embedding`, préférences, réglages, candidats et décisions, `SystemState`.
+- Les dates de référence des suppressions ne sont pas toutes écrites : §7, I-17.
+
 
 ---
 
@@ -1086,4 +1167,43 @@ cite ses passages. Les identifiants `I-nn` sont stables.
   schéma écrit pour la valeur stockée.
 - **`trends_since`** : « horodatage » (V-B §29.3), sans forme JSON précisée (chaîne ISO-8601 ou objet).
 
-<!-- INCOHERENCES -->
+#### I-15 — Colonnes dont la nullabilité n'est pas écrite
+
+Complète I-03. Colonnes marquées `n. p.` au §3 (III §11 ne dit ni « non nul » ni « nullable ») :
+
+- `Source` : `key`, `name`, `type`, `url`, `config`, `enabled`, `poll_interval`, `relevance`, `extract`, `checkpoint`, `last_success_at`, `last_error`, `last_http_status`.
+- `Article` : `source_id`, `url`, `canonical_url`, `title`, `relevance_score`, `status`, `summary_origin`, `metrics`, `clustered_semantic`.
+- `CollectorRun` : `source_id`, `started_at` · `finished_at`, `status`, `items_fetched`, `items_created`, `items_duplicate`, `items_filtered`, `items_skipped`, `items_too_old`, `extractions_attempted` · `extractions_failed`, `requests_count`, `http_status`, `error`.
+- `Topic` : `slug`, `name`, `origin`, `keywords`, `enabled`, `created_at`.
+- `Entity` : `type`, `name`, `canonical_name`, `origin`.
+- `ArticleTopic` : `confidence`, `created_at`.
+- `ArticleEntity` : `confidence`.
+- `Event` : `title_origin`, `representative_article_id`, `first_seen_at` · `last_seen_at`, `article_count`, `status`.
+- `Embedding` : `article_id`, `model`, `created_at`.
+- `AIJob` : `job_type`, `entity_type`, `entity_id`, `priority`, `status`, `attempts` · `max_attempts`, `last_error`, `created_by`, `created_at`.
+- `Signal` : `topic_id`, `period`, `computed_at`, `window_start` · `window_end`, `mentions`, `unique_sources` · `unique_authors` · `unique_companies`, `velocity`.
+- `EmergingCandidate` : `key`, `kind`, `label`, `first_detected_at`, `last_evidence_at`, `evidence`, `ref_mentions` · `ref_channel_count`, `last_significant_at`, `suggested_keywords`, `assessed_at`.
+- `EmergingDecision` : `candidate_id`, `decision`, `decided_at`.
+- `UserPreference` : `subject_type`, `subject_id`, `action`.
+- `Setting` : `value`, `updated_at`.
+- `ReadState` : `subject_type`, `subject_id`, `read_at`.
+- `AlertLog` : `alert_type`, `subject_type`, `channel`, `status`, `error`, `dedup_key`.
+- `SystemState` : `value`, `updated_at`.
+
+#### I-16 — Reconstruction de table et `PRAGMA foreign_keys=ON`
+
+- **III §10.2** : `PRAGMA foreign_keys=ON` sur **toute nouvelle connexion**, par l'écouteur `connect`.
+- **III §10.5** : migrations Alembic en `render_as_batch=True`, qui reconstruit une table (copie, suppression de
+  l'ancienne, renommage) quand `ALTER` ne suffit pas.
+- Avec les clés étrangères actives, SQLite exécute un `DELETE` implicite avant un `DROP TABLE` : supprimer l'ancienne
+  `article` déclencherait les `ON DELETE CASCADE` de `article_topic`, `article_entity` et `embedding` (§1.3), ou
+  échouerait sur les `RESTRICT`. La spec ne dit pas si la connexion du service `migrate` désactive les clés
+  étrangères pendant une reconstruction.
+
+#### I-17 — Dates de référence des rétentions
+
+- **III §13** : `AIJob` terminés « supprimés à 30 jours », `CollectorRun` « 30 jours », ligne `Article` `filtered`
+  « supprimée à 30 jours », `AlertLog` « 1 an ».
+- Les colonnes qui portent ces délais ne sont pas nommées : `created_at` ou `completed_at` pour `AIJob` ;
+  `started_at` ou `finished_at` pour `CollectorRun` ; `discovered_at` ou `published_at` pour `Article` ; aucune
+  colonne de date pour `AlertLog` (I-13).
