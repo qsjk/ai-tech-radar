@@ -265,6 +265,9 @@ services:
   caddy:
     image: radar-caddy:${RADAR_VERSION:-dev}
     build: { context: ., dockerfile: docker/caddy.Dockerfile }
+    user: "10001:10001"                    # non-root dès le Sprint 1 (P-10)
+    read_only: true
+    tmpfs: [/tmp]
     ports: ["80:80", "443:443", "443:443/udp"]
     environment:
       DASHBOARD_URL: "${DASHBOARD_URL}"
@@ -273,9 +276,9 @@ services:
       ACME_EMAIL: "${ACME_EMAIL:-}"
     volumes: [caddy_data:/data, caddy_config:/config]
     networks: [edge, public]
-    cap_drop: [ALL]
-    cap_add: [NET_BIND_SERVICE]
-    security_opt: ["no-new-privileges:true"]   # ajout proposé (VII §43.2, T-SEC-08) : A-01, P-10
+    cap_drop: [ALL]                        # sans cap_add : 80 et 443 liés grâce à
+                                           # net.ipv4.ip_unprivileged_port_start=0 (Docker ≥ 20.10)
+    security_opt: ["no-new-privileges:true"]
     logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
     restart: unless-stopped
 
@@ -391,9 +394,27 @@ RUN npm run build                        # CSS Modules compilés par Vite, aucun
 FROM caddy:<2.x>@sha256:<digest>
 COPY docker/Caddyfile /etc/caddy/Caddyfile
 COPY --from=front /front/dist /srv
+# /data et /config de Caddy à l'uid non-root, recopiés dans les volumes à leur création (même mécanisme que §4.4)
+RUN mkdir -p /data/caddy /config/caddy \
+ && chown -R 10001:10001 /data /config \
+ && chmod 0750 /data /config
+USER 10001:10001
 ```
 
 Le `Caddyfile` est celui de VII §37.3.
+
+**`caddy` non-root (P-10)** : utilisateur 10001, `cap_drop: ALL` **sans** `cap_add`, `no-new-privileges`, racine en
+lecture seule, tmpfs `/tmp`. Depuis Docker 20.10, chaque conteneur démarre avec
+`net.ipv4.ip_unprivileged_port_start=0` dans son propre espace réseau : un processus non-root y lie 80 et 443 sans
+`NET_BIND_SERVICE`. `caddy_data` (certificats, compte ACME) et `caddy_config` (configuration auto-sauvegardée)
+appartiennent à l'uid 10001 dès leur création. **À vérifier au Sprint 1**, sur l'image épinglée :
+
+- l'image de base ne déclare pas `/data` ni `/config` en `VOLUME` : sinon, les changements de propriétaire faits
+  après cette déclaration seraient perdus au build ;
+- le binaire `caddy` peut s'exécuter avec `cap_drop: ALL` et `no-new-privileges`, même s'il porte une capacité de
+  fichier (`cap_net_bind_service`) ;
+- Caddy n'écrit que dans `/data`, `/config` et `/tmp` ;
+- en développement rootless, le comportement des ports relève de P-03 (ADR-0021).
 
 ### 4.4 Volume `/data` et propriétaire
 
