@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Statut** | Proposé |
+| **Statut** | Accepté |
 | **Date** | 2026-09-23 |
 | **Décision(s) couverte(s)** | aucune `DV-nn` : décision structurante (IX §53.1) ; E22 du rapport de cadrage ; VIII §46.1 (`scripts/radar-dev`) ; IX §55.3 ; VII §36.7 (`DASHBOARD_URL`) ; `docs/architecture.md` §6 (P-03), §7 (A-04) |
 
@@ -27,7 +27,8 @@ concernés par cet ADR.
 **Option A** : sur le poste de développement, Docker tourne en **mode rootless**. Le démon s'exécute sous le compte de
 développement ; un conteneur ne donne donc jamais plus de droits que ce compte. Le compte est retiré du groupe
 `docker`. Claude Code n'utilise Docker que par `scripts/radar-dev` (VIII §46.1, IX §55.3) ; ses permissions refusent
-l'appel direct à `docker`.
+l'appel direct à `docker`. Pour les ports 80 et 443 de Caddy, la parade retenue est **(a)** : réglage sysctl
+`net.ipv4.ip_unprivileged_port_start=80` sur le poste (voir Conséquences).
 
 ## Alternatives écartées
 

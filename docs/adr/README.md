@@ -28,7 +28,7 @@ prix (IX §54.1). Format, règles et registre : IX §54.2–§54.3. Gabarit : [`
 | [0017](0017-deploiement-manuel-verrouille-par-la-ci.md) | Déploiement manuel verrouillé par la CI | Accepté | 2026-09-23 | DV-19 | — |
 | [0018](0018-tracabilite-du-catalogue.md) | Traçabilité du catalogue, pas de seuil de couverture | Accepté | 2026-09-23 | DV-20 | — |
 | [0019](0019-spec-dans-le-depot.md) | Spec dans le dépôt, SPEC.md en index | Accepté | 2026-09-23 | DV-21 | — |
-| [0021](0021-acces-cloisonne-a-docker-en-developpement.md) | Accès cloisonné de Claude Code à Docker en développement | Proposé | 2026-09-23 | aucune (structurante) ; E22 | — |
+| [0021](0021-acces-cloisonne-a-docker-en-developpement.md) | Accès cloisonné de Claude Code à Docker en développement | Accepté | 2026-09-23 | aucune (structurante) ; E22 | — |
 
 **À venir** (IX §54.3) : 0020, gateway LLM retenu, au Sprint 6 (numéro réservé par le registre) ; ADR conditionnels,
 au prochain numéro libre, seulement si leur déclencheur survient.
