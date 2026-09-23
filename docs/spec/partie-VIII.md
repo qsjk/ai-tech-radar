@@ -1,7 +1,7 @@
 # Partie VIII — Livraison
 
 > **Partie VIII — Livraison.** Version durcie issue de la revue §46–§52.
-> Dernière révision : 2026-09-22. Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
+> Dernière révision : 2026-09-23. Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
 
 **Nature de cette partie : une agrégation.** Les tests, étapes CI et critères de production fléchés par les Parties I à VII sont rassemblés ici, rattachés à un identifiant et organisés par domaine. Les doublons sont réconciliés (§ « Réconciliations ») et seul ce qui manquait est durci à neuf.
 
@@ -27,7 +27,7 @@
 6. **§48 devient une liste de contraintes de dépendance.** La liste linéaire de 29 étapes, qui doublonnait les sprints, est supprimée.
 7. **Horloge injectable obligatoire** : une abstraction `Clock` unique. Aucun `datetime.now()`, `time.time()`, `CURRENT_TIMESTAMP` ou `datetime('now')` dans le code métier ou les requêtes : l'instant est toujours passé par l'application. Sans cette règle, les TTL, warm-ups, rétentions, heartbeats et digests ne sont pas testables.
 8. **Réseau bloqué techniquement dans les tests** : seules les connexions locales vers les doubles de test sont autorisées. « Aucun test n'appelle un vrai provider » devient vérifiable, pas seulement déclaratif.
-9. **Identifiants de test** (`T-<DOMAINE>-nn`) pour chaque entrée du catalogue §50.5, portés par un marqueur pytest `spec`. La CI vérifie que chaque identifiant automatisé a au moins un test, et que chaque marqueur renvoie à un identifiant existant.
+9. **Identifiants de test** (`T-<DOMAINE>-nn`) pour chaque entrée du catalogue §50.5, portés par un marqueur pytest `spec`. La CI vérifie que chaque identifiant automatisé a au moins un test (identifiants des sprints clos et en cours, puis tous au Sprint 11 : §50.3), et que chaque marqueur renvoie à un identifiant existant.
 10. **Pas de seuil de couverture bloquant.** La couverture est mesurée et affichée ; c'est la **traçabilité du catalogue** qui bloque.
 11. **CI en six étapes ordonnées et bloquantes** : statique → configuration → audit → tests → build → e2e Compose (§49.2).
 12. **e2e Compose sur `main` et en nightly**, pas à chaque push de branche. Les étapes 1 à 5 tournent à chaque push.
@@ -184,14 +184,14 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - `https://localhost/health` répond `{"status":"ok"}` sans identifiants, et `/api/health` demande une authentification ;
 - WAL actif ; `app` et `worker` refusent de démarrer sur un schéma qui n'est pas à `head` ;
 - CI verte, e2e compris.
-- **Tests** : T-DB-01 à 08 · T-CFG-01, 02, 05, 07 · T-OPS-01 à 03, 07 à 11 · T-SEC-01 à 03, 05, 06, 08 et 09 (sans restic) · T-RES-10.
+- **Tests** : T-DB-01 à 08 · T-CFG-01, 02, 05, 07, 10 · T-OPS-01 à 03, 07 à 11 · T-SEC-01 à 03, 05, 06, 08 et 09 (sans restic) · T-RES-10.
 
 #### Sprint 2 — Collecte & pipeline déterministe
 
 **Contenu** :
 - **Collecte** : `HttpClient` partagé (limiteur par hôte, retry et backoff, `Retry-After`, quota, anti-SSRF, `robots.txt`, User-Agent) ; interface `Collector` par pages et registre (canal déclaré par type) ; collectors `rss`, `github`, `hackernews`, `reddit`, `youtube`, `webpage`.
 - **Runner** : normalisation, contrôle d'âge, canonicalisation, dédup exacte, relevance filter, extraction ciblée, liaisons keyword, résumé de repli, écriture d'une transaction par page, checkpoint, `CollectorRun`.
-- **Pilotage** : disjoncteur par source ; scheduler (jitter de démarrage, coalescence, sauts de run) ; vérification des credentials par type ; création des `enrich_article`, qui restent `pending` jusqu'au Sprint 5.
+- **Pilotage** : disjoncteur par source ; scheduler (jitter de démarrage, coalescence, sauts de run) ; vérification des credentials par type ; création des `enrich_article`, qui restent `pending` jusqu'au Sprint 5 : la table `AIJob` est introduite par migration **dès ce sprint** ; la file et son exécution arrivent au Sprint 5.
 - **Configuration** : validation complète de `sources.yaml`, `topics.yaml`, `entities.yaml` et des sections de `pipeline.yaml` du périmètre IV.
 - **Doubles** : faux serveur de sources avec les fixtures par type.
 
@@ -200,7 +200,7 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - un rejeu complet ne crée aucun doublon ;
 - l'invariant de compteurs tient sur chaque run ;
 - une source en panne n'arrête pas les autres.
-- **Tests** : T-PIPE-* · T-HTTP-* · T-COL-* · T-CFG-02 à 06 · T-RES-04.
+- **Tests** : T-PIPE-* · T-HTTP-* · T-COL-* · T-CFG-02 à 06, 09 (T-CFG-04 sur les sections de `pipeline.yaml` du périmètre IV ; chaque sprint suivant ajoute et teste ses sections) · T-DB-12 (`Article.status`) · T-OPS-16 · T-RES-04.
 
 #### Sprint 3 — Feed
 
@@ -224,7 +224,7 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - un Event multi-sources forme une seule story ;
 - moteur d'embeddings arrêté, le clustering continue par URL et entités ;
 - premières mesures M1 et M2 au profil réaliste, consignées **à titre indicatif** dans `docs/measurements.md`.
-- **Tests** : T-EMB-* · T-CLU-* (sauf la partie `resolve_event` de T-CLU-08 et T-CLU-12) · T-API-01 (Feed).
+- **Tests** : T-EMB-* · T-CLU-* (sauf la partie `resolve_event` de T-CLU-08 et T-CLU-12) · T-API-01 (Feed) · T-SEC-10.
 
 #### Sprint 5 — File de jobs
 
@@ -233,7 +233,7 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 **Acceptation** :
 - redémarrage du worker pendant un job : le job est requalifié et rejoué, avec un résultat unique ;
 - `job_type` inconnu → `failed`, le worker continue.
-- **Tests** : T-JOB-* · T-DB-09.
+- **Tests** : T-JOB-* (T-JOB-04 hors `candidate_decided`, complété au Sprint 8) · T-DB-09 · T-DB-12 (`AIJob.status`).
 
 #### Sprint 6 — LLM Gateway & LLMClient
 
@@ -244,8 +244,8 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 
 **Acceptation** :
 - les huit scénarios de V-A §26.3 passent contre le faux gateway ;
-- `LLM_BASE_URL` absent → produit fonctionnel, `llm_gateway` à `disabled`.
-- **Tests** : T-LLM-01 à 17, 19 · T-RES-01 (partie file de jobs).
+- `LLM_BASE_URL` absent → produit fonctionnel ; dans `/api/health`, le composant `llm_gateway` est en statut `disabled`, raison `not_configured` (VII §40.3).
+- **Tests** : T-LLM-01 à 17, 19, 20 · T-RES-01 (partie file de jobs).
 
 #### Sprint 7 — Intelligence & purge
 
@@ -259,7 +259,7 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - gateway coupé puis rétabli : reprise sans doublon, les plus récents d'abord ;
 - contenu purgé selon la table III §13, jamais en présence d'un `dead_letter` ;
 - API complète avec le gateway éteint.
-- **Tests** : T-LLM-18 · T-JOB-06 · T-CLU-08 et 12 · T-PRG-* · T-API-08 à 10, 14 · T-SEC-04 · T-RES-01 · T-RES-02 (hors alertes).
+- **Tests** : T-LLM-18 (hors volet `discover_topics`, complété au Sprint 8) · T-JOB-06 · T-CLU-08 et 12 · T-PRG-* (T-PRG-06 complété au Sprint 8, volet `AlertLog` de T-PRG-05 au Sprint 10) · T-API-08 à 10, 14 · T-SEC-04 · T-RES-01 · T-RES-02 (hors alertes).
 
 #### Sprint 8 — Trends & émergence
 
@@ -269,7 +269,7 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - sur le jeu synthétique, avec horloge avancée au-delà du warm-up, un terme multi-histoires devient candidat ;
 - un « Create topic » produit des liaisons sur les nouveaux articles et un Signal à l'heure suivante ;
 - première mesure M5, à titre indicatif.
-- **Tests** : T-TRD-* · T-EMG-*.
+- **Tests** : T-TRD-* · T-EMG-* · compléments : T-PRG-06, T-LLM-18 (volet `discover_topics`), T-JOB-04 (`candidate_decided`).
 
 #### Sprint 9 — Dashboard
 
@@ -289,7 +289,7 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - une même alerte part sur les deux canaux, jamais deux fois par canal ;
 - digest quotidien reçu sur le canal configuré ;
 - canal non configuré → worker démarré, canal désactivé.
-- **Tests** : T-ALR-* · T-DB-10 · T-RES-02 (complet).
+- **Tests** : T-ALR-* · T-DB-10 · T-RES-02 (complet) · compléments : T-DB-12 (`AlertLog.status`), T-PRG-05 (volet `AlertLog`).
 
 #### Sprint 11 — Production
 
@@ -304,7 +304,7 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 **Acceptation** :
 - tous les tests automatisés du catalogue sont verts ;
 - la pré-production démarre sur le VPS cible, déployée par `scripts/deploy.sh`.
-- **Tests** : T-OPS-* · T-BKP-* · T-SEC-* · T-RES-*.
+- **Tests** : T-OPS-* (dont T-OPS-17) · T-BKP-* (dont T-BKP-10 à 12) · T-SEC-* · T-RES-* · T-CFG-04 (complet).
 
 ### 47.3 Ce qui est validé au Sprint 11
 
@@ -381,7 +381,7 @@ Chaque étape bloque les suivantes. Les travaux d'une même étape peuvent tourn
 | 2 | **Configuration** | `python -m app.cli validate-config` sur `config/`, invariant `clustering.embedding_wait + clustering.tick < llm.delay.enrich_article` compris · `docker compose config` avec `.env.example` · `caddy validate` sur `docker/Caddyfile`, variables de `.env.example` injectées · **politique Compose** (T-SEC-08) sur la sortie de `docker compose config` | oui |
 | 3 | **Audit** | audit des dépendances backend (type `pip-audit`, à partir de `uv.lock`) et frontend (`npm audit --audit-level=high`), confronté à `.audit-exceptions.yaml` (§49.4) | oui, sur `high` et `critical` |
 | 4 | **Tests** | pytest unitaire et intégration, réseau bloqué (§50.1), couverture mesurée et publiée dans le résumé du job · vitest | oui |
-| 5 | **Build** | images `radar-backend:<sha>` et `radar-caddy:<sha>` ; vérifications : modèle d'embeddings présent dans l'image, utilisateur non-root, aucun `.env` dans les couches | oui |
+| 5 | **Build** | images `radar-backend:<sha>` et `radar-caddy:<sha>` ; vérifications : modèle d'embeddings présent dans l'image (**activée au Sprint 4**, avec les embeddings), utilisateur non-root, aucun `.env` dans les couches | oui |
 | 6 | **e2e Compose** | `docker compose -f docker-compose.yml -f docker-compose.test.yml up` sur les images de l'étape 5, avec les doubles (faux gateway, faux serveur de sources, dépôt restic local) · tests `@pytest.mark.e2e` : `/health`, auth, en-têtes et logs Caddy, réseau, racine en lecture seule, backup et restauration, scénarios `T-RES-*` | oui |
 
 `scripts/deploy.sh` exige que **l'étape 6** soit verte pour le sha déployé.
@@ -453,7 +453,7 @@ Fixtures et doubles : `tests/fixtures/` (réponses HTTP par type, configurations
 - **Source unique** : `scripts/check-test-catalog.py` extrait les identifiants de `docs/spec/partie-VIII.md`.
 - **Marqueur** : un test couvre un identifiant par `@pytest.mark.spec("T-CLU-03")`, ou par un tag `[T-FE-01]` dans le nom d'un test vitest. Un identifiant peut être couvert par plusieurs tests ; un test peut en couvrir plusieurs.
 - **Contrôles bloquants** :
-  - tout identifiant de niveau U, I, E ou F a au moins un test ;
+  - tout identifiant de niveau U, I, E ou F **d'un sprint clos ou en cours** a au moins un test. La liste de ces identifiants est lue dans les `docs/sprints/sprint-NN.md` de ces sprints ; le contrôle devient **complet** (tous les identifiants du catalogue) au Sprint 11, critère §52 A2 ;
   - tout marqueur renvoie à un identifiant existant ;
   - aucun identifiant de niveau M n'est marqué dans le code.
 - Les identifiants de niveau M sont reportés dans `docs/go-live.md`.
@@ -537,7 +537,7 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | T-HTTP-05 | Quota : en-têtes GitHub et Reddit lus ; aucun en-tête → `NULL` | U | IV §21.4 |
 | T-HTTP-06 | Limiteur par hôte : 1 s par défaut, 5 s pour l'extraction, surcharges de `pipeline.yaml` | I | IV §21.1 |
 | T-HTTP-07 | User-Agent `AITechRadar/{version} (+{HTTP_CONTACT})` sur toutes les requêtes | U | IV §17.3 |
-| T-HTTP-08 | Anti-SSRF, après résolution DNS et à chaque redirection : refus de `127.0.0.1`, `169.254.169.254`, `10.0.0.0/8`, IPv6 unique-local, adresses non routables et redirection vers une adresse privée ; exceptions `LLM_BASE_URL` et dépôt restic seulement | I | VII §43.3 |
+| T-HTTP-08 | Anti-SSRF, après résolution DNS et à chaque redirection : refus de `127.0.0.1`, `169.254.169.254`, `10.0.0.0/8`, IPv6 unique-local, adresses non routables et redirection vers une adresse privée ; aucune exception | I | VII §43.3 · IV §21.1 |
 | T-HTTP-09 | `robots.txt` : 4xx → tout autorisé ; 5xx ou timeout → tout refusé ; token `AITechRadar`, puis `*` ; cache de 24 h par hôte | I | IV §17.3 |
 
 #### T-COL — Collectors & runner *(IV §14–§17, §21.5–§21.6)*
@@ -606,6 +606,7 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | T-LLM-17 | Observabilité : log par appel avec `task`, `job_id`, latence, tokens, classe d'erreur et `PROMPT_VERSION` ; jamais le prompt ni la réponse au niveau `info` | U | V-A §25.6 |
 | T-LLM-18 | `enrich_article` remplace les trois familles `method=llm` en une transaction et passe `summary_origin` à `llm` ; `resolve_event` ne touche ni à l'appartenance ni aux compteurs et passe `title_origin` à `llm` ; `discover_topics` écrit les colonnes `llm_*` du candidat sans jamais l'écarter | I | V-A §27 |
 | T-LLM-19 | Indépendance du provider : passer d'un faux gateway à un autre (base URL, clé, modèle différents) par les seules variables `LLM_*`, sans changement de code | I | Partie I §4.3 |
+| T-LLM-20 | Le `LLMClient` refuse une redirection vers un autre hôte que celui de `LLM_BASE_URL` | U | V-A §25.2 |
 
 #### T-EMB — Embeddings *(III §12 · V-A §24.4)*
 
