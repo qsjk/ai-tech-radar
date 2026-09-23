@@ -1,7 +1,7 @@
 # Partie IX — Gouvernance & démarrage
 
 > **Partie IX — Gouvernance & démarrage.** Version durcie issue de la revue §53–§57.
-> Dernière révision : 2026-09-22. Prend les Parties I, II, III, IV, V-A, V-B, VI, VII et VIII durcies comme acquis.
+> Dernière révision : 2026-09-23. Prend les Parties I, II, III, IV, V-A, V-B, VI, VII et VIII durcies comme acquis.
 
 **Nature de cette partie : une consolidation.** Elle rassemble les décisions verrouillées accumulées au fil du durcissement, la liste des ADR, l'arbre de documentation, le runbook et la mission de cadrage. Elle réconcilie ce que les Parties I à VIII ont fléché vers elle ; seul ce qui manquait pour rendre la gouvernance et le démarrage exécutables est durci à neuf.
 
@@ -547,7 +547,7 @@ Transformer la spec en un contrat cohérent et vérifié, et préparer le Sprint
 ### 57.2 Préalables
 
 Fournis au lancement du Sprint 0 :
-- les dix fichiers de spec durcis en Markdown, dont la **Partie VII en source Markdown** (l'export actuel n'en est pas une) ;
+- les dix fichiers de spec durcis en Markdown ;
 - un dépôt initialisé, les fichiers de spec bruts placés sous `docs/spec/` ;
 - l'architecture du VPS cible (`amd64` par défaut, décision 27).
 
