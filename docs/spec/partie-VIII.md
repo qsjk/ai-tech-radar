@@ -184,6 +184,7 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - **Configuration** : typée, secrets en `SecretStr` ; `validate-config` sur les quatre fichiers (schémas initiaux) ; refus de démarrer si `HTTP_CONTACT` ou `DASHBOARD_URL` est invalide.
 - **Logs** : structlog JSON, nettoyage des secrets aux trois niveaux.
 - **Exposition** : Caddy (TLS interne, basic_auth, `/health` public, en-têtes de sécurité, SPA vide servie) et Compose conforme VII §36.5.
+- **Environnement local de développement** : `scripts/radar-dev` V0 (§46.1 ; E22, ADR-0021, #62), après le socle Compose.
 - **Tests et CI** : les six étapes opérationnelles, doubles de test vides mais branchés, blocage réseau, traçabilité du catalogue.
 
 **Acceptation** :
