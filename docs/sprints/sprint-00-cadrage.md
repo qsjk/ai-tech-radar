@@ -425,20 +425,113 @@ Décision du propriétaire : —
 
 ## 3. Résultats des vérifications (IX §57.4)
 
-Aucune vérification n'est exécutée en T0.2. Elles sont jouées en **T0.3 (#6)**, qui consigne pour chacune la commande,
-la version et le résultat. Le planning (G1, §9) distingue les vérifications **bloquantes** des vérifications
-**contournables par ADR**.
+Vérifications jouées en **T0.3 (#6)** le 2026-09-23, sur le poste de développement, dans des conteneurs Docker
+`linux/amd64` construits sur l'image de base recommandée par E16. Le planning (G1, §9) distingue les vérifications
+**bloquantes** (V-04 à V-07) des vérifications **contournables par ADR** (V-01 à V-03, V-08). Les scripts utilisés sont
+jetables, gardés hors du dépôt et jamais commités (**IX §57.4**) ; les extraits utiles à l'implémentation sont recopiés
+ci-dessous. Aucun paquet, binaire ni modèle n'a été installé sur le poste hôte : tout est téléchargé et exécuté dans
+les conteneurs.
+
+### 3.A Environnement d'exécution
+
+| Élément | Valeur |
+|---|---|
+| OS du poste | Ubuntu 24.04.5 LTS, x86_64, noyau 7.0.0-31-generic |
+| Docker | client Docker Engine - Community 29.8.1 (`/usr/bin/docker`) ; **démon 29.6.1 fourni par le snap `docker` (Canonical, canal `latest/stable`)**, API 1.55, pilote `overlay2`, cgroup v2, racine `/var/snap/docker/common/var-lib-docker` |
+| Compose | plugin v5.5.1 |
+| Image de base | `python:3.12.14-slim-trixie` (Python 3.12.14, Debian 13.7 « trixie ») — c'est le tag vers lequel pointait `python:3.12-slim` au moment des tests |
+| Digest de l'image (index multi-architecture) | `sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9` |
+| Digest du manifeste `linux/amd64` | `sha256:44ff437bba879d4941b710a369a8f19266aea34b29002807f0c487fabc9eec9b` (créé le 2026-09-19) |
+| Plateforme | `--platform linux/amd64` explicite sur chaque `docker run`, exécution native (sans émulation) |
+
+Dans toutes les commandes ci-dessous : `IMG=python:3.12.14-slim-trixie@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9`, `/w` est le dossier des scripts jetables (`~/radar-t03`) monté en lecture seule, et les options
+`--root-user-action=ignore --disable-pip-version-check` de `pip` sont omises pour la lisibilité. Les volumes
+`radar-t03-cache` et `radar-t03-restic` sont créés à la volée par `docker run`.
+
+> Constat pour Q-01 : `docker version` montre un client `docker-ce` 29.8.1 mais un **démon installé par snap** (29.6.1).
+> Les volumes nommés sont donc stockés sous `/var/snap/docker/common/var-lib-docker/volumes/`. V-04 a été jouée
+> dans cette configuration ; elle est rejouée sur le VPS en pré-production de toute façon (issue #6).
+
+### 3.B Synthèse
 
 | # | Vérification | Attendu | Si échec | Résultat |
 |---|---|---|---|---|
 | V-01 | `paraphrase-multilingual-MiniLM-L12-v2` disponible dans `fastembed`, sur l'architecture cible (`amd64`, **IX décision 27**) | modèle chargé, 384 dimensions ; révision et empreinte sha256 du modèle notées pour épinglage au build | repli : autre modèle multilingue ≤ 384 dimensions supporté par fastembed, consigné dans l'ADR-0008 | à faire en T0.3 (#6) |
-| V-02 | SQLite de l'image de base Python retenue (voir E16) | ≥ 3.35, FTS5 et JSON1 compilés | autre image de base ou wheel SQLite, consigné | à faire en T0.3 (#6) |
+| V-02 | SQLite de l'image de base Python retenue (voir E16) | ≥ 3.35, FTS5 et JSON1 compilés | autre image de base ou wheel SQLite, consigné | **concluant** — SQLite 3.46.1 ; FTS5 et JSON1 prouvés par requêtes réelles |
 | V-03 | `BEGIN IMMEDIATE` avec SQLAlchemy 2.x async et aiosqlite | transaction d'écriture ouverte en `IMMEDIATE`, mécanisme noté (gestion des transactions du driver) | proposition alternative, question au propriétaire | à faire en T0.3 (#6) |
-| V-04 | WAL sur **volume nommé** Docker | `journal_mode=wal` effectif, fichiers `-wal` / `-shm` créés sur le volume | bloquant | à faire en T0.3 (#6) |
+| V-04 | WAL sur **volume nommé** Docker | `journal_mode=wal` effectif, fichiers `-wal` / `-shm` créés sur le volume | bloquant | **concluant** — `wal` effectif, `-wal` et `-shm` sur le volume ; 2 conteneurs pendant 75 s, 0 erreur ; `integrity_check` = `ok` |
 | V-05 | restic en binaire statique pour l'architecture cible | version épinglée disponible | bloquant | à faire en T0.3 (#6) |
 | V-06 | onnxruntime et lingua pour l'architecture cible | wheels disponibles | bloquant | à faire en T0.3 (#6) |
 | V-07 | APScheduler 3.x sur Python 3.12 | dernière 3.x compatible, version notée | bloquant | à faire en T0.3 (#6) |
 | V-08 | Outils CI (analyse de secrets, audit backend et frontend) | outil retenu et version | outil équivalent, consigné | à faire en T0.3 (#6) |
+
+### 3.C Détail par vérification
+
+#### V-02 — SQLite de l'image
+
+```sh
+docker run --rm --platform linux/amd64 --name radar-t03-v02 -v ~/radar-t03:/w:ro $IMG python /w/v02.py
+```
+
+Le script crée une table `CREATE VIRTUAL TABLE docs USING fts5(title, body)`, y insère une ligne, l'interroge par
+`MATCH`, puis exécute `json_extract('{"a":{"b":[1,2,3]}}', '$.a.b[2]')`, le tout avec le module `sqlite3` de l'image.
+
+- **Versions** : Python 3.12.14, SQLite 3.46.1 (bibliothèque liée au module `sqlite3` de l'image).
+- **Sortie** :
+
+```text
+python 3.12.14
+sqlite_version 3.46.1
+fts5 MATCH [('Radar',)]
+json_extract (3,)
+compile_options ['ENABLE_FTS3', 'ENABLE_FTS3_PARENTHESIS', 'ENABLE_FTS3_TOKENIZER', 'ENABLE_FTS4', 'ENABLE_FTS5', 'THREADSAFE=1']
+```
+
+- **Conclusion** : concluant. 3.46.1 ≥ 3.35 ; FTS5 est compilé et fonctionne ; JSON1 fonctionne (il est intégré
+  d'office depuis SQLite 3.38, d'où l'absence d'option de compilation dédiée).
+
+#### V-04 — WAL sur volume nommé, deux conteneurs
+
+```sh
+docker volume create radar-t03-data
+R="docker run --platform linux/amd64 -v radar-t03-data:/data -v $HOME/radar-t03:/w:ro"
+$R --rm --name radar-t03-init   $IMG python /w/v04_init.py          # PRAGMA journal_mode=wal + table
+$R -d   --name radar-t03-worker $IMG python /w/v04_writer.py 75     # écrit en boucle (rôle worker)
+$R -d   --name radar-t03-app    $IMG python /w/v04_reader.py 75     # lit en boucle (rôle app)
+docker run --rm --platform linux/amd64 -v radar-t03-data:/data:ro --name radar-t03-ls $IMG ls -la /data
+$R --rm --name radar-t03-check  $IMG python /w/v04_check.py          # après l'arrêt des deux conteneurs
+```
+
+L'écrivain enchaîne des transactions `BEGIN IMMEDIATE` de 10 `INSERT` ; le lecteur enchaîne des transactions de lecture
+(`count(*)` et 50 dernières lignes). Les deux utilisent `PRAGMA busy_timeout=5000` et comptent toute
+`OperationalError`, dont « database is locked ».
+
+- **Versions** : SQLite 3.46.1 de l'image ; volume `local`, point de montage hôte
+  `/var/snap/docker/common/var-lib-docker/volumes/radar-t03-data/_data`.
+- **Sortie** (extraits) :
+
+```text
+journal_mode ('wal',)
+['radar.db', 'radar.db-shm', 'radar.db-wal']
+--- pendant l'exécution, vu depuis un 3e conteneur :
+-rw-r--r-- 1 root root  901120 Sep 23 15:02 radar.db
+-rw-r--r-- 1 root root   32768 Sep 23 15:02 radar.db-shm
+-rw-r--r-- 1 root root 4120032 Sep 23 15:02 radar.db-wal
+radar-t03-app Up 6 seconds
+radar-t03-worker Up 7 seconds
+writer journal_mode wal
+writer: 7820 transactions (78200 lignes) en 75.0s, erreurs=0
+reader: 4138 lectures en 75.0s, dernier count=78200, erreurs=0
+journal_mode wal
+integrity_check ok
+count 78200
+```
+
+- **Conclusion** : concluant. Le mode WAL est persistant sur le volume nommé, les fichiers `-wal` et `-shm` y sont
+  créés et visibles depuis un autre conteneur. Deux conteneurs ont écrit et lu en même temps pendant 75 s sans aucune
+  erreur (aucun « database is locked »), et `PRAGMA integrity_check` renvoie `ok`. À la fermeture de la dernière
+  connexion, SQLite fait un checkpoint et supprime `-wal` et `-shm` : comportement normal. Rejouée sur le VPS en
+  pré-production (seule vérification dépendante de l'hôte Docker).
 
 ---
 
