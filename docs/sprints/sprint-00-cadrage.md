@@ -424,6 +424,18 @@ Décision du propriétaire (2026-09-23) : option A : stylage en CSS Modules — 
 
 Décision du propriétaire (2026-09-23) : option A : une PR dédiée avant T0.4, qui inclut T0.1c — appliquée par T0.2b (#66).
 
+#### E22 — Accès de Claude Code à Docker en développement
+
+- **Contexte** : T0.3 a montré que Claude Code a besoin de Docker sur le poste de développement, et ce besoin revient à chaque sprint (Compose local, tests, e2e). Pour T0.3, le compte de développement a été ajouté temporairement au groupe `docker`, ce qui équivaut à un accès root pour tout programme lancé sous ce compte. Le poste mélange en outre deux installations de Docker (section 3.A, Q-01). Rien dans la spec ne dit comment Claude Code accède à Docker en développement.
+- **Options** :
+  - A. Démarche progressive : **V0**, isolation réelle du poste et script `scripts/radar-dev` à sous-commandes fixes, seul point d'entrée autorisé ; **V1**, skill de projet décrivant l'usage de `radar-dev` ; **V2**, serveur MCP local qui n'appelle que `radar-dev`, conditionnel.
+  - B. Serveur MCP dès le Sprint 1 (outil de plus à écrire avant d'en connaître le besoin).
+  - C. Accès direct à `docker`, filtré par les permissions de Claude Code (filtre de commandes, sans cloisonnement).
+- **Recommandation** : A. Le mécanisme d'isolation du poste relève d'un ADR, l'**ADR-0021**.
+- **Bloque** : Sprint 1 (premier Compose local).
+
+Décision du propriétaire (2026-09-23) : option A : V0 au Sprint 1 (#62, avec la mise en place du poste #61), V1 au Sprint 2 (#63), V2 au Sprint 3, conditionnel à un go décidé sur les bilans des Sprints 1 et 2 (#64) ; le mécanisme d'isolation est l'objet de l'ADR-0021 (Proposé) — appliquée dans VIII §46.1, IX §54.3, §55.3, §55.4, VII §36.7 (sous réserve de l'ADR-0021) et `docs/planning.md` (T0.9, #60).
+
 ---
 
 ## 3. Résultats des vérifications (IX §57.4)
