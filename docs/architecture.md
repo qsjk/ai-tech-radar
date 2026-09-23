@@ -621,9 +621,9 @@ Décision (2026-09-23) : option A retenue : uid et gid 10001 fixes ; `/data` cr�
 
 Décision (2026-09-23) : reste ouvert ; il est tranché par l'ADR-0021 (T0.9, #60). L'écart A-04 lui est rattaché.
 
-Renvoi : [ADR-0021](adr/0021-acces-cloisonne-a-docker-en-developpement.md), statut `Proposé` — option A, Docker rootless
-sur le poste de développement, avec la parade (a) pour les ports 80 et 443 (`net.ipv4.ip_unprivileged_port_start=80`
-sur le poste). **Décision en attente de l'acceptation de l'ADR-0021** ; la mise en place du poste est l'issue #61.
+Renvoi : [ADR-0021](adr/0021-acces-cloisonne-a-docker-en-developpement.md) — option A, Docker rootless sur le poste de
+développement, avec la parade (a) pour les ports 80 et 443 (`net.ipv4.ip_unprivileged_port_start=80` sur le poste).
+**ADR-0021 accepté le 2026-09-23, parade (a)** ; la mise en place du poste est l'issue #61.
 
 #### P-04 — Fichier `config/` obligatoire absent
 
@@ -759,7 +759,7 @@ Relevés en rédigeant ce document, puis traités par les décisions du 2026-09-
 | A-01 | `caddy` sans `no-new-privileges` ni utilisateur non-root dans l'esquisse Compose, alors que les conteneurs doivent être non-root avec `no-new-privileges` | VII §36.5 · VII §43.2 · T-SEC-08 | **traité** par P-10 : §4.1, §4.3 ; VII §36.5, §43.2, décision 5 |
 | A-02 | `alembic` lit `sqlalchemy.url` alors que Compose fournit `RADAR_DB_PATH` et que `.env.example` n'a aucune variable pour la base | `database.md` §5 · VII §36.5, §36.7 | **traité** par P-01 : `database.md` §2.3, §5, §7 (I-16) ; III §10.5 |
 | A-03 | Absence d'un fichier `config/` obligatoire non traitée ; comportement de l'app sur un `pipeline.yaml` invalide non écrit | IV §16.1, §16.5 · CF-22 | **traité** par P-04 et P-05 : IV §16.5 ; §3.6 |
-| A-04 | `DASHBOARD_URL` : la validation (« schéma `https` ou `http://localhost`, sans chemin ni slash final ») ne dit pas si un port est admis, cas du développement rootless | VII §36.7 · T-CFG-07 | **traité** par l'ADR-0021 (`Proposé`) : aucun port admis, parade (a) recommandée ; VII §36.7 porte la règle, marquée comme dépendant de l'ADR-0021 ; **en attente de son acceptation** |
+| A-04 | `DASHBOARD_URL` : la validation (« schéma `https` ou `http://localhost`, sans chemin ni slash final ») ne dit pas si un port est admis, cas du développement rootless | VII §36.7 · T-CFG-07 | **traité** par l'ADR-0021 (accepté le 2026-09-23, parade (a)) : aucun port admis ; VII §36.7 porte la règle |
 | A-05 | `ACME_EMAIL` fait partie de « toutes les autres » variables reçues par le worker, qui n'en a pas l'usage | VII §36.7 (distribution par service) | **traité** : VII §36.7 (`ACME_EMAIL` réservé à `caddy`) ; §4.1 |
 | A-06 | `gateway` sans durcissement dans l'esquisse (`cap_drop`, `no-new-privileges`, `read_only`), alors que VII §43.2 vise les conteneurs sans distinction | VII §36.5 · VII §43.2 | **reporté** au Sprint 6, avec le choix du gateway |
 | A-07 | `scripts/radar-dev` (T0.9) absent de l'arborescence contractuelle | VIII §46.1 | **traité** : `scripts/radar-dev` ajouté à VIII §46.1 (T0.9, #60) |

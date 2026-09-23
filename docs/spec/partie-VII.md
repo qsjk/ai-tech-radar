@@ -304,7 +304,7 @@ RADAR_VERSION=               # tag d'image (sha Git) déployé
 | `migrate` | `LOG_LEVEL` |
 
 - `DASHBOARD_URL` est validée au démarrage de `app` et `worker` : schéma `https` (ou `http://localhost` en développement), sans chemin ni slash final.
-- **Aucun port n'est admis** dans `DASHBOARD_URL`, en développement comme en production : sur un poste de développement en Docker rootless, les ports 80 et 443 restent publiés grâce à `net.ipv4.ip_unprivileged_port_start=80`, posé une fois sur le poste. *Dépend de l'ADR-0021 (parade (a), recommandée, en attente d'acceptation) ; si la parade (b) était retenue, un port serait admis pour `localhost` seulement.*
+- **Aucun port n'est admis** dans `DASHBOARD_URL`, en développement comme en production : sur un poste de développement en Docker rootless, les ports 80 et 443 restent publiés grâce à `net.ipv4.ip_unprivileged_port_start=80`, posé une fois sur le poste (ADR-0021 accepté le 2026-09-23, parade (a)).
 - `DASHBOARD_TOKEN` **n'existe plus** (Partie VI).
 
 ### 36.8 Commandes opérationnelles

@@ -434,7 +434,7 @@ Décision du propriétaire (2026-09-23) : option A : une PR dédiée avant T0.4,
 - **Recommandation** : A. Le mécanisme d'isolation du poste relève d'un ADR, l'**ADR-0021**.
 - **Bloque** : Sprint 1 (premier Compose local).
 
-Décision du propriétaire (2026-09-23) : option A : V0 au Sprint 1 (#62, avec la mise en place du poste #61), V1 au Sprint 2 (#63), V2 au Sprint 3, conditionnel à un go décidé sur les bilans des Sprints 1 et 2 (#64) ; le mécanisme d'isolation est l'objet de l'ADR-0021 (Proposé) — appliquée dans VIII §46.1, IX §54.3, §55.3, §55.4, VII §36.7 (sous réserve de l'ADR-0021) et `docs/planning.md` (T0.9, #60).
+Décision du propriétaire (2026-09-23) : option A : V0 au Sprint 1 (#62, avec la mise en place du poste #61), V1 au Sprint 2 (#63), V2 au Sprint 3, conditionnel à un go décidé sur les bilans des Sprints 1 et 2 (#64) ; le mécanisme d'isolation est l'objet de l'ADR-0021 (accepté le 2026-09-23, parade (a)) — appliquée dans VIII §46.1, IX §54.3, §55.3, §55.4, VII §36.7 et `docs/planning.md` (T0.9, #60).
 
 ---
 
