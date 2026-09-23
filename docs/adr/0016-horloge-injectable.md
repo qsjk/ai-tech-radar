@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Statut** | Proposé |
+| **Statut** | Accepté |
 | **Date** | 2026-09-23 |
 | **Décision(s) couverte(s)** | DV-18 ; VIII décision 7, §49.3, §50.1 · III §10.6 · `docs/architecture.md` §5.2 ; décision I-04 |
 

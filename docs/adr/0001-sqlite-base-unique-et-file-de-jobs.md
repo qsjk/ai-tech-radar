@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Statut** | Proposé |
+| **Statut** | Accepté |
 | **Date** | 2026-09-23 |
 | **Décision(s) couverte(s)** | DV-01, DV-02 ; II §8.2, §8.6 · III §10 · V-A §23 · IX §53.3 ; `docs/database.md` §2, §5 |
 

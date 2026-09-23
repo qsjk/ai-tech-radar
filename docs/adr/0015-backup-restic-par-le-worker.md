@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Statut** | Proposé |
+| **Statut** | Accepté |
 | **Date** | 2026-09-23 |
 | **Décision(s) couverte(s)** | DV-17 ; VII §38, §43.4 · IX §56.4.1, §56.6-P3 · VIII §47.2 (Sprint 11) ; rapport de cadrage §3 (V-05) ; `docs/architecture.md` §4.2 |
 
