@@ -313,7 +313,8 @@ ARG PYTHON_IMAGE=python:3.12.14-slim-trixie@sha256:2f17fc044b579bab302c2e8054d3a
 
 # ── 1. Dépendances et code ───────────────────────────────────────────────────
 FROM ${PYTHON_IMAGE} AS build
-COPY --from=ghcr.io/astral-sh/uv:<version>@sha256:<digest> /uv /usr/local/bin/uv      # P-13
+# version de uv épinglée : P-13
+COPY --from=ghcr.io/astral-sh/uv:<version>@sha256:<digest> /uv /usr/local/bin/uv
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 COPY pyproject.toml uv.lock ./
@@ -353,8 +354,10 @@ RUN groupadd --gid 10001 radar \
  && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin radar \
  && mkdir -p /data && chown 10001:10001 /data && chmod 0750 /data            # propriétaire de /data : §4.4
 COPY --from=build  /app /app
-COPY --from=model  /opt/models /opt/models                                   # Sprint 4
-COPY --from=restic /usr/local/bin/restic /usr/local/bin/restic               # Sprint 11
+# à partir du Sprint 4
+COPY --from=model  /opt/models /opt/models
+# à partir du Sprint 11
+COPY --from=restic /usr/local/bin/restic /usr/local/bin/restic
 COPY config/ /app/config/
 ENV PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
@@ -365,6 +368,7 @@ WORKDIR /app
 USER 10001:10001
 ```
 
+- Dans un Dockerfile, un commentaire occupe sa propre ligne ; les `#` en fin de `RUN` sont des commentaires du shell.
 - **Pas d'instruction `VOLUME`** : elle créerait un volume anonyme ; `/data` est toujours le volume nommé de Compose.
 - **Code et modèle appartiennent à root**, en lecture seule pour l'uid 10001 : même sans `read_only`, le processus ne
   peut pas modifier son code.
@@ -376,7 +380,8 @@ USER 10001:10001
 
 ```dockerfile
 # syntax=docker/dockerfile:1.7
-FROM node:<24-lts>-slim@sha256:<digest> AS front                               # P-13
+# versions de Node et de Caddy épinglées : P-13
+FROM node:<24-lts>-slim@sha256:<digest> AS front
 WORKDIR /front
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
