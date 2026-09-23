@@ -17,6 +17,11 @@ prix (IX §54.1). Format, règles et registre : IX §54.2–§54.3. Gabarit : [`
 | [0006](0006-apscheduler-3x.md) | APScheduler 3.x | Proposé | 2026-09-23 | DV-08 | — |
 | [0007](0007-llm-api-openai-compatible-optionnel.md) | Accès LLM par API OpenAI-compatible, gateway hors app, LLM optionnel | Proposé | 2026-09-23 | DV-09 | — |
 | [0008](0008-embeddings-fastembed-modele.md) | Moteur et modèle d'embeddings | Proposé | 2026-09-23 | DV-10 | — |
+| [0009](0009-topologie-docker-compose-vps-unique.md) | Topologie Docker Compose sur VPS unique | Proposé | 2026-09-23 | DV-11 | — |
+| [0010](0010-exposition-et-cloisonnement.md) | Exposition et cloisonnement : Caddy, segmentation réseau, conteneurs durcis, anti-SSRF | Proposé | 2026-09-23 | DV-12 | — |
+| [0011](0011-authentification-dashboard.md) | Authentification du dashboard | Proposé | 2026-09-23 | DV-13 | — |
+| [0012](0012-semantique-health.md) | Sémantique de /health | Proposé | 2026-09-23 | DV-14 | — |
+| [0013](0013-frontend-react-typescript-vite-csp.md) | Frontend React · TypeScript · Vite et CSP stricte | Proposé | 2026-09-23 | DV-15 | — |
 <!-- INDEX -->
 
 **À venir** (IX §54.3) : 0020, gateway LLM retenu, au Sprint 6 ; 0021, Docker en développement, par T0.9 (#60) ;
