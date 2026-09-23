@@ -145,7 +145,8 @@ les modèles et lèvent une erreur typée qui porte **fichier, clé et champ**.
   disjoncteur `not_configured` (V-A §24.2) ; `RESTIC_REPOSITORY` absent → backup `not_configured` (VII §38.3) ;
   canal d'alerte incomplet → canal désactivé (VII §36.7).
 - **Paramètres fixés par Compose**, hors `.env` : `TZ=UTC` et `RADAR_DB_PATH=/data/radar.db` (VII §36.5). La source
-  de l'URL de la base pour Alembic est le point **P-01**.
+  seule source du chemin de la base : `env.py`, `app` et `worker` en construisent l'URL, `alembic.ini` n'en porte
+  aucune (P-01).
 
 ### 3.4 `Setting`
 
@@ -166,9 +167,9 @@ secret (T-SEC-11). Le worker les relit à chaque tick : un changement ne demande
 | Situation | `worker` | `app` | Réf. |
 |---|---|---|---|
 | `sources.yaml`, `topics.yaml` ou `entities.yaml` **invalide** | refuse de démarrer, message avec fichier, clé et champ | non concerné | IV §16.5, T-CFG-02 |
-| l'un de ces trois fichiers **absent** | non écrit par la spec (P-04) | non concerné | — |
+| l'un de ces trois fichiers **absent** | refuse de démarrer ; `validate-config` renvoie `2` | non concerné | IV §16.5 · P-04 |
 | `pipeline.yaml` **absent** | démarre avec les défauts | démarre avec les défauts | IV §16.5 |
-| `pipeline.yaml` **invalide** | refuse de démarrer | **non écrit par la spec** (P-05) | IV §16.5 · CF-22 |
+| `pipeline.yaml` **invalide** | refuse de démarrer | **refuse de démarrer**, même message que le worker | IV §16.5 · CF-22 · P-05 |
 | `pipeline.yaml` **modifié** | pris en compte au redémarrage | pris en compte au redémarrage | IV §16.1 |
 | variable obligatoire absente ou invalide | refuse de démarrer (§3.3) | refuse de démarrer si `DASHBOARD_URL` est invalide | VII §36.7 |
 
@@ -193,7 +194,8 @@ x-backend: &backend
   build: { context: ., dockerfile: docker/backend.Dockerfile }
   user: "10001:10001"                      # uid/gid fixes : P-02
   read_only: true                          # dès le Sprint 1 (CF-03, VIII décision 4)
-  tmpfs: [/tmp]                            # seul emplacement inscriptible hors /data
+  tmpfs: [/tmp]                            # seul emplacement inscriptible hors /data ;
+                                           # à partir du Sprint 4 : "/tmp:size=256m" (P-07)
   cap_drop: [ALL]
   security_opt: ["no-new-privileges:true"]
   volumes: [radar_data:/data]              # volume nommé, jamais de bind mount (IX décision 26)
@@ -207,7 +209,7 @@ services:
     command: ["alembic", "upgrade", "head"]
     environment:
       TZ: UTC
-      RADAR_DB_PATH: /data/radar.db        # lu par env.py : P-01
+      RADAR_DB_PATH: /data/radar.db        # seule source du chemin de la base (P-01)
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
     network_mode: none
     restart: "no"
@@ -231,7 +233,7 @@ services:
   worker:
     <<: *backend
     command: ["python", "-m", "app.worker"]
-    environment:                           # toutes les variables « worker » de VII §36.7, une à une
+    environment:                           # variables « worker » de VII §36.7, une à une (sans ACME_EMAIL, A-05)
       TZ: UTC
       RADAR_DB_PATH: /data/radar.db
       APP_ENV: "${APP_ENV:-production}"
@@ -255,11 +257,12 @@ services:
       ALERT_EMAIL_TO: "${ALERT_EMAIL_TO:-}"
       TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-}"
-      ACME_EMAIL: "${ACME_EMAIL:-}"        # « toutes les autres » (VII §36.7) : sans usage côté worker, A-05
     networks: [egress]
     depends_on: { migrate: { condition: service_completed_successfully } }
     stop_grace_period: 30s
-    # mem_limit: 2g                        # ajout proposé au Sprint 4, provisoire, recalé d'après M1 (P-07)
+    # à partir du Sprint 4 (P-07), provisoire, recalé d'après M1 :
+    # mem_limit: 2g
+    # tmpfs: ["/tmp:size=512m"]           # cache restic compris
     restart: unless-stopped
 
   caddy:
@@ -325,7 +328,8 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY app/ app/
 COPY migrations/ migrations/
 COPY alembic.ini ./
-RUN uv sync --frozen --no-dev            # bytecode compilé ici : rien à écrire au runtime
+RUN uv sync --frozen --no-dev --no-editable \
+ && /app/.venv/bin/python -m compileall -q app migrations   # bytecode du projet compilé au build
 
 # ── 2. Modèle d'embeddings (à partir du Sprint 4) ────────────────────────────
 # Révision et empreinte relevées en T0.3 (V-01), consignées dans l'ADR-0008.
@@ -436,9 +440,9 @@ et `/data` (volume) sont inscriptibles.
 
 | Composant | Risque d'écriture | Parade | Vérifié au |
 |---|---|---|---|
-| Python | `__pycache__` | bytecode compilé au build (`UV_COMPILE_BYTECODE`), `PYTHONDONTWRITEBYTECODE=1` | Sprint 1 |
+| Python | `__pycache__` | bytecode compilé au build : dépendances par `UV_COMPILE_BYTECODE`, projet installé sans mode éditable (`--no-editable`) et `app/`, `migrations/` compilés par `compileall` ; `PYTHONDONTWRITEBYTECODE=1` en plus | Sprint 1 |
 | Bibliothèques qui écrivent sous `~` | `~/.cache`, `~/.config` | `HOME=/tmp`, `XDG_CACHE_HOME=/tmp/.cache` | Sprint 1 |
-| Alembic (`migrate`) | aucun fichier hors base | bytecode de `migrations/` compilé au build | Sprint 1 |
+| Alembic (`migrate`) | aucun fichier hors base | bytecode de `migrations/` compilé au build (`compileall`) | Sprint 1 |
 | lingua | modèles de langues chargés depuis le paquet, en mémoire | aucune écriture attendue ; `TMPDIR=/tmp` par précaution | Sprint 2 |
 | fastembed, huggingface_hub | téléchargement et cache du modèle | modèle intégré à l'image (`/opt/models`, lecture seule), `HF_HUB_OFFLINE=1`, chargement local (P-09) | Sprint 4 (T-SEC-09, T-SEC-10) |
 | onnxruntime | aucun cache disque par défaut | `TMPDIR=/tmp` | Sprint 4 |
@@ -454,7 +458,8 @@ Le tmpfs occupe de la mémoire : sa taille compte dans `mem_limit` (P-07).
   démarrage est le garde-fou (`database.md` §5).
 - **Healthchecks** : aucun (§4.1, P-06).
 - **`mem_limit`** : sur `worker` et `gateway`, fixé à pic mesuré × 1,5 après M1 (VII §36.5, §45.4). Valeur
-  provisoire proposée pour le worker à partir du Sprint 4 : P-07. T0.3 a mesuré environ 1,0 Gio de RSS après
+  provisoire pour le worker à partir du Sprint 4 : 2 Gio ; tmpfs borné à 256 Mo (`app`, `migrate`) et 512 Mo
+  (`worker`) (P-07). T0.3 a mesuré environ 1,0 Gio de RSS après
   chargement du seul modèle d'embeddings, avec un pic à 1,2 Gio (rapport de cadrage §3, V-01).
 
 ---
