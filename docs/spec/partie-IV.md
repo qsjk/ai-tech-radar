@@ -396,7 +396,7 @@ topics:
 | `keywords` | oui (≥ 1) | — | chaîne, ou `{term, weight=1, regex=false}` ; `weight` > 0 |
 | `exclude` | non | `[]` | liste de termes (non regex) masqués avant matching (§20.3) |
 
-**Upsert** (clé `slug`) : `origin = seeded`.
+**Upsert** (clé `slug`) : `origin = seeded`. `keywords` et `exclude` sont stockés ensemble dans la colonne JSON `Topic.keywords`, sous la forme `{include, exclude}` (Partie III §11.4).
 
 - `slug` existant en `seeded` → mise à jour ;
 - `slug` existant en `discovered` ou `user` → **promu en `seeded`**, champs mis à jour ;
