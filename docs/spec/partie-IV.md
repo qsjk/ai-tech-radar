@@ -1,15 +1,11 @@
 # Partie IV — Pipeline d'ingestion
 
-2026-09-22
-
 > **Partie IV — Pipeline d'ingestion.** Version durcie issue de la revue §14–§22.
-> Remplace la Partie IV de SPEC.md V0.3. Prend les Parties I, II et III durcies comme acquis.
+> Dernière révision : 2026-09-22. Prend les Parties I, II et III durcies comme acquis.
 
 ---
 
 ## Décisions tranchées dans cette revue (Partie IV)
-
-Les points marqués **(proposé)** n'ont pas été discutés explicitement : ce sont des précisions de mise en œuvre qui découlent des décisions validées. Ils sont à confirmer à la relecture.
 
 1. **Les collectors ne touchent jamais la base.** Un collector transforme des réponses HTTP en `RawItem`, rien de plus. Un **runner** unique enchaîne les étages suivants et gère toutes les écritures.
 2. **Nouvelle interface `Collector`** : itérateur asynchrone de **pages** (`items` + `checkpoint` + `quota` + `skipped`) au lieu de `fetch() -> list[RawItem]`.
@@ -19,9 +15,9 @@ Les points marqués **(proposé)** n'ont pas été discutés explicitement : ce 
 6. **`content_hash`** : SHA-256 du texte **du flux** normalisé, `NULL` sous 200 caractères, **jamais recalculé** après extraction.
 7. **`content` est toujours du texte brut** (HTML retiré dès la normalisation).
 8. **Relevance filter entièrement spécifié** : score par topic basé sur la **présence** de mots-clés (titre × 3, URL × 2, corps × 1), `relevance_score = max` des topics, seuil 3. **Aucun critère de diffusion** (pilier *recall*, Partie I).
-9. **Mots-clés d'exclusion par topic dès la V1**, appliqués par **masquage** du texte avant matching **(proposé — précise le mécanisme)**.
+9. **Mots-clés d'exclusion par topic dès la V1**, appliqués par **masquage** du texte avant matching.
 10. **Sources de confiance** : `relevance: always` → article toujours `ready`, topics et entités keyword quand même calculés.
-11. **Décision de pertinence sur le texte du flux ; liaisons keyword sur le texte final** (après extraction) pour les articles `ready` **(proposé)**.
+11. **Décision de pertinence sur le texte du flux ; liaisons keyword sur le texte final** (après extraction) pour les articles `ready`.
 12. **Langues hors EN/FR stockées normalement** (le filtre thématique s'applique ; aucun rejet par langue).
 13. **Âge maximal des items : 30 jours** (compteur `too_old`) ; **premier run plafonné à 100 items** par source.
 14. **`published_at` absent → repli sur `discovered_at`**, colonne non nulle. Date future (> maintenant + 1 h) → `discovered_at`.
@@ -35,14 +31,13 @@ Les points marqués **(proposé)** n'ont pas été discutés explicitement : ce 
 17. **Le `type` d'une source désigne le canal, pas le protocole** : Reddit et YouTube restent `reddit` / `youtube` même s'ils sont lus en RSS (le comptage de canaux distincts en dépend).
 18. **Signaux d'engagement capturés** dans une nouvelle colonne `Article.metrics` (JSON), instantané à la collecte, jamais mis à jour.
 19. **Fichiers de configuration invalides → le worker refuse de démarrer** (fail-fast), avec une commande `validate-config` jouée en CI.
-20. **Nouveau fichier `config/pipeline.yaml`** : tous les réglages « configurables » du pipeline y vivent, avec les défauts documentés ici **(proposé)**.
+20. **Nouveau fichier `config/pipeline.yaml`** : tous les réglages « configurables » du pipeline y vivent, avec les défauts documentés ici.
 21. **Embeddings : file dérivée**, sans `AIJob` — le worker embedde les articles `ready` sans ligne `Embedding` pour le modèle courant.
-22. **Jobs LLM** : la Partie IV pose seulement le principe (jobs d'enrichissement créés pour chaque article `ready`, dans la transaction d'insertion) ; la liste exacte des `job_type` relève de la Partie V.
+22. **Jobs LLM** : la Partie IV pose seulement le principe (jobs d'enrichissement créés pour chaque article `ready`, dans la transaction d'insertion) ; la liste exacte des `job_type` relève de la Partie V : **un `enrich_article` par article `ready`** (Partie V-A §23.2, reporté au §14.3).
 23. **Disjoncteur par source** : après 3 runs `failed` consécutifs, l'intervalle double à chaque échec, jusqu'à 24 h ; retour à la normale au premier succès.
 24. **Credentials manquants → sources du type non planifiées**, le worker démarre quand même. En V1, seul `GITHUB_TOKEN` est requis.
 
 ---
-
 
 ## 14. Pipeline
 
@@ -90,14 +85,16 @@ Toutes ces fonctions, sauf le collector, l'extraction, la dédup et l'écriture,
 - **Isolation à deux niveaux** : une source en panne n'arrête pas les autres ; un item malformé n'arrête pas sa page.
 - **Idempotence** : rejouer une collecte, entière ou partielle, ne crée aucun doublon.
 - **`discovered_at`** = instant UTC du traitement de la page.
+- **Temps lu par la `Clock`** (Partie VIII décision 7) : backoff et jitter (§21.2), limiteurs par hôte (§21.1), cache `robots.txt` (§17.3) et scheduler (§21.6) ne lisent jamais l'heure directement.
 
 ### 14.3 Écriture d'une page
 
 Dans une seule transaction `BEGIN IMMEDIATE` :
 
 1. insertion des articles (`ready` et `filtered`) avec `ON CONFLICT DO NOTHING` — un conflit est compté en `duplicate` ;
-2. pour les `ready` : `ArticleTopic` et `ArticleEntity` `method=keyword`, création des `Entity` issues du motif GitHub (§16.4), création des jobs d'enrichissement LLM (liste en Partie V) ;
-3. mise à jour de `Source.checkpoint` avec le checkpoint de la page, et des champs de quota si la page en fournit.
+2. pour les `ready` : `ArticleTopic` et `ArticleEntity` `method=keyword`, création des `Entity` issues du motif GitHub (§16.4), création d'**exactement un `enrich_article`** par article, de priorité 60 si la source est en `relevance: always`, 50 sinon, avec `next_attempt_at` = maintenant + 15 min (Partie V-A §23.2) ;
+3. mise à jour de `Source.checkpoint` avec le checkpoint de la page, et des champs de quota si la page en fournit ;
+4. à la **première** insertion d'un article `ready`, écriture de `SystemState.trends_since` (une seule fois ; Partie V-B §29.3).
 
 Les articles `filtered` sont insérés avec `content = NULL` et `content_purged_at` = maintenant (Partie III §13 : purge immédiate). Leur résumé de repli est calculé avant l'abandon du contenu.
 
@@ -135,7 +132,7 @@ Les items `skipped` et les échecs d'extraction ne changent pas le statut.
 **Mise à jour de `Source`** en fin de run :
 
 - `last_success_at` si `success` ou `partial` ;
-- `last_error` si `partial` ou `failed` (message sans secret) ;
+- `last_error` si `partial` ou `failed`, message passé par le nettoyage des secrets par valeur (Partie VII §42.4) ;
 - `last_http_status` = statut de la dernière réponse du provider (hors extraction).
 
 ## 15. Collectors
@@ -145,6 +142,7 @@ Les items `skipped` et les échecs d'extraction ne changent pas le statut.
 ```python
 class Collector(Protocol):
     type: ClassVar[str]                       # clé du registre ; = Source.type
+    channel: ClassVar[str]                    # canal : rss et webpage → web (V-B §28.9)
     config_model: ClassVar[type[BaseModel]]   # valide Source.config
     checkpoint_model: ClassVar[type[BaseModel]]
     requires: ClassVar[list[str]]             # variables d'environnement obligatoires
@@ -187,6 +185,7 @@ class QuotaInfo(BaseModel):
 **Règles** :
 
 - Le registre associe chaque `type` à sa classe. Un `Source.type` inconnu du registre est une erreur de configuration (§16.5).
+- Chaque type **déclare son canal** : `rss` et `webpage` → `web` ; les autres types sont leur propre canal (Partie V-B §28.9).
 - Chaque entrée du provider est parsée **dans son propre `try`** ; un échec incrémente `skipped` et produit un log avec la source et l'identifiant de l'entrée si disponible.
 - Le collector renvoie les items **du plus récent au plus ancien** quand le provider le permet, et s'arrête dès que `limit` est atteint.
 - Le collector ne fait ni normalisation, ni dédup, ni filtrage : il remonte ce que le provider fournit.
@@ -308,6 +307,7 @@ Quatre fichiers versionnés dans `config/` :
 | `pipeline.yaml` | réglages du pipeline (§16.6) | non (lu en mémoire) |
 
 - Chargement **au démarrage du worker uniquement**, après la vérification du schéma (Partie III §10.1) et **avant** le démarrage du scheduler. Modifier un fichier demande un redémarrage du worker. L'app ne charge pas ces fichiers.
+- **Taxonomie du runner** : les topics de `topics.yaml` **plus** les topics activés d'origine `user` lus en base (issus d'un « Create topic », Partie V-B §30.8). Le runner recharge sa taxonomie à la création d'un topic, sans redémarrage.
 - Upsert dans **une seule transaction d'écriture**, idempotent : charger deux fois les mêmes fichiers ne change rien.
 - Le YAML écrase les **champs de configuration** ; il ne touche jamais aux **champs d'état** (`checkpoint`, `last_*`, `rate_limit_*`).
 
@@ -360,7 +360,7 @@ sources:
 - `type` différent pour une `key` existante → **erreur** (créer une nouvelle `key`) ;
 - `key` présente en base mais absente du fichier → `enabled = false`, jamais de suppression (FK `RESTRICT`), log `info`.
 
-> **Impact Partie III** : `Source` doit porter `relevance` et `extract` (colonnes ou clés de `config`). Recommandation : deux colonnes, avec contrainte `CHECK`.
+`relevance` et `extract` sont deux colonnes de `Source`, avec contrainte `CHECK` (Partie III §11.1).
 
 ### 16.3 `topics.yaml`
 
@@ -446,6 +446,7 @@ Aucun autre motif libre en V1 (pas de regex générique `mot/mot`, trop bruitée
 
 - Les quatre fichiers sont validés par des modèles Pydantic.
 - **Toute erreur** (syntaxe YAML, champ manquant, type inconnu, `poll_interval` sous le minimum, doublon de clé, parent inexistant, cycle, regex invalide, `config` refusée par le collector) → **le worker refuse de démarrer**. Le message donne le fichier, l'entrée (clé) et le champ.
+- **Contraintes croisées** : `clustering.embedding_wait + clustering.tick` doit rester strictement inférieur à `llm.delay.enrich_article` (Partie V-B §28.15).
 - Commande `python -m app.cli validate-config` : même validation, sans base. Jouée en CI.
 - `pipeline.yaml` est optionnel : absent → défauts. Présent, il est validé comme les autres.
 
@@ -483,6 +484,8 @@ Toute valeur qualifiée de « configurable » dans cette partie vit ici. Les sec
 | `http.per_host_interval` | 1 s (+ surcharges par hôte) | §21.1 |
 | `breaker.failure_threshold` · `max_interval` | 3 · 24 h | §21.5 |
 | `scheduler.startup_jitter` | 120 s | §21.6 |
+
+Les autres sections de `pipeline.yaml` sont définies avec leur étage, et validées de la même façon : `llm.*`, `embeddings.*`, `topic_backfill.*` (Partie V-A §27.8) · `clustering.*`, `importance.*` (Partie V-B §28.15) · `trends.*` (Partie V-B §29.8) · `emerging.*` (Partie V-B §30.9) · `alerts.*`, `ops.*`, `backup.*`, `restore_test.*` (Partie VII §39.7).
 
 ### 14.5 Résumé de repli *(complément du §14, placé ici pour la lisibilité)*
 
@@ -688,7 +691,9 @@ Un seul `HttpClient` (httpx asynchrone) pour les collectors, l'extraction et `ro
 - **limiteur par hôte** : un intervalle minimal entre deux requêtes vers le même hôte — 1 s par défaut, 5 s pour l'extraction, surcharges par hôte dans `pipeline.yaml` (ex. `www.reddit.com: 6s`) ;
 - lecture des en-têtes de quota et production d'un `QuotaInfo` quand ils existent ;
 - incrément du compteur `requests_count` du run courant ;
-- masquage de l'en-tête `Authorization` et des paramètres sensibles dans tous les logs.
+- masquage de l'en-tête `Authorization` et des paramètres sensibles dans tous les logs ;
+- **garde anti-SSRF** (Partie VII §43.3) : refus de toute destination dont l'adresse résolue est privée, de bouclage, lien-local, unique-local IPv6 ou non routable, **vérifiée après résolution DNS et à chaque redirection** ; exceptions explicites seulement pour `LLM_BASE_URL` et le dépôt restic ;
+- **liste d'hôtes autorisés de test** : injectée par les tests, ou lue dans `HTTP_TEST_ALLOW_HOSTS` **uniquement** si `APP_ENV=test` ; elle coexiste avec la garde anti-SSRF sans l'affaiblir en production. Renseignée avec `APP_ENV=production`, le worker refuse de démarrer (Partie VIII décision 23).
 
 ### 21.2 Retry et backoff
 
@@ -738,7 +743,7 @@ Un seul `HttpClient` (httpx asynchrone) pour les collectors, l'extraction et `ro
 | `REDDIT_CLIENT_ID` · `REDDIT_CLIENT_SECRET` · `YOUTUBE_API_KEY` | — | réservées au mode API (V2), non lues en V1 |
 
 - Au démarrage, pour chaque type présent dans `sources.yaml`, les variables de `Collector.requires` sont vérifiées.
-- **Variable manquante** → les sources de ce type ne sont **pas planifiées** ; log `warning` ; état « credentials manquants » exposé au monitoring (impact Partie VII). Le worker démarre quand même.
+- **Variable manquante** → les sources de ce type ne sont **pas planifiées** ; log `warning` ; état « credentials manquants » exposé au monitoring (`missing_credentials`, Partie VII §40.3). Le worker démarre quand même.
 - Un 401 en cours d'exploitation est un échec de run normal (§21.5), journalisé sans le secret.
 
 ---
@@ -753,51 +758,3 @@ Un seul `HttpClient` (httpx asynchrone) pour les collectors, l'extraction et `ro
 - **Retry de l'extraction ciblée** et extraction des PDF.
 - **Transcriptions YouTube.**
 - **Collector `webpage` étendu** (pagination, rendu JavaScript) — hors de question en V1.
-
----
-
-## Impacts à répercuter dans les autres parties
-
-À traiter lors de la revue des parties concernées — **hors Partie IV**.
-
-### Partie I — Vision
-
-- **§2.2 Canaux** : ajouter le collector **`webpage`** (dernier recours, sites sans flux, une page, `robots.txt`) à la liste des canaux V1.
-- **§2.2 / critères de prod** : Reddit et YouTube ne dépendent plus de credentials en V1 (flux RSS).
-
-### Partie II — Architecture
-
-- **§7.1** : compléter le schéma avec le **contrôle d'âge** et les **liaisons keyword après extraction** ; remplacer « Enqueue → AIJob + Embedding job » par « AIJob d'enrichissement ; embeddings par file dérivée ».
-- **§8.4** : les collectors ne touchent jamais la base ; toute écriture passe par le runner ; aucun appel réseau dans une transaction d'écriture.
-
-### Partie III — Données
-
-- **`Article.metrics`** : nouvelle colonne JSON (engagement à la collecte, validée par Pydantic, jamais mise à jour).
-- **`Article.published_at`** : non nulle (repli sur `discovered_at`).
-- **`Article.summary`** : renseigné aussi pour les `filtered` (la contrainte « non nul si `ready` » peut devenir « non nul »).
-- **`Source`** : colonnes `relevance` `CHECK {filter, always}` et `extract` `CHECK {auto, never}`.
-- **`Source.type`** : valeurs V1 = `rss · github · hackernews · reddit · youtube · webpage`.
-- **`CollectorRun`** : nouvelles colonnes `items_too_old`, `extractions_attempted`, `extractions_failed`, `requests_count`.
-- **Alias d'entités** : vivent dans `entities.yaml`, pas en base (cohérent avec le report V2 de la fusion d'entités).
-
-### Partie V — Intelligence
-
-- **Liste exacte des jobs LLM** créés à l'insertion d'un article `ready`.
-- **Étage embeddings** : sélection par file dérivée (articles `ready` sans `Embedding` pour le modèle courant) ; `processed_at` doit en tenir compte.
-- **Hiérarchie des topics** : pas de propagation parent en base ; décider si les tendances agrègent les enfants au calcul.
-- **`Event.importance`** : peut utiliser `Article.metrics` (points HN, vues YouTube).
-- **`distinct_channel_count`** : décider si `webpage` et `rss` comptent comme un même canal (« web ») ou deux.
-- **Longueur du résumé de repli** : fixée en Partie IV (§14.5, 300 caractères) — retirer ce point de la liste « à fixer ».
-
-### Partie VII — Ops
-
-- **Monitoring** : sources non planifiées faute de credentials, disjoncteur ouvert par source, taux d'échec d'extraction, métriques `CollectorRun` (§14.4).
-- **Variable d'environnement** `HTTP_CONTACT` obligatoire dans `.env.example`.
-
-### Partie VIII — Livraison
-
-- **CI** : étape `validate-config` sur les quatre fichiers `config/`.
-- **Tests collectors** : fixtures par type (RSS, GitHub avec 304 et rate limit, Algolia, Reddit RSS avec `[link]`, YouTube RSS, `webpage` avec gabarit cassé) ; test de l'invariant de compteurs ; test de reprise par checkpoint après interruption en milieu de pagination.
-
----
-

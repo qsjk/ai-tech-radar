@@ -1,7 +1,7 @@
 # Partie VIII — Livraison
 
-> **Partie VIII — Livraison.** Version durcie issue de la revue §46–§52, 2026-09-22.
-> Remplace la Partie VIII de SPEC.md V0.3. Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
+> **Partie VIII — Livraison.** Version durcie issue de la revue §46–§52.
+> Dernière révision : 2026-09-22. Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
 
 **Nature de cette partie : une agrégation.** Les tests, étapes CI et critères de production fléchés par les Parties I à VII sont rassemblés ici, rattachés à un identifiant et organisés par domaine. Les doublons sont réconciliés (§ « Réconciliations ») et seul ce qui manquait est durci à neuf.
 
@@ -18,8 +18,6 @@
 ---
 
 ## Décisions tranchées dans cette revue (Partie VIII)
-
-Les points marqués **(proposé)** n'avaient pas été discutés : ce sont des compléments nécessaires pour rendre la partie implémentable, à confirmer à la relecture.
 
 1. **§47 et §48 sont réécrits, pas retouchés.** Le plan V0.3 décrivait l'architecture V0.3 : collector Anthropic, `classify_article`, dédup et clustering dans un même sprint, Caddy au Sprint 11, purge absente.
 2. **Numérotation conservée, de 1 à 11**, plus un **Sprint 0** qui correspond à la mission de cadrage (Partie IX §57), sans code applicatif. Le Sprint 11 reste le sprint Production, cité par la Partie VII.
@@ -40,13 +38,13 @@ Les points marqués **(proposé)** n'avaient pas été discutés : ce sont des c
     - Le parsing est testé sur des **sorties réelles enregistrées** une fois par `scripts/record-llm-fixtures`, lancé à la main contre un vrai gateway et **jamais en CI**.
 16. **Tests frontend limités en V1** : vitest et testing-library sur quelques composants critiques, plus la règle lint. Pas de test navigateur (Playwright) en V1.
 17. **Six domaines de tests ajoutés au catalogue**, qui n'avaient jamais été fléchés vers VIII : base et migrations (III), étages purs du pipeline (IV), client HTTP (IV), purge et rétention (II §8.5, III §13), frontend (VI), démarrage et configuration.
-18. **Pré-production obligatoire d'au moins 14 jours** sur le VPS cible, avec les sources réelles, avant la décision de mise en production. C'est la durée du warm-up de l'émergence (`emerging.warmup`) ; elle couvre aussi la calibration et les mesures sur données réelles. **(tranché par défaut — à confirmer)**
-19. **L'instance de pré-production est l'instance de production** : sa base est conservée à la bascule, ce qui préserve `trends_since` et l'historique. Une remise à zéro reste permise si la calibration change fortement les seuils, décision consignée dans `docs/go-live.md`. **(proposé)**
-20. **Tests de charge jamais sur le volume de production** : les profils synthétiques (VII §45.3) tournent dans un projet Compose distinct (`-p radar-load`) avec son propre volume, sur le même VPS. **(proposé)**
-21. **Un gateway LLM n'est pas requis pour la mise en production.** Le produit fonctionne à 0 € sans LLM (Partie I) ; les résumés restent alors en repli. Si un gateway est configuré, la mesure M6 doit être validée. **(tranché par défaut — à confirmer)**
-22. **La spec vit dans le dépôt** sous `docs/spec/`, une partie par fichier. `SPEC.md` à la racine devient l'index : sommaire, décisions verrouillées, renvois. La CI extrait les identifiants de test directement de `docs/spec/partie-VIII.md`, source unique. **(tranché par défaut — à confirmer)**
-23. **Liste d'hôtes autorisés réservée aux tests** : les doubles de test tournent sur des adresses privées que la garde anti-SSRF refuse. Une liste d'hôtes autorisés (`HTTP_TEST_ALLOW_HOSTS`) n'est lue que si `APP_ENV=test` ; le worker **refuse de démarrer** si elle est renseignée avec `APP_ENV=production`. **(proposé — impacts IV et VII)**
-24. **Procédure de restauration outillée** (`scripts/restore.sh`) pour être testable en e2e. Elle applique le contrat VII §38.5, suppression des `-wal` / `-shm` comprise. **(proposé)**
+18. **Pré-production obligatoire d'au moins 14 jours** sur le VPS cible, avec les sources réelles, avant la décision de mise en production. C'est la durée du warm-up de l'émergence (`emerging.warmup`) ; elle couvre aussi la calibration et les mesures sur données réelles.
+19. **L'instance de pré-production est l'instance de production** : sa base est conservée à la bascule, ce qui préserve `trends_since` et l'historique. Une remise à zéro reste permise si la calibration change fortement les seuils, décision consignée dans `docs/go-live.md`.
+20. **Tests de charge jamais sur le volume de production** : les profils synthétiques (VII §45.3) tournent dans un projet Compose distinct (`-p radar-load`) avec son propre volume, sur le même VPS.
+21. **Un gateway LLM n'est pas requis pour la mise en production.** Le produit fonctionne à 0 € sans LLM (Partie I) ; les résumés restent alors en repli. Si un gateway est configuré, la mesure M6 doit être validée.
+22. **La spec vit dans le dépôt** sous `docs/spec/`, une partie par fichier. `SPEC.md` à la racine devient l'index : sommaire, règles de lecture et **lien** vers les décisions verrouillées (Partie IX §53), sans en recopier la liste. La CI extrait les identifiants de test directement de `docs/spec/partie-VIII.md`, source unique.
+23. **Liste d'hôtes autorisés réservée aux tests** : les doubles de test tournent sur des adresses privées que la garde anti-SSRF refuse. Une liste d'hôtes autorisés (`HTTP_TEST_ALLOW_HOSTS`) n'est lue que si `APP_ENV=test` ; le worker **refuse de démarrer** si elle est renseignée avec `APP_ENV=production`. Voir Partie IV §21.1.
+24. **Procédure de restauration outillée** (`scripts/restore.sh`) pour être testable en e2e. Elle applique le contrat VII §38.5, suppression des `-wal` / `-shm` comprise.
 25. **Check-list de mise en production consignée dans `docs/go-live.md`**, avec une preuve par ligne, le sha et la date de décision.
 
 ---
@@ -74,7 +72,6 @@ Les points marqués **(proposé)** n'avaient pas été discutés : ce sont des c
 
 ---
 
-
 ## 46. Repository
 
 ### 46.1 Arborescence
@@ -83,7 +80,8 @@ Contractuelle sur les dossiers de premier niveau et les fichiers nommés. L'orga
 
 ```
 ai-tech-radar/
-├── SPEC.md                    # index de la spec (décision 22)
+├── SPEC.md                    # index de la spec (décision 22, Partie IX §55.2)
+├── CLAUDE.md                  # règles permanentes de Claude Code (Partie IX §55.3)
 ├── README.md
 ├── pyproject.toml · uv.lock   # backend, versions verrouillées
 ├── alembic.ini
@@ -99,7 +97,7 @@ ai-tech-radar/
 │   ├── main.py                # FastAPI
 │   ├── worker.py              # python -m app.worker
 │   ├── cli/                   # validate-config, cluster-calibrate, recount-events,
-│   │                          # send-test-alert, backup-now, restore-test, health
+│   │                          # send-test-alert, backup-now, restore-test, health, vacuum
 │   ├── core/                  # configuration typée (SecretStr), Clock, logging, redaction
 │   ├── db/                    # moteurs, read_session / write_session, UTCDateTime, prérequis
 │   ├── models/  schemas/
@@ -131,12 +129,14 @@ ai-tech-radar/
 │   ├── synthetic-dataset.py   # profils réaliste et cible (VII §45.3)
 │   └── load.py                # script de charge
 ├── tests/                     # §50.2
-└── docs/
-    ├── spec/                  # partie-I.md … partie-IX.md
-    ├── adr/
+└── docs/                      # arbre détaillé : Partie IX §55.1
+    ├── spec/                  # partie-I.md … partie-IV.md, partie-V-A.md, partie-V-B.md,
+    │                          # partie-VI.md … partie-IX.md
+    ├── adr/                   # README.md (index), _template.md, NNNN-slug.md
+    ├── sprints/               # sprint-00-cadrage.md, sprint-NN.md (plan + bilan)
     ├── architecture.md · database.md · collectors.md · llm-gateway.md · trends.md
     ├── deployment.md · monitoring.md · backup-restore.md · measurements.md
-    ├── runbook.md · testing.md · go-live.md
+    └── runbook.md · testing.md · go-live.md
 ```
 
 ### 46.2 Règles
@@ -144,8 +144,8 @@ ai-tech-radar/
 - **Versions épinglées partout** : `uv.lock` et `package-lock.json` commités ; images de base et images tierces (Caddy, gateway) à un tag précis, jamais `latest`. Mise à jour = commit dédié, passé en CI.
 - **Aucun secret dans le dépôt** : `.env` dans `.gitignore` et `.dockerignore` ; aucun `COPY .env` ; analyse de secrets en CI (§49.2). Les fixtures ne contiennent que des secrets **factices**, reconnaissables (`FAKE-…`).
 - **`config/` est versionné** : c'est la configuration fonctionnelle. Les secrets et les paramètres de déploiement restent dans `.env` (VII §36.7).
-- **Branches** : `main` protégée (étapes 1 à 5 de la CI requises avant fusion) ; travail sur branche et PR, même en solo, pour que la CI tourne avant `main`. **(proposé)**
-- **`mypy` en mode `strict` sur `app/`** ; `ruff` en lint et en format. **(proposé)**
+- **Branches** : `main` protégée (étapes 1 à 5 de la CI requises avant fusion) ; travail sur branche et PR, même en solo, pour que la CI tourne avant `main`.
+- **`mypy` en mode `strict` sur `app/`** ; `ruff` en lint et en format.
 - **Frontend** : aucun script ni `<style>` en ligne, aucune bibliothèque de CSS-in-JS à l'exécution (CSP, VII §37.3), sauf ADR.
 
 ---
@@ -157,16 +157,15 @@ ai-tech-radar/
 - **Le système est exécutable à la fin de chaque sprint** : `docker compose up -d` démarre, `/health` répond, la CI est verte.
 - **Critères d'acceptation = identifiants du catalogue §50.5 verts + démonstration** du scénario du sprint sur le Compose local.
 - **Un sprint ne démarre pas tant que le précédent ne satisfait pas la DoD de sprint** (§51.2).
+- **Plan et bilan** : le plan détaillé de chaque sprint est rédigé dans `docs/sprints/sprint-NN.md` et **validé avant l'implémentation** ; le bilan (écarts à la spec, dette tracée, identifiants couverts) y est ajouté en fin de sprint (Partie IX §57.8).
 - **Une fonction [core] ne dépend jamais d'un sprint AI** : tout ce qui est livré avant le Sprint 6 fonctionne sans LLM, et continue de fonctionner sans lui ensuite.
 - **Migrations par sprint** : chaque sprint ajoute ses tables et colonnes par migration Alembic. Le schéma cible complet est proposé au Sprint 0, mais pas créé d'un bloc.
 
 ### 47.2 Plan
 
-#### Sprint 0 — Cadrage *(Partie IX §57, sans code applicatif)*
+#### Sprint 0 — Cadrage *(sans code applicatif)*
 
-**Contenu** : lecture de la spec ; décisions techniques manquantes ; vérification des dépendances, dont la disponibilité du modèle multilingue dans `fastembed` (III §12.1) et SQLite ≥ 3.35 avec FTS5 dans l'image de base ; modèle SQL cible ; arborescence ; `docker-compose.yml` ; stratégie de configuration ; plan détaillé du Sprint 1 ; ADR des décisions verrouillées et de celles listées en VII et VIII.
-
-**Acceptation** : documents dans `docs/` et `docs/adr/`, relus et validés. Aucun sprint suivant n'est implémenté.
+Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 
 #### Sprint 1 — Foundation
 
@@ -299,7 +298,7 @@ ai-tech-radar/
 - **Backup** : `VACUUM INTO` + restic, `backup-now`, `restore-test` automatisé, `scripts/restore.sh`.
 - **Réseau et conteneurs** : validation finale de la segmentation réseau et de la racine en lecture seule avec restic.
 - **Déploiement** : `scripts/deploy.sh`.
-- **Documentation d'exploitation** : `deployment.md`, `monitoring.md`, `backup-restore.md`, `runbook.md`, `go-live.md`.
+- **Documentation d'exploitation** : finalisation de `deployment.md`, `monitoring.md`, `backup-restore.md`, `runbook.md` et `go-live.md`, créés au fil des sprints (Partie IX §55.4).
 - **Mise en place de la pré-production** (§47.4).
 
 **Acceptation** :
@@ -407,18 +406,19 @@ Chaque étape bloque les suivantes. Les travaux d'une même étape peuvent tourn
 
 1. vérifie que l'arbre de travail est propre et que le sha visé est sur `origin/main` ;
 2. interroge l'API GitHub : le workflow `ci.yml` de ce sha doit être **terminé et vert, étape 6 comprise**. Sinon, refus avec le lien vers le run ;
-3. exécute la séquence VII §36.9 :
+3. compare `migrations/versions/` entre le sha déployé et le sha visé : si une migration du sha déployé est **absente** du sha visé (rollback à travers une migration), **refus**, avec la liste de ces migrations, leur réversibilité et le renvoi au runbook (Partie IX §56.6-P2) ;
+4. exécute la séquence VII §36.9 :
    - `git checkout <sha>` ;
    - `docker compose build`, tag = sha ;
-   - `docker compose exec worker python -m app.cli backup-now` (avec vérification du succès) ;
+   - `docker compose exec worker python -m app.cli backup-now` (avec vérification du succès), qui affiche le `snapshot_id` ;
    - `docker compose stop app worker` ;
    - `docker compose up -d` ;
    - attente de `/health = ok` (délai borné), puis `docker compose ps` ;
-4. journalise le sha déployé et l'issue dans `~/radar-deploy.log`.
+5. journalise le sha déployé, l'issue et le `snapshot_id` du backup dans `~/radar-deploy.log`.
 
 - **Aucun contournement** en V1 : pas d'option `--force`.
-- **Rollback** : `scripts/deploy.sh <sha précédent>`. Ce sha est déjà vert, et le contrôle CI passe. Si une migration irréversible est passée, on restaure le backup pris au déploiement (VII §38.5, `scripts/restore.sh`).
-- **Jeton GitHub** : si le dépôt est privé, le contrôle utilise un jeton *fine-grained* en **lecture seule** (statuts et actions du seul dépôt). Il est stocké hors du `.env` applicatif, avec des droits `600`, et n'est **jamais transmis à un conteneur**. Si le dépôt est public, aucun jeton n'est nécessaire. **(proposé — impact VII §43.4)**
+- **Rollback** : `scripts/deploy.sh <sha précédent>` quand aucune migration ne sépare les deux sha ; ce sha est déjà vert, et le contrôle CI passe. Sinon, `deploy.sh` refuse (étape 3) et la procédure Partie IX §56.6-P2 s'applique : *downgrade* si les migrations sont réversibles, restauration par `scripts/restore.sh` du snapshot pris au déploiement sinon.
+- **Jeton GitHub** : si le dépôt est privé, le contrôle utilise un jeton *fine-grained* en **lecture seule** (statuts et actions du seul dépôt). Il est stocké hors du `.env` applicatif, avec des droits `600`, et n'est **jamais transmis à un conteneur**. Si le dépôt est public, aucun jeton n'est nécessaire. Sa rotation suit Partie IX §56.6-P5.
 - Le build a lieu sur le VPS (VII §36.9). Le modèle d'embeddings est téléchargé au build, jamais au runtime.
 
 ---
@@ -507,6 +507,7 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | T-CFG-07 | `DASHBOARD_URL` invalide (schéma, chemin, slash final) → `app` et `worker` refusent de démarrer ; `http://localhost` accepté en développement | U | VII §36.7 |
 | T-CFG-08 | Registre des `Setting` : clé absente → défaut ; valeur hors schéma refusée par l'API | I | VI §34.3 |
 | T-CFG-09 | `HTTP_TEST_ALLOW_HOSTS` renseignée avec `APP_ENV=production` → le worker refuse de démarrer | U | décision 23 |
+| T-CFG-10 | Commandes `app.cli` : code de sortie `2` sur usage ou configuration invalide ; résultat sur stdout, logs sur stderr | U | IX §56.3 |
 
 #### T-PIPE — Étages purs du pipeline *(IV §14, §18–§20, §14.5)*
 
@@ -735,6 +736,7 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | T-OPS-14 | `ops.tick` écrit `ops_metrics` et `ops_conditions` ; les endpoints de santé ne font que lire `SystemState` (aucune agrégation d'historique dans une requête) | I | VII décision 16 |
 | T-OPS-15 | Aucun canal d'alerte configuré → condition `no_alert_channel` | I | VII §39.5 |
 | T-OPS-16 | Coalescence des misfires au redémarrage : une seule exécution par job planifié manqué | I | II §8.4 |
+| T-OPS-17 | `vacuum` refusé si le heartbeat du worker a moins de `ops.heartbeat_stale_after`, et si l'espace libre de `/data` est inférieur à deux fois la taille de la base | I | IX §56.4.2 |
 
 #### T-BKP — Backup & restauration *(VII §38)*
 
@@ -749,6 +751,9 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | T-BKP-07 | `restore-test` sur un backup valide → `ok` ; sur un backup tronqué → échec, `last_restore_test` renseigné ; lancé au démarrage si aucun succès depuis 35 j | I | VII → VIII |
 | T-BKP-08 | Restauration avec un `-wal` d'une autre base présent : `scripts/restore.sh` le supprime, base restaurée saine | E | VII → VIII · décision 24 |
 | T-BKP-09 | `backup-now` : backup immédiat, code de sortie non nul en cas d'échec (utilisé par `deploy.sh`) | I | VII §36.8 · §49.5 |
+| T-BKP-10 | `backup-now` affiche le `snapshot_id` du backup réalisé | I | IX §56.4 · décision 19 |
+| T-BKP-11 | Verrou de backup `/data/backup/.lock` : `backup-now` ou `restore-test` lancé pendant un job en cours → code `1` et message explicite ; job planifié qui trouve le verrou pris → abstention journalisée, sans `backup_failed` | I | IX §56.4.1 |
+| T-BKP-12 | `deploy.sh` refuse un rollback à travers une migration (migration du sha déployé absente du sha visé) et liste les migrations avec leur réversibilité | I | §49.5 · IX §56.6-P2 |
 
 #### T-SEC — Secrets, auth, Caddy, réseau, conteneurs *(VI §32 · VII §36–§37, §42.4, §43)*
 
@@ -828,6 +833,7 @@ Une fonctionnalité est terminée quand **tous** les points suivants sont vrais 
 
 Un sprint est terminé quand :
 
+- son plan, dans `docs/sprints/sprint-NN.md`, a été validé avant l'implémentation, et son bilan y est rédigé (écarts à la spec, dette tracée, identifiants couverts) ;
 - toutes ses fonctionnalités satisfont §51.1 ;
 - ses critères d'acceptation (§47.2) sont verts, e2e compris sur `main` ;
 - la démonstration du sprint passe sur un Compose local neuf (`docker compose down -v` puis `up -d`) ;
@@ -928,7 +934,7 @@ Toute divergence entre le code et la spec se résout **avant** la fin du sprint 
 
 ---
 
-## Points d'interprétation — tranchés ou à confirmer
+## Points d'interprétation
 
 **Tranchés dans cette partie** (l'implémenteur n'a pas à choisir) :
 - arborescence de premier niveau et fichiers nommés ;
@@ -951,7 +957,7 @@ Toute divergence entre le code et la spec se résout **avant** la fin du sprint 
 - organisation interne des modules de `app/` ;
 - forme de `docs/go-live.md` tant qu'il couvre le §52.
 
-**À confirmer à la relecture — décisions prises par défaut ou (proposé) qui ont un poids réel** :
+**Décisions à poids réel, prises par défaut puis validées avec la partie** (Partie IX décision 12) :
 1. Pré-production d'au moins 14 jours avant la décision (décision 18).
 2. Instance de pré-production = instance de production, base conservée à la bascule (décision 19).
 3. Gateway LLM non requis pour la mise en production (décision 21).
@@ -972,54 +978,3 @@ Toute divergence entre le code et la spec se résout **avant** la fin du sprint 
 - **Seuil de couverture bloquant**, si la traçabilité du catalogue s'avère insuffisante.
 - **Reconstruction et redéploiement automatiques** des images sur correctif de sécurité.
 - **Enregistrement automatisé et périodique** des fixtures LLM contre le gateway retenu.
-
----
-
-## Impacts à répercuter dans les autres parties
-
-À traiter lors de la revue des parties concernées — **hors Partie VIII**.
-
-### Partie IX — Gouvernance & démarrage
-
-- **§55 Documentation** : ajouter `docs/spec/` (une partie par fichier), `docs/trends.md` (V-B §29.7), `docs/measurements.md` (VII), `docs/testing.md` (doubles, blocage réseau, horloge, marqueurs, lancement local des e2e) et `docs/go-live.md` (check-list §52).
-- **§56 Runbook** :
-  - déploiement par `scripts/deploy.sh` et son verrou CI ;
-  - rollback = `deploy.sh <sha précédent>`, restauration par `scripts/restore.sh` si une migration irréversible est passée ;
-  - restauration pas à pas (VII §38.5) par le script ;
-  - mise en pause du monitoring externe pendant une opération longue ;
-  - tests de charge dans le projet `radar-load`, jamais sur le volume `radar` ;
-  - usage de `scripts/record-llm-fixtures.py` ;
-  - traitement d'un échec d'audit (mise à jour ou exception datée) ;
-  - inventaire CLI (VII §36.8), rotation des secrets, nettoyage des images (déjà fléchés par VII).
-- **§57 Première mission** : elle devient le **Sprint 0** (§47.2) ; « Lire `SPEC.md` » devient « lire `SPEC.md` (index) et `docs/spec/` » ; la mission propose aussi le squelette CI, l'abstraction `Clock` et `check-test-catalog.py` ; puis le Sprint 1 tel que défini au §47.2 (Caddy et supervision du worker compris).
-- **§54 ADR** : ajouter horloge injectable et temps jamais lu en SQL · déploiement manuel verrouillé par la CI · pas de seuil de couverture, traçabilité du catalogue · spec dans le dépôt, identifiants extraits de la spec.
-- **`SPEC.md`** : devient l'index (sommaire, décisions verrouillées, renvois vers `docs/spec/`).
-
-### Partie VII — Ops
-
-- **§36.7 `.env.example`** : `APP_ENV` accepte la valeur `test` (surcharge e2e uniquement) ; nouvelle variable `HTTP_TEST_ALLOW_HOSTS`, section « Réservé aux tests — refusée en production ».
-- **§36.9 Déploiement** : la séquence est exécutée par `scripts/deploy.sh`, précédée du contrôle CI ; `backup-now` via `docker compose exec worker` avec vérification du code de sortie.
-- **§36.5** : la racine en lecture seule est active dès le Sprint 1 ; « à valider au Sprint 11 » devient « confirmée au Sprint 11 pour restic » (§47.3).
-- **§38.5** : la procédure de restauration est outillée par `scripts/restore.sh`.
-- **§43.4 Secrets** : le jeton de lecture GitHub de `deploy.sh`, s'il existe, vit hors du `.env` applicatif et n'est jamais transmis aux conteneurs.
-- **§45.3–§45.4** : les profils synthétiques tournent dans le projet Compose `radar-load`, avec son propre volume ; mesures de référence en pré-production.
-
-### Partie IV — Pipeline d'ingestion
-
-- **§21.1 `HttpClient`** : accepte une liste d'hôtes autorisés **de test** (injection dans les tests, `HTTP_TEST_ALLOW_HOSTS` avec `APP_ENV=test`), qui coexiste avec la garde anti-SSRF sans l'affaiblir en production.
-- **§21.2, §21.6, §17.3** : backoff, limiteurs, jitter, cache `robots.txt` et scheduler lisent le temps par la `Clock`.
-
-### Partie III — Données
-
-- **§10.6** : aucune expression temporelle SQL (`CURRENT_TIMESTAMP`, `datetime('now')`) dans le code ni dans les requêtes ; les défauts de colonnes comme `AIJob.next_attempt_at` restent un filet, le code fournit toujours l'instant (décision 7).
-
-### Partie II — Architecture
-
-- **§9.5** : les scénarios renvoient aux identifiants `T-RES-01`, `T-RES-05`, `T-RES-06` ; le test de reboot est scindé en reboot simulé (CI) et reboot réel du VPS (pré-production, M10).
-
-### Partie I — Vision
-
-- **§4.3 « Résilient »** : renvoyer au tableau §50.6 de la Partie VIII.
-
----
-

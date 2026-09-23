@@ -1,10 +1,8 @@
 # Partie V-A — Intelligence : machinerie & tâches LLM
 
-2026-09-22
-
 > **Partie V-A — Machinerie & tâches LLM.** Version durcie issue de la revue §23–§27.
-> Remplace les §23 à §27 de SPEC.md V0.3. Prend les Parties I, II, III et IV durcies comme acquis.
-> Les §28–§30 (clustering, trend engine, sujets émergents) relèvent de la **Partie V-B** : ils ne sont pas traités ici, seuls leurs impacts sont tracés en fin de document.
+> Dernière révision : 2026-09-22. Prend les Parties I, II, III et IV durcies comme acquis.
+> Les §28–§30 (clustering, trend engine, sujets émergents) relèvent de la **Partie V-B** : ils ne sont pas traités ici.
 
 > **Déjà tranché ailleurs, non repris ici** : claim atomique, deux producteurs de jobs (l'app insère, le worker exécute), contrat d'interface = schéma SQLite, modèle d'exécution asyncio avec le travail CPU hors event-loop, heartbeat, coalescence des misfires, purge (Partie II §8) ; résilience LLM, repli déterministe, JSON malformé → `dead_letter` (Partie II §9) ; table `AIJob`, index unique partiel sur les jobs actifs, idempotence par remplacement des résultats (Partie III §11.10). Cette partie ne durcit que ce qui est **propre aux tâches LLM**.
 
@@ -39,7 +37,6 @@
 
 ---
 
-
 ## 23. AI Job Queue
 
 La mécanique de la file (table, claim atomique, deux producteurs, idempotence par remplacement) est **acquise** : Partie II §8.3 et Partie III §11.10. Cette section fixe ce que la file doit **exposer** aux tâches LLM.
@@ -67,9 +64,9 @@ class JobSpec:
 
 | `job_type` | `entity_type` | Créé par | Quand | Priorité | Délai | TTL | App |
 |---|---|---|---|---|---|---|---|
-| `enrich_article` | `article` | worker | à l'insertion de chaque article `ready`, dans la transaction de la page (Partie IV §14.3) | 60 si source `relevance: always`, sinon 50 | 15 min | 72 h | oui (régénérer) |
-| `resolve_event` | `event` | worker (V-B) | l'Event atteint `distinct_source_count = 2`, puis `article_count` ∈ {4, 8, 16, …} | 50 | 10 min | 7 j | oui (régénérer) |
-| `discover_topics` | `emerging_candidate` | worker (V-B) | création d'un candidat émergent, ou évolution significative de ses preuves (définie en V-B) | 10 | 0 | 7 j | non |
+| `enrich_article` | `article` | worker | à l'insertion de chaque article `ready`, dans la transaction de la page (Partie IV §14.3) ; par le clustering, pour un nouveau représentant d'Event non enrichi (V-B §28.8) | 60 si source `relevance: always`, sinon 50 | 15 min | 72 h | oui (régénérer) |
+| `resolve_event` | `event` | worker (V-B) | l'Event atteint `distinct_source_count = 2`, puis `article_count` ∈ {4, 8, 16, …} ; déclenchement par le marqueur `Event.resolve_enqueued_count` (V-B §28.10) | 50 | 10 min | 7 j | oui (régénérer) |
+| `discover_topics` | `emerging_candidate` | worker (V-B) | à chaque évolution significative d'un candidat sans décision, sa création comprise (V-B §30.5) | 10 | 0 | 7 j | non |
 
 - Un job créé par l'app a la **priorité 100** et un **délai nul**.
 - Si un job actif existe déjà pour la même cible et le même type, la demande de l'app est ignorée, sans erreur (index unique partiel acquis). Le dashboard l'indique.
@@ -88,6 +85,7 @@ Après le claim, **avant tout appel LLM**, le worker évalue la garde du type. S
 | `event_single_source` | `resolve_event` | `distinct_source_count < 2` |
 | `candidate_decided` | `discover_topics` | le candidat a une `EmergingDecision` ou a déjà été converti en topic |
 
+- La garde `event_not_active` reste valable : un Event ne passe en `archived` qu'après 7 jours d'inactivité (V-B §28.11), durée au moins égale au TTL de `resolve_event`.
 - `skipped` est **terminal**. Pour la purge, il compte comme `completed` : il débloque `processed_at` (§24.5) et il est supprimé à 30 jours.
 - Une demande de régénération venue de l'app n'est **jamais** sautée pour `event_member` : l'utilisateur l'a demandée explicitement.
 
@@ -143,6 +141,7 @@ tant que le worker tourne :
     en cas d'exception typée → §26.1
 ```
 
+- **Tâche permanente supervisée** (Partie VII §36.6) : si la boucle AI meurt sur une exception non gérée, le worker s'arrête en erreur et Docker le relance.
 - **Aucun appel réseau dans une transaction d'écriture** : l'appel LLM est terminé et validé avant l'ouverture de la transaction (même règle que Partie IV §14.2).
 - Le passage à `completed` se fait **dans la transaction qui écrit le résultat**. Si le worker meurt entre les deux, le job reste `processing` : il est requalifié en `retry` au démarrage et rejoué, et le remplacement des résultats rend ce rejeu sans effet de bord (acquis).
 
@@ -172,7 +171,7 @@ L'état vit en mémoire du worker (processus unique). Il est recopié à chaque 
 
 ### 24.4 File dérivée des embeddings
 
-Pas d'`AIJob` (Partie IV, décision 21). Le composant est distinct de la boucle AI et **ne dépend pas du disjoncteur LLM** : c'est une couche cœur (Partie II §6.1-3). Seul le **mécanisme de sélection** est fixé ici ; l'usage (similarité, clustering) relève de V-B.
+Pas d'`AIJob` (Partie IV, décision 21). Le composant est distinct de la boucle AI et **ne dépend pas du disjoncteur LLM** : c'est une couche cœur (Partie II §6.1-3). Comme la boucle AI, c'est une **tâche permanente supervisée** : sa mort arrête le worker (Partie VII §36.6). Seul le **mécanisme de sélection** est fixé ici ; l'usage (similarité, clustering) relève de V-B.
 
 **Sélection** :
 
@@ -222,9 +221,11 @@ Ce traitement est **déterministe** et hors `AIJob` (décision 18). Il est décl
 
 1. Le worker crée le `Topic` avec `origin = user`. Son slug est dérivé de `llm_label`, ou à défaut de `label`. Ses mots-clés sont `suggested_keywords` ∪ {`key`}.
 2. Il renseigne `EmergingCandidate.topic_id`.
-3. Il re-score, **pour ce seul topic**, les articles `ready` des `topic_backfill.window` derniers jours (30 j) sur **titre + résumé** (contenu purgé). Il écrit des `ArticleTopic` `method=keyword`, par lots bornés.
+3. Il re-score, **pour ce seul topic**, les articles `ready` des `topic_backfill.window` derniers jours (30 j) sur **titre + URL**, plus le **résumé seulement si `summary_origin = fallback`** (contenu purgé ; V-B §30.8) : une liaison keyword ne dépend jamais d'un texte produit par le LLM. Il écrit des `ArticleTopic` `method=keyword`, par lots bornés.
 
 Ce n'est pas le re-scoring rétroactif reporté par la Partie IV : ce dernier porte sur la modification des mots-clés de topics existants. La logique détaillée du cycle de vie des candidats relève de V-B.
+
+**Taxonomie** : `origin = discovered` n'est produit par **aucun** mécanisme en V1 ; un topic n'est créé que sur action de l'utilisateur (`origin = user`).
 
 ## 25. LLM Gateway & LLMClient
 
@@ -273,7 +274,7 @@ class LLMClient:
 ```
 
 - **`generate`** fait un `POST {LLM_BASE_URL}/chat/completions` avec `model = LLM_MODEL`, les deux messages, `max_tokens` et `temperature`, plus `response_format={"type":"json_object"}` uniquement si `llm.json_mode = true`.
-- **`health`** fait un `GET {LLM_BASE_URL}/models`, avec un timeout de 5 s. Il ne consomme pas de quota de génération.
+- **`health`** fait un `GET {LLM_BASE_URL}/models`, avec un timeout de 5 s. Il ne consomme pas de quota de génération. Cette implémentation est **conditionnée par la mesure M6** (Partie VII §45.4) : si `GET /models` est absent ou peu fiable sur le gateway retenu, `health()` est adapté par ADR (Partie IX §54.3).
 - **Client HTTP dédié** (httpx asynchrone), distinct du `HttpClient` des collectors : pas de limiteur par hôte ni de User-Agent de collecte.
 - **Aucun retry interne.** Un appel = une requête. La résilience vit au niveau du job et du disjoncteur ; aucun appel n'est multiplié en silence.
 - **Timeouts** : connexion 5 s, lecture 60 s (configurables).
@@ -543,66 +544,3 @@ Les priorités par type sont des constantes du registre (§23.1), pas des régla
 - **Réparation d'une sortie malformée** par un second appel correctif.
 - **Priorité dynamique** (relever la priorité d'un job quand son Event devient chaud).
 - **Nettoyage des entités `origin=llm` orphelines** et fusion d'entités de types différents.
-
----
-
-## Impacts à répercuter dans les autres parties
-
-À traiter lors de la revue des parties concernées — **hors Partie V-A**.
-
-### Partie V-B — Clustering, trends, émergents
-
-- **Clustering** : le critère « ≥ N entités communes » ne compte que les liaisons **`method=keyword`**. Sinon, l'existence d'un Event dépendrait du LLM (Partie II §6.1-4).
-- **Signal** : les catégories (`established` · `trending` · `emerging` · `declining`) se calculent sur les **topics `keyword`** uniquement. Si les topics `llm` étaient comptés, une panne du gateway ferait baisser les mentions et fabriquerait un faux `declining`. Les topics `llm` servent à l'affichage et au filtrage.
-- **Cadence du clustering** : elle doit être **inférieure à `llm.delay.enrich_article`** (15 min), sinon la garde `event_member` voit des articles pas encore regroupés.
-- **Création des `resolve_event`** : dans la transaction de rattachement, quand `distinct_source_count` atteint 2, puis quand `article_count` atteint 4, 8, 16… Sur une fusion d'Events, le job vise l'Event cible.
-- **Membres non enrichis** : les membres non représentatifs n'ont que des topics keyword. Les tendances doivent le tolérer, ce qui est cohérent avec la règle keyword-only ci-dessus.
-- **Moteur d'émergence** : il crée les `discover_topics`, définit l'« évolution significative » des preuves et choisit les articles fournis au job. `covered_by` n'intervient pas dans le critère déterministe « pas déjà couvert ».
-- **Cycle de vie « Create topic »** : à détailler en V-B, en cohérence avec §24.6.
-- **Points déjà signalés et toujours ouverts** : formule de `Event.importance` (qui peut utiliser `Article.metrics`) · agrégation des topics enfants dans les tendances · `webpage` et `rss`, même canal ou non, pour `distinct_channel_count` · fréquence de calcul des `Signal`.
-
-### Partie II — Architecture
-
-- **§8.3** : ajouter l'exception d'écriture de l'app sur `AIJob` (`dead_letter → pending | cancelled`, §23.6).
-- **§9.1** : renvoyer au §26 pour la distinction des familles d'échec et le disjoncteur ; ajouter la ligne « gateway non configuré ».
-- **§7.1** : « Enqueue » devient « 1 `enrich_article` par article `ready` ; embeddings par file dérivée ».
-- **§8.5** : ajouter la passe `processed_at` (§24.5) et le statut `skipped` parmi les statuts terminaux qui ne bloquent pas la purge.
-
-### Partie III — Données
-
-- **`AIJob.job_type`** : la liste V1 devient `enrich_article · resolve_event · discover_topics`.
-- **`AIJob.status`** : ajouter `skipped` au `CHECK`. Nouvelle colonne `skip_reason` (texte, nullable, validé par le code).
-- **Rétention** : `AIJob` `skipped` supprimé à 30 jours.
-- **`AIJob.entity_type`** : valeurs `article · event · emerging_candidate`, validées par le code.
-- **`Embedding`** : `vector` et `dim` deviennent nullables ; nouvelle colonne `error`. Une ligne sans vecteur est exclue de la similarité.
-- **`EmergingCandidate`** : nouvelles colonnes `llm_label` · `llm_description` · `covered_by_topic_id` (FK `Topic`, nullable) · `suggested_keywords` (JSON) · `assessed_at`.
-- **`SystemState`** : nouvelles clés `llm_gateway` · `llm_usage` · `embeddings`, toutes écrites par le worker.
-
-### Partie IV — Pipeline
-
-- **§14.3** : les jobs créés à l'insertion sont exactement **un `enrich_article` par article `ready`**, de priorité 60 (source `always`) ou 50, avec `next_attempt_at = now + 15 min`.
-- **§16.6** : ajouter les sections `llm.*`, `embeddings.*` et `topic_backfill.*` à `pipeline.yaml` (§27.8), validées comme le reste.
-
-### Partie VI — Interfaces
-
-- **Actions** : régénérer un aperçu (`enrich_article`) ou un titre d'Event (`resolve_event`) ; relancer ou abandonner un `dead_letter`. Quand un job actif existe déjà, le bouton indique « en cours ».
-- **Indicateur discret** repli / enrichi, basé sur `summary_origin` et `title_origin`.
-- **Sujets émergents** : afficher `llm_label` et `llm_description` quand ils existent, sinon `label`. `covered_by` est présenté comme une suggestion.
-- **Toute sortie LLM est échappée** au rendu.
-
-### Partie VII — Ops
-
-- **`/health`** : `llm_gateway` se lit dans `SystemState.llm_gateway` (état du disjoncteur, cause, depuis quand). Ajouter `embeddings` et la consommation du budget.
-- **Alertes** : disjoncteur ouvert depuis plus de X h (seuil à fixer) · `LLMConfigError` · moteur d'embeddings `down`.
-- **Métriques** : celles du §25.6, plus le backlog d'embeddings.
-- **`.env.example`** : `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, avec la mention « optionnels — sans eux, le produit tourne sans LLM ».
-- **Mesure du gateway** (checklist V0.3 §25) : y ajouter la vérification du comportement 429 / `Retry-After` et la disponibilité de `GET /models`.
-
-### Partie VIII — Livraison
-
-- **Tests** : les scénarios du §26.3 · chaque motif de `skip_reason` · validation tolérante (`TolerantList`, `SoftStr`) · canonicalisation des entités LLM par les alias · rejeu idempotent de chaque `job_type` · trigger FTS sur mise à jour du résumé · passe `processed_at` · article poison dans la file d'embeddings · budget quotidien et réserve de l'app.
-- **Faux gateway** OpenAI-compatible en fixture (réponses valides, malformées, 429, 5xx, lentes), utilisé en CI. Aucun test n'appelle un vrai provider.
-- **Fixtures de prompts** par `PROMPT_VERSION`, avec des sorties de référence.
-
----
-

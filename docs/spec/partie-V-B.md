@@ -1,17 +1,13 @@
 # Partie V-B — Intelligence : clustering, trends & sujets émergents
 
-2026-09-22
-
 > **Partie V-B — Clustering, trends & sujets émergents.** Version durcie issue de la revue §28–§30.
-> Remplace les §28 à §30 de SPEC.md V0.3. Prend les Parties I, II, III, IV et V-A durcies comme acquis.
+> Dernière révision : 2026-09-22. Prend les Parties I, II, III, IV et V-A durcies comme acquis.
 
 > **Déjà tranché ailleurs, non repris ici** : couche cœur déterministe sans LLM (Partie II §6) ; Event créé sans LLM avec titre de repli, `resolve_event` qui enrichit sans toucher à l'appartenance ni aux compteurs (Partie II §7.3, V-A §27.3) ; un calcul cosine, deux seuils (Partie II décision 4, restreinte ici) ; fenêtre glissante en mémoire, ligne `Embedding` à vecteur `NULL` exclue (Partie III §12.4, V-A §24.4) ; liaisons `method=keyword` produites par le relevance filter (Partie IV §20.4) ; catalogue et gardes des jobs LLM (V-A §23) ; rattachement déterministe de l'historique à un topic créé (V-A §24.6, précisé ici).
 
 ---
 
 ## Décisions tranchées dans cette revue (Partie V-B)
-
-Les points marqués **(proposé)** n'ont pas été discutés explicitement : ils découlent des décisions validées et sont à confirmer à la relecture.
 
 1. **`duplicate` rétroactif restreint à la même source.** Cosine ≥ seuil haut **et** même `source_id` **et** titres normalisés égaux. Entre sources différentes, deux textes quasi identiques vont dans le **même Event**, jamais en `duplicate` : un post HN ou Reddit dont le contenu est le billet extrait reste une source distincte. Restreint la décision 4 de la Partie II.
 2. **Même source ⇒ URL croisée uniquement.** Deux articles d'une même source ne sont candidats au même Event que par URL croisée, jamais par cosine ni par entités. Empêche les releases successives d'un dépôt de former un Event unique.
@@ -35,12 +31,11 @@ Les points marqués **(proposé)** n'ont pas été discutés explicitement : ils
 20. **Critère « multi-histoires »** : un terme doit apparaître dans au moins deux Events ou articles isolés distincts. Un lancement unique ne fait pas un topic.
 21. **Évolution significative** = doublement des mentions ou nouveau canal depuis la dernière référence, au plus une fois par 24 h. Elle pilote `discover_topics`, la réapparition des candidats ignorés et les alertes des candidats suivis.
 22. **Sémantique des décisions** : `follow` (suivi et alertes) · `ignore` (masqué, réapparaît sur évolution significative) · `mute` (jamais reproposé) · `create_topic`.
-23. **« Create topic » direct en V1**, à partir des suggestions, sans formulaire d'édition. **(proposé)**
-24. **Backfill d'un topic créé sur titre + résumé de repli uniquement** : un résumé `llm` n'est pas une entrée déterministe. Corrige V-A §24.6. **(proposé)**
-25. **La taxonomie du runner inclut les topics `user` de la base.** Sans cela, un topic créé n'aurait aucune liaison sur les nouveaux articles. **(proposé — impact Partie IV)**
+23. **« Create topic » direct en V1**, à partir des suggestions, sans formulaire d'édition.
+24. **Backfill d'un topic créé sur titre + résumé de repli uniquement** : un résumé `llm` n'est pas une entrée déterministe. Corrige V-A §24.6.
+25. **La taxonomie du runner inclut les topics `user` de la base.** Sans cela, un topic créé n'aurait aucune liaison sur les nouveaux articles (Partie IV §16.1).
 
 ---
-
 
 ## 28. Event clustering
 
@@ -213,7 +208,7 @@ importance = w_S·S + w_C·C + w_E·E + w_O·O               défauts 0,50 · 0,
 
 - **Limite assumée** : `Article.metrics` est un instantané pris à la collecte (Partie IV), donc faible pour un item capté tôt. D'où le poids réduit de E ; il n'a de portée réelle que pour les sources HN `front_page`.
 - La **récence** n'entre pas dans l'importance : elle relève du tri à l'affichage. Aucun recalcul périodique n'est nécessaire.
-- **Article hors Event** **(proposé)** : la même formule, appliquée à l'article seul (S = C = 0), est écrite dans `Article.importance` à chaque évaluation. Un article qui rejoint un Event garde sa valeur, mais c'est celle de l'Event qui s'affiche. Permet le filtre « Importance » du fil en SQL.
+- **Article hors Event** : la même formule, appliquée à l'article seul (S = C = 0), est écrite dans `Article.importance` à chaque évaluation. Un article qui rejoint un Event garde sa valeur, mais c'est celle de l'Event qui s'affiche. Permet le filtre « Importance » du fil en SQL.
 - **`Event.novelty` est supprimé** : c'était une fonction du temps, calculable à la lecture depuis `first_seen_at`.
 
 **Invariant** (acquis, étendu) : `article_count`, `distinct_source_count` et `distinct_channel_count` égalent leur recalcul depuis les membres `ready`. Testé, et contrôlable par la commande `python -m app.cli recount-events`, qui corrige et journalise tout écart.
@@ -268,7 +263,7 @@ Les seuils sont des **points de départ** (Partie II). Commande `python -m app.c
 - échantillon de paires par tranche (titres, sources), à relire à la main ;
 - fréquence documentaire des entités keyword de la fenêtre, pour ajuster `entity_max_df_*`.
 
-La calibration est **obligatoire avant la mise en production** (impact Partie VIII).
+La calibration est **obligatoire avant la mise en production** (Partie VIII §52, critère F2).
 
 ### 28.15 Réglages `clustering.*` dans `pipeline.yaml`
 
@@ -325,7 +320,7 @@ L'axe temporel est `published_at` : l'ajout d'une source ou un premier run ne cr
 
 ### 29.3 Couverture et cold start
 
-- **`SystemState.trends_since`** : horodatage de la première insertion d'un article `ready`, écrit une fois par le runner (impact Partie IV).
+- **`SystemState.trends_since`** : horodatage de la première insertion d'un article `ready`, écrit une fois par le runner (Partie IV §14.3).
 - **`coverage_since(t)`** :
   - topic `seeded` : `trends_since` ;
   - topic `user` issu d'un « Create topic » : `max(trends_since, Topic.created_at − topic_backfill.window)` ;
@@ -495,7 +490,7 @@ et now − last_significant_at ≥ emerging.significant_min_interval   (24 h)
 | Situation du candidat | Effet |
 |---|---|
 | aucune décision | création d'un `discover_topics` |
-| `follow` | alerte `emerging_topic` (impact Partie VI) |
+| `follow` | alerte `emerging_topic`, émise seulement si `last_significant_at > decided_at` : l'évolution significative de la création, antérieure au suivi, n'alerte pas (Partie VI §33.3) |
 | `ignore` | `resurfaced_at = now` : le candidat réapparaît (§30.7) |
 | `mute` · converti | aucun (non évalué) |
 
@@ -539,7 +534,7 @@ runner   taxonomie rechargée : les nouveaux articles sont liés au topic
 trends   heure suivante : Signal du topic, coverage_since = created_at − 30 j
 ```
 
-1. **Décision** : directe, à partir des valeurs connues ; pas de formulaire d'édition en V1 **(proposé)**. Disponible que `discover_topics` ait abouti ou non.
+1. **Décision** : directe, à partir des valeurs connues ; pas de formulaire d'édition en V1. Disponible que `discover_topics` ait abouti ou non.
 2. **T1 — création du topic**, une transaction :
    - `origin = user` · `parent_id = NULL` · `enabled = true` ;
    - `name` = `llm_label` s'il existe, sinon `label` ; `description` = `llm_description` ou `NULL` ;
@@ -547,10 +542,10 @@ trends   heure suivante : Signal du topic, coverage_since = created_at − 30 j
    - `keywords` = `suggested_keywords` ∪ {terme de base}, où le terme de base est `key` pour `ngram` et `canonical_name` (`owner/repo`) pour `repository`. Sans LLM, seul le terme de base ;
    - `EmergingCandidate.topic_id` renseigné.
 3. **T2 — backfill** : pour ce seul topic, re-score des articles `ready` de `published_at ≥ now − topic_backfill.window` (30 j) avec la fonction du relevance filter (Partie IV §20.3). Liaisons `ArticleTopic` `method=keyword` si `score_t ≥ threshold`.
-   - **Texte d'entrée** : `title`, URL, et `summary` **uniquement si** `summary_origin = fallback` ; sinon titre et URL seuls **(proposé — corrige V-A §24.6)**. Une liaison keyword ne doit pas dépendre d'un texte produit par le LLM.
+   - **Texte d'entrée** : `title`, URL, et `summary` **uniquement si** `summary_origin = fallback` ; sinon titre et URL seuls (corrige V-A §24.6). Une liaison keyword ne doit pas dépendre d'un texte produit par le LLM.
    - Par lots bornés, `INSERT … ON CONFLICT DO NOTHING` : un backfill interrompu est rejoué intégralement, sans effet de bord.
    - `backfilled_at = now` en fin de backfill. Un candidat avec `topic_id` renseigné et `backfilled_at` `NULL` est repris au tick suivant.
-4. **Nouveaux articles** : le runner charge les topics activés d'origine `user` depuis la base, en plus de `topics.yaml`, et recharge sa taxonomie quand un topic est créé **(proposé — impact Partie IV)**.
+4. **Nouveaux articles** : le runner charge les topics activés d'origine `user` depuis la base, en plus de `topics.yaml`, et recharge sa taxonomie quand un topic est créé (Partie IV §16.1).
 5. **Tendances** : le topic a un Signal dès l'heure suivante. `growth_rate` est défini pour `24h` et `7d`, `NULL` pour `30d` tant que la couverture est inférieure à 60 jours (§29.3).
 6. **Suivi** : le topic créé n'est pas suivi automatiquement ; le suivi reste une préférence (`UserPreference`).
 
@@ -585,73 +580,3 @@ trends   heure suivante : Signal du topic, coverage_since = created_at − 30 j
 - **Formulaire de création de topic** (libellé, mots-clés, parent modifiables).
 - **Création automatique de topics** (`origin = discovered`).
 - **Re-scoring rétroactif** complet après modification des mots-clés (déjà reporté par la Partie IV).
-
----
-
-## Impacts à répercuter dans les autres parties
-
-À traiter lors de la revue des parties concernées — **hors Partie V-B**.
-
-### Partie II — Architecture
-
-- **Décision 4** : `duplicate` rétroactif restreint à la **même source** et aux titres normalisés égaux (§28.7). Entre sources différentes, un cosine ≥ seuil haut ne produit qu'un candidat « même Event ».
-- **§7.2** : le schéma « seuil haut → duplicate » devient « seuil haut + même source → duplicate » ; ajouter les deux voies de déclenchement du clustering (§28.2).
-- **§8.4** : le scheduler porte un job « analytique » horaire (trends → émergence → archivage) et deux ticks de 60 s (clustering, create topic).
-- **§8.3** : `EmergingDecision` devient modifiable par upsert côté app (§30.7) ; `EmergingCandidate.resurfaced_at` est écrit par le worker.
-
-### Partie III — Données
-
-- **`Article`** : nouvelles colonnes `clustered_at` (nullable) · `clustered_semantic` (booléen, défaut `false`) · `importance` (réel, nullable) ; index partiel sur `clustered_at IS NULL WHERE status = 'ready'`.
-- **`Event`** : suppression de `novelty` ; nouvelle colonne `resolve_enqueued_count` (entier, nullable) ; `importance` non nulle (défaut 0) ; `article_count` défini sur les membres `ready`.
-- **`Signal`** : `category` nullable, `CHECK {established, trending, rising, declining}` (`emerging` → `rising`) ; contrainte `UNIQUE(topic_id, period, window_end)` ; rétention : ligne de 00:00 UTC conservée après 30 jours.
-- **`EmergingCandidate`** : nouvelles colonnes `kind` `CHECK {ngram, repository}` · `ref_mentions` · `ref_channel_count` · `last_significant_at` · `resurfaced_at` · `backfilled_at` ; schéma Pydantic de `evidence` (§30.4).
-- **`EmergingDecision`** : upsert autorisé ; `create_topic` définitif.
-- **`SystemState`** : nouvelles clés `trends_since` (écrite une fois par le runner) et `trends_last_run`.
-
-### Partie IV — Pipeline
-
-- **Taxonomie du runner** : inclure les topics activés d'origine `user` de la base, en plus de `topics.yaml` ; rechargement à la création d'un topic.
-- **`SystemState.trends_since`** : posé par le runner à la première insertion d'un article `ready`.
-- **Registre des collectors** : chaque type déclare son **canal** (`rss` et `webpage` → `web`).
-- **`validate-config`** : contrôler `clustering.embedding_wait + clustering.tick < llm.delay.enrich_article`, et valider les sections `clustering.*`, `importance.*`, `trends.*`, `emerging.*` de `pipeline.yaml`.
-
-### Partie V-A — Machinerie & tâches LLM
-
-- **§24.6** : le backfill re-score sur titre + URL + résumé **seulement si** `summary_origin = fallback` (§30.8), pour que la liaison keyword reste déterministe.
-- **§23.2** : `enrich_article` peut aussi être créé par le clustering, pour un nouveau représentant non enrichi (§28.8). `resolve_event` : règle de déclenchement par marqueur (§28.10). `discover_topics` : créé à chaque évolution significative d'un candidat sans décision (§30.5).
-- **§23.3** : la garde `event_not_active` reste valable ; `archived` n'intervient qu'après 7 jours d'inactivité (§28.11).
-- **Taxonomie** : `origin = discovered` n'est produit par aucun mécanisme en V1.
-
-### Partie VI — Interfaces
-
-- **Overview « Emerging »** : affiche les **candidats** du §30 (règles §30.7). Les topics en catégorie `rising` apparaissent dans « Trending », avec un badge distinct.
-- **Décisions** : sémantique `follow` · `ignore` · `mute` · `create_topic` (§30.7) ; affichage d'un candidat réapparu ; `create_topic` sans formulaire en V1.
-- **Importance** : affichée sur 0–100 ; le réglage « seuil d'importance » (`Setting`) s'exprime sur la même échelle. Le filtre du fil utilise `Event.importance`, ou `Article.importance` hors Event.
-- **Events fusionnés** : un lien vers un Event `merged` redirige vers sa cible ; l'état de lecture de la cible est conservé (celui de la source n'est pas transféré).
-- **Alertes** : `important_event` dédupliquée par Event **cible** (une fusion ne réémet pas d'alerte pour un Event déjà alerté sous l'un de ses composants) ; `emerging_topic` avec `dedup_key` = `emerging:{candidate_id}:{last_significant_at}`.
-- **Tendances** : `NULL` affiché « données insuffisantes », jamais 0.
-
-### Partie VII — Ops
-
-- **Métriques** : latence de clustering (insertion → `clustered_at`) · articles évalués sans vecteur · secondes passes · fusions · doublons sémantiques · Events actifs · durée du job analytique · candidats actifs · warm-up de l'émergence en cours.
-- **Commandes CLI** : `cluster-calibrate` (§28.14) et `recount-events` (§28.9), documentées dans le runbook.
-- **Mesure avant production** : durée du job analytique au volume nominal.
-
-### Partie VIII — Livraison
-
-- **Calibration** des seuils de clustering sur données réelles (`cluster-calibrate`) : critère de mise en production.
-- **Tests** :
-  - post HN dont le contenu extrait égale le billet : même Event, deux sources, aucun `duplicate` ;
-  - releases successives d'un même dépôt : jamais regroupées, jamais en doublon ;
-  - entité omniprésente : ne relie rien ; URL hub ignorée ;
-  - premier run de 100 items anciens : aucun regroupement hors proximité `published_at` ;
-  - moteur d'embeddings `down` : clustering U + E, puis seconde passe au retour ;
-  - fusion de deux Events : compteurs recalculés, un seul `resolve_event` sur la cible, jobs des sources sautés ;
-  - changement de représentant : titre de repli suivi, `enrich_article` créé ;
-  - invariant des compteurs après chaque opération ; kill -9 pendant une évaluation ;
-  - Trend Engine : cold start (`NULL`), agrégation parent sans double compte, EMA après un trou de plusieurs heures, upsert idempotent, liaisons `llm` sans effet sur les mentions ;
-  - émergence : warm-up, chaque critère isolément, maximalité des n-grammes, terme contenant un mot-clé non couvert, sourdine, réapparition après `ignore` ;
-  - « Create topic » : slug en collision, backfill interrompu puis repris, liaisons sur les nouveaux articles, Signal à l'heure suivante.
-
----
-

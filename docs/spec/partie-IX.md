@@ -1,7 +1,7 @@
 # Partie IX — Gouvernance & démarrage
 
-> **Partie IX — Gouvernance & démarrage.** Version durcie issue de la revue §53–§57, 2026-09-22.
-> Remplace la Partie IX de SPEC.md V0.3. Prend les Parties I, II, III, IV, V-A, V-B, VI, VII et VIII durcies comme acquis.
+> **Partie IX — Gouvernance & démarrage.** Version durcie issue de la revue §53–§57.
+> Dernière révision : 2026-09-22. Prend les Parties I, II, III, IV, V-A, V-B, VI, VII et VIII durcies comme acquis.
 
 **Nature de cette partie : une consolidation.** Elle rassemble les décisions verrouillées accumulées au fil du durcissement, la liste des ADR, l'arbre de documentation, le runbook et la mission de cadrage. Elle réconcilie ce que les Parties I à VIII ont fléché vers elle ; seul ce qui manquait pour rendre la gouvernance et le démarrage exécutables est durci à neuf.
 
@@ -18,8 +18,6 @@
 
 ## Décisions tranchées dans cette revue (Partie IX)
 
-Les points marqués **(tranché par défaut)** n'avaient pas de réponse dans la revue : ils sont tranchés pour rendre la partie implémentable, à confirmer à la relecture.
-
 1. **§53 est la source unique des décisions verrouillées.** Aucune autre partie, ni `SPEC.md`, ni `CLAUDE.md` n'en recopie la liste : ils y renvoient.
 2. **Trois niveaux de décision** : *verrouillée* (§53, changement sur preuve + ADR) · *structurante* (ADR, sans exigence de preuve) · *ordinaire* (mise à jour de la spec, VIII §51.3).
 3. **Changer une décision verrouillée** exige, dans la même PR : une **preuve** au sens du §53.1, un **ADR qui remplace** le précédent, et la mise à jour de `docs/spec/`. « Une alternative plus *enterprise* » n'est jamais une preuve.
@@ -31,7 +29,7 @@ Les points marqués **(tranché par défaut)** n'avaient pas de réponse dans la
 9. **Format ADR fixé** : `docs/adr/NNNN-slug.md`, statut `Proposé` · `Accepté` · `Rejeté` · `Remplacé par NNNN`, champ **Preuve** obligatoire quand l'ADR remplace une décision verrouillée. Un ADR accepté n'est jamais réécrit.
 10. **La spec vit dans `docs/spec/`**, un fichier par partie : `partie-I.md` … `partie-IV.md`, `partie-V-A.md`, `partie-V-B.md`, `partie-VI.md` … `partie-IX.md`. **`SPEC.md` devient l'index** : sommaire, règles de lecture, lien vers §53, **sans copie** de la liste (précise VIII décision 22).
 11. **Report des impacts = première tâche du Sprint 0**, dans une PR dédiée relue avant toute autre tâche. Une fois reportées, les sections « Impacts à répercuter » et les marqueurs « (proposé) » / « à confirmer » disparaissent de `docs/spec/`.
-12. **Les points « (proposé) » et « à confirmer » des Parties I à VIII sont réputés validés**, les parties ayant été validées. **(tranché par défaut)**
+12. **Les points « (proposé) » et « à confirmer » des Parties I à VIII sont réputés validés**, les parties ayant été validées.
 13. **`CLAUDE.md` à la racine** : règles permanentes de Claude Code, courtes, qui renvoient à la spec sans la recopier.
 14. **Dossier `docs/sprints/`** : rapport de cadrage (`sprint-00-cadrage.md`) puis un fichier par sprint (`sprint-NN.md`) — plan validé avant implémentation, bilan à la fin.
 15. **Documentation créée au fil des sprints, finalisée au Sprint 11** (tableau §55.4). Le runbook et `testing.md` existent dès le Sprint 1.
@@ -39,14 +37,14 @@ Les points marqués **(tranché par défaut)** n'avaient pas de réponse dans la
 17. **Contrat commun des commandes `app.cli`** : codes de sortie, sortie sur stdout, logs sur stderr, mode d'exécution (`exec` ou `run --rm --no-deps`).
 18. **Rollback à travers une migration** : `deploy.sh` **détecte** qu'une migration serait à défaire et **refuse** ; le runbook décrit les deux chemins, *downgrade* si la migration est réversible, *restauration* du snapshot du déploiement sinon.
 19. **`backup-now` affiche le `snapshot_id`** et `deploy.sh` le journalise.
-20. **Verrou d'exclusion** entre backup et test de restauration planifiés et manuels (impact VII).
+20. **Verrou d'exclusion** entre backup et test de restauration planifiés et manuels (§56.4.1).
 21. **Nouvelle commande `app.cli vacuum`**, qui refuse de s'exécuter si le heartbeat du worker est frais.
 22. **Toute modification du `.env` s'applique par `docker compose up -d <service>`**, jamais par `restart`, qui ne relit pas l'environnement.
 23. **Le runbook contient la table « répondre à une alerte »**, une ligne par condition du VII §39.5 et par alerte du monitoring externe.
 24. **Sprint 0 = documents seulement.** Critère vérifiable : son diff ne touche que `docs/`, `SPEC.md` et `CLAUDE.md`.
 25. **Vérifications de dépendances complétées** : WAL sur volume nommé, `BEGIN IMMEDIATE` avec SQLAlchemy async + aiosqlite, révision et empreinte du modèle d'embeddings épinglées, architecture du VPS cible.
 26. **`/data` n'est jamais un bind mount**, en développement comme en production, quel que soit l'OS de développement : toujours un volume nommé.
-27. **Architecture du VPS cible** : donnée d'entrée du Sprint 0 ; `amd64` par défaut, vérifications rejouées avant le Sprint 11 si le choix final est `arm64`. **(tranché par défaut)**
+27. **Architecture du VPS cible** : donnée d'entrée du Sprint 0 ; `amd64` par défaut, vérifications rejouées avant le Sprint 11 si le choix final est `arm64`.
 28. **Enchaînement** : le Sprint 1 démarre sur validation explicite (PR du Sprint 0 fusionnées, ADR acceptés, plan du Sprint 1 validé). La même règle vaut pour chaque sprint suivant.
 
 ---
@@ -72,7 +70,6 @@ Les points marqués **(tranché par défaut)** n'avaient pas de réponse dans la
 | SPEC.md V0.3 | « Décisions prises dans cette V0.3 (à valider) » | supprimé de l'index : décision 5 remplacée (VI), les autres absorbées par les parties durcies |
 
 ---
-
 
 ## 53. Décisions verrouillées
 
@@ -621,7 +618,7 @@ La CI n'existe pas encore : elle est créée au Sprint 1. La protection de `main
 
 ---
 
-## Points d'interprétation — tranchés ou à confirmer
+## Points d'interprétation
 
 **Tranchés dans cette partie** (l'implémenteur n'a pas à choisir) :
 - niveaux de décision, définition de la preuve, circuit d'acceptation ;
@@ -638,11 +635,11 @@ La CI n'existe pas encore : elle est créée au Sprint 1. La protection de `main
 - forme du rapport de cadrage et des fichiers de sprint, tant qu'ils couvrent les sections imposées ;
 - organisation interne de chaque document de `docs/`.
 
-**À confirmer à la relecture** :
-1. Points « (proposé) » et « à confirmer » des Parties I à VIII réputés validés (décision 12).
+**Décisions à poids réel, prises par défaut puis validées avec la partie** :
+1. Points marqués « proposé » ou « à confirmer » des Parties I à VIII réputés validés (décision 12).
 2. Architecture `amd64` par défaut (décision 27).
 3. Codes de sortie `0` / `1` / `2` et séparation stdout / stderr des commandes CLI (§56.3).
-4. Détection du rollback à travers une migration par comparaison des fichiers de migration entre le sha déployé et le sha cible (impact VIII).
+4. Détection du rollback à travers une migration par comparaison des fichiers de migration entre le sha déployé et le sha cible (VIII §49.5).
 
 ---
 
@@ -654,45 +651,3 @@ La CI n'existe pas encore : elle est créée au Sprint 1. La protection de `main
 - **Rotation automatique des secrets.**
 - **Site de documentation généré** à partir de `docs/`.
 - **Déploiement continu** (déjà reporté par VII et VIII).
-
----
-
-## Impacts à répercuter dans les autres parties
-
-À traiter au Sprint 0, tâche T0.1 — **hors Partie IX**.
-
-### `SPEC.md`
-
-- Devient l'index du §55.2. Supprimer « Décisions prises dans cette V0.3 (à valider) ».
-
-### Partie VIII — Livraison
-
-- **§47.2 Sprint 0** : remplacer le contenu par un renvoi à IX §57, description canonique.
-- **§47.2 Sprint 11** : « Documentation d'exploitation » devient « finalisation » des documents d'exploitation (IX §55.4).
-- **§47.1 et §51.2** : plan de sprint validé avant implémentation, bilan en fin de sprint, dans `docs/sprints/sprint-NN.md`.
-- **Décision 22** : `SPEC.md` contient un lien vers le §53, pas la liste.
-- **§46.1 arborescence** : ajouter `CLAUDE.md`, `docs/sprints/`, `docs/adr/README.md` et `_template.md`, `docs/spec/partie-V-A.md` et `partie-V-B.md` ; ajouter `vacuum` au commentaire de `app/cli/`.
-- **§49.5 `deploy.sh`** :
-  - détecter une migration du sha déployé absente du sha cible (comparaison de `migrations/versions/` entre les deux sha) et refuser en listant les migrations et leur réversibilité, avec renvoi au runbook ;
-  - journaliser le `snapshot_id` renvoyé par `backup-now` dans `~/radar-deploy.log` ;
-  - la ligne « Rollback » renvoie à IX §56.6-P2.
-- **§50.5 catalogue** — tests à ajouter :
-  - `backup-now` affiche le `snapshot_id` ;
-  - verrou de backup : commande concurrente d'un job en cours → code `1` ; job planifié qui trouve le verrou → abstention sans `backup_failed` ;
-  - `vacuum` refusé avec un heartbeat frais et avec un espace libre insuffisant ;
-  - codes de sortie `2` sur usage ou configuration invalide ;
-  - `deploy.sh` refuse un rollback à travers une migration.
-
-### Partie VII — Ops
-
-- **§36.8** : ajouter `vacuum` ; `backup-now` affiche le `snapshot_id` ; colonne « Où » de `validate-config` : `run --rm --no-deps worker` ; renvoi au contrat commun IX §56.3.
-- **§36.9** : la ligne « Rollback » renvoie à IX §56.6-P2 (cas avec migration).
-- **§38.2 et §38.4** : verrou exclusif `/data/backup/.lock` partagé par les jobs `backup`, `restore_test` et les commandes `backup-now`, `restore-test` (IX §56.4.1).
-- **§38.5** : « le détail pas à pas va dans `docs/backup-restore.md` ; le runbook le résume ».
-- **§43.4** : « redémarrage du worker » devient `docker compose up -d worker` ; `docker compose up -d caddy` pour le mot de passe.
-- **§44.2** : `VACUUM` manuel par `app.cli vacuum`, fichiers temporaires de SQLite sur `/data`, jamais dans le tmpfs.
-
-### Partie III — Données
-
-- **§12.1** : disponibilité du modèle vérifiée **au Sprint 0** (IX §57.4) ; révision et empreinte du modèle épinglées au build ; choix consigné dans l'ADR-0008.
-- **§10.4** : `/data` est toujours un volume nommé, jamais un bind mount, en développement comme en production.
