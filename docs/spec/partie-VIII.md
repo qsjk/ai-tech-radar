@@ -468,6 +468,7 @@ Fixtures et doubles : `tests/fixtures/` (réponses HTTP par type, configurations
   - tout marqueur renvoie à un identifiant existant ;
   - aucun identifiant de niveau M n'est marqué dans le code.
 - Les identifiants de niveau M sont reportés dans `docs/go-live.md`.
+- Un identifiant dont l'objet n'existe qu'en partie au sprint indiqué par §47.2 est couvert par volets : le sprint indiqué couvre le volet existant ; chaque volet restant est déclaré dans le plan du sprint qui livre son objet ; au Sprint 11, tous les identifiants sont complets (§52 A2).
 - Ajouter une ligne au catalogue est un changement de spec, et le test l'accompagne dans le même commit.
 
 ### 50.4 Doubles de test et jeux de données
