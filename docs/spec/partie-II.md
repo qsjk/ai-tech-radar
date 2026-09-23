@@ -127,7 +127,7 @@ Après l'`INSERT`, l'architecture n'est plus un tuyau : c'est un **hub**. Des pr
 |---|---|---|
 | **Embeddings** | cœur | calcul local CPU, asynchrone, sur les seuls articles `ready` |
 | **Similarité (cosine)** | cœur | **un seul calcul, deux seuils** : haut **et même source** (titres normalisés égaux) → `duplicate` rétroactif ; médian, ou haut entre sources différentes → candidat même `Event` (Partie V-B §28.7) |
-| **Event clustering** | cœur | crée l'`Event` **sans LLM**, titre de repli = titre de l'article le plus ancien du groupe. Deux voies de déclenchement : après chaque lot d'embeddings, et par un tick pour les articles restés sans embedding (Partie V-B §28.2) |
+| **Event clustering** | cœur | crée l'`Event` **sans LLM**, titre de repli = titre du représentant, le membre `ready` le plus ancien par `published_at` (Partie V-B §28.8). Deux voies de déclenchement : après chaque lot d'embeddings, et par un tick pour les articles restés sans embedding (Partie V-B §28.2) |
 | **Hotness** | cœur | `distinct_source_count` matérialisé sur l'`Event`, recalculé depuis les membres à chaque rattachement, jamais incrémenté (Partie V-B §28.9) |
 | **Trend Engine** | cœur | produit les `Signal` par topic et par fenêtre |
 | **Purge** | cœur | efface `Article.content` après traitement + délai de grâce (§8.5) |
@@ -218,7 +218,7 @@ Le raccourci « le worker écrit, l'app lit » est **faux** : les deux processus
 **Deux conséquences à ne pas manquer** :
 
 - **La coordination est bidirectionnelle.** Le worker lit ce que l'app écrit : il doit respecter les `mute` avant d'émettre une alerte, et traiter un « Create topic » validé depuis le dashboard.
-- **L'`AIJob` a deux producteurs.** L'app insère des jobs de **types prédéfinis** (liste fermée de `job_type`, §11.10) en réponse à une action utilisateur — régénérer un résumé, rattacher l'historique à un topic créé, relancer un `dead_letter`. Le claim atomique (§23) garantit qu'un job n'est exécuté qu'une fois, quel que soit son producteur. Un `job_type` inconnu est rejeté en `failed` sans faire tomber le worker.
+- **L'`AIJob` a deux producteurs.** L'app insère des jobs de **types prédéfinis** (liste fermée de `job_type`, §11.10) en réponse à une action utilisateur : elle ne crée que des jobs de **régénération** (`enrich_article`, `resolve_event`, Partie V-A §23.2). Relancer ou abandonner un `dead_letter` est une transition, pas une création (exception ci-dessus). Le rattachement de l'historique à un topic créé est un traitement **déterministe du worker, sans `AIJob`** (Partie V-A §24.6, V-B §30.8). Le claim atomique (§23) garantit qu'un job n'est exécuté qu'une fois, quel que soit son producteur. Un `job_type` inconnu est rejeté en `failed` sans faire tomber le worker.
 
 > **Règle absolue** : **l'app insère des jobs, elle n'en exécute jamais aucun.** Elle répond immédiatement ; l'écran se met à jour quand le worker a terminé. Une requête HTTP qui attendrait un résultat LLM violerait le §6.
 

@@ -184,7 +184,7 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - `https://localhost/health` répond `{"status":"ok"}` sans identifiants, et `/api/health` demande une authentification ;
 - WAL actif ; `app` et `worker` refusent de démarrer sur un schéma qui n'est pas à `head` ;
 - CI verte, e2e compris.
-- **Tests** : T-DB-01 à 08 · T-CFG-01, 02, 05, 07, 10 · T-OPS-01 à 03, 07 à 11 · T-SEC-01 à 03, 05, 06, 08 et 09 (sans restic) · T-RES-10.
+- **Tests** : T-DB-01 à 08 · T-DB-13 (PRAGMA de `migrate` et `foreign_key_check` ; complété au Sprint 3) · T-CFG-01, 02, 05, 07, 10 · T-OPS-01 à 03, 07 à 11 · T-SEC-01 à 03, 05, 06, 08 et 09 (sans restic) · T-RES-10.
 
 #### Sprint 2 — Collecte & pipeline déterministe
 
@@ -211,7 +211,7 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - la recherche accepte toute saisie, y compris la syntaxe FTS5 ;
 - aucun `offset` dans l'API ;
 - le build frontend ne contient aucun script en ligne.
-- **Tests** : T-DB-11 · T-API-05 à 07 · T-FE-01 à 05, 07.
+- **Tests** : T-DB-11 · T-API-05 à 07 · T-FE-01 à 05, 07 · complément : T-DB-13 (reconstruction d'`article` et triggers d'`article_fts`).
 
 #### Sprint 4 — Embeddings & clustering
 
@@ -428,7 +428,7 @@ Chaque étape bloque les suivantes. Les travaux d'une même étape peuvent tourn
 ### 50.1 Principes
 
 - **Horloge** : `app/core/clock.py` expose une `Clock` (`now()` UTC avec fuseau, `sleep()`, `monotonic()`). La production utilise `SystemClock` ; les tests, une horloge manuelle qu'ils avancent. APScheduler est piloté par des déclencheurs appelables directement dans les tests : on teste la fonction du tick, pas le passage réel du temps.
-- **Temps en base** : aucune expression temporelle SQL (`CURRENT_TIMESTAMP`, `datetime('now')`) dans le code ni dans les requêtes. Les valeurs par défaut de colonnes restent un filet de sécurité ; le code fournit toujours l'instant explicitement.
+- **Temps en base** : aucune expression temporelle SQL (`CURRENT_TIMESTAMP`, `datetime('now')`) dans le code ni dans les requêtes, ni en valeur par défaut de colonne : l'instant est toujours fourni par la `Clock` (Partie III §10.6).
 - **Réseau** : un bloqueur de sockets actif pour toute la session pytest (type `pytest-socket`), qui n'autorise que `127.0.0.1` / `::1` et les sockets Unix. Un test qui tente une connexion externe échoue. En e2e, les conteneurs n'atteignent que les doubles : la surcharge de test déclare `APP_ENV=test` et `HTTP_TEST_ALLOW_HOSTS` (décision 23).
 - **Anti-SSRF en test** : l'accès des tests d'intégration aux doubles locaux passe par la liste de test injectée au `HttpClient`, jamais par un contournement de la garde. T-HTTP-08 vérifie que la garde refuse `127.0.0.1` en l'absence de cette liste.
 - **SQLite réel** : les tests d'intégration utilisent un fichier SQLite temporaire en WAL (jamais `:memory:`, qui masque le WAL et la concurrence), migré par Alembic à `head`.
@@ -483,7 +483,7 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 |---|---|---|---|
 | T-DB-01 | SQLite < 3.35, FTS5 absent ou JSON1 absent → `app` et `worker` refusent de démarrer avec un message explicite | U | III §10.1 |
 | T-DB-02 | Révision en base ≠ `head` → `app` et `worker` refusent de démarrer | I | III §10.1 · VII §36.3 |
-| T-DB-03 | Chaque nouvelle connexion applique `journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout`, `foreign_keys=ON`, `journal_size_limit` | I | III §10.2 · VII → III |
+| T-DB-03 | Chaque nouvelle connexion de `app` et `worker` applique `journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout`, `foreign_keys=ON`, `journal_size_limit` (la connexion de `migrate` est à `foreign_keys=OFF` : T-DB-13) | I | III §10.2 · VII → III |
 | T-DB-04 | Deux processus écrivent en concurrence en `BEGIN IMMEDIATE` : aucun échec immédiat « database is locked », attente dans `busy_timeout` | I | III §10.3 · V0.3 §50 |
 | T-DB-05 | Lecture de l'app pendant une écriture du worker : lecture non bloquée | I | V0.3 §50 |
 | T-DB-06 | `busy_timeout` épuisé → retry borné, échec compté dans la métrique `db_locked`, transaction annulée sans écriture partielle | I | II §8.6, §9.4 |
@@ -491,8 +491,9 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | T-DB-08 | Migrations : `upgrade head` depuis une base vide ; chaque migration a un `downgrade` testé ou se déclare irréversible dans son en-tête | I | III §10.5 · VII §36.9 |
 | T-DB-09 | Index unique partiel sur les jobs actifs : une seconde demande identique est ignorée sans erreur | I | III §11.10 |
 | T-DB-10 | `AlertLog.dedup_key` unique : une seconde insertion identique est refusée | I | III · VI §33.4 |
-| T-DB-11 | `article_fts` : triggers d'insertion, de mise à jour du résumé (écriture LLM comprise) et de suppression ; recherche insensible aux diacritiques | I | III §11.14 · V-A |
+| T-DB-11 | `article_fts` : triggers d'insertion, de mise à jour du résumé (écriture LLM comprise) et de suppression ; un `UPDATE` de `title` ou de `summary` met l'index à jour, un `UPDATE` de `status` ou d'`event_id` ne le modifie pas (`AFTER UPDATE OF title, summary`) ; recherche insensible aux diacritiques | I | III §11.14 · V-A |
 | T-DB-12 | Colonnes à valeurs fermées : une valeur hors `CHECK` est refusée (échantillon : `Article.status`, `AIJob.status`, `AlertLog.status`) | I | III §11 |
+| T-DB-13 | Clés étrangères pendant les migrations : la connexion de `migrate` lit `PRAGMA foreign_keys` = 0 ; une violation détectée par `PRAGMA foreign_key_check` fait échouer la migration et annule toute l'exécution : la révision Alembic et le schéma sont ceux d'avant l'exécution ; la reconstruction batch d'`article` conserve `article_topic`, `article_entity` et `embedding`, et recrée les trois triggers d'`article_fts` | I | III §10.5 |
 
 #### T-CFG — Configuration & démarrage *(IV §16, §22 · VI §34.3 · VII §36.7)*
 
