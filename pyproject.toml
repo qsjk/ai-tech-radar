@@ -10,6 +10,7 @@ dependencies = []
 dev = [
     "mypy==2.3.1",
     "pytest==9.1.1",
+    "pytest-cov==7.1.0",
     "pytest-socket==0.8.1",
     "ruff==0.16.8",
 ]
@@ -41,5 +42,5 @@ files = ["app"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Blocage réseau pour toute la session (VIII §50.1) : seules les connexions vers 127.0.0.1 et ::1 sont permises ;
-# les sockets Unix restent autorisées.
-addopts = ["--allow-hosts=127.0.0.1,::1", "--allow-unix-socket"]
+# les sockets Unix restent autorisées. Couverture de app/ mesurée à chaque exécution, jamais bloquante (VIII §49.2).
+addopts = ["--allow-hosts=127.0.0.1,::1", "--allow-unix-socket", "--cov=app", "--cov-report=term-missing"]

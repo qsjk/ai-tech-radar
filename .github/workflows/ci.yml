@@ -48,5 +48,5 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Dépendances (uv.lock)
         run: uv sync --locked
-      - name: pytest (réseau bloqué, VIII §50.1)
-        run: uv run pytest
+      - name: pytest (réseau bloqué, VIII §50.1), couverture de app/ dans le résumé du job
+        run: uv run pytest --cov-report=markdown-append:"$GITHUB_STEP_SUMMARY"
