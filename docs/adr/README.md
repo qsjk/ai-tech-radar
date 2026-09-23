@@ -4,7 +4,7 @@ Le §53 de la Partie IX dit **quoi** (décisions verrouillées `DV-nn`) ; un ADR
 prix (IX §54.1). Format, règles et registre : IX §54.2–§54.3. Gabarit : [`_template.md`](_template.md).
 
 - Numéro sur 4 chiffres, séquentiel, jamais réutilisé ; un ADR `Accepté` n'est jamais réécrit, seul son statut change.
-- Claude Code rédige en `Proposé` ; seul le propriétaire du projet accepte ou rejette (IX §53.1, décision 4).
+- Un ADR est rédigé en `Proposé` ; seul le propriétaire du projet l'accepte ou le rejette (IX §53.1, décision 4).
 - Changer une décision verrouillée exige une **preuve** (IX §53.1) et un ADR qui remplace le précédent.
 
 | ADR | Titre | Statut | Date | Couvre | Remplace / remplacé par |
@@ -22,7 +22,12 @@ prix (IX §54.1). Format, règles et registre : IX §54.2–§54.3. Gabarit : [`
 | [0011](0011-authentification-dashboard.md) | Authentification du dashboard | Proposé | 2026-09-23 | DV-13 | — |
 | [0012](0012-semantique-health.md) | Sémantique de /health | Proposé | 2026-09-23 | DV-14 | — |
 | [0013](0013-frontend-react-typescript-vite-csp.md) | Frontend React · TypeScript · Vite et CSP stricte | Proposé | 2026-09-23 | DV-15 | — |
-<!-- INDEX -->
+| [0014](0014-pas-de-prometheus-v1.md) | Pas de Prometheus en V1 | Proposé | 2026-09-23 | DV-16 | — |
+| [0015](0015-backup-restic-par-le-worker.md) | Backup restic exécuté par le worker, test de restauration automatisé | Proposé | 2026-09-23 | DV-17 | — |
+| [0016](0016-horloge-injectable.md) | Horloge injectable, temps jamais lu en SQL | Proposé | 2026-09-23 | DV-18 | — |
+| [0017](0017-deploiement-manuel-verrouille-par-la-ci.md) | Déploiement manuel verrouillé par la CI | Proposé | 2026-09-23 | DV-19 | — |
+| [0018](0018-tracabilite-du-catalogue.md) | Traçabilité du catalogue, pas de seuil de couverture | Proposé | 2026-09-23 | DV-20 | — |
+| [0019](0019-spec-dans-le-depot.md) | Spec dans le dépôt, SPEC.md en index | Proposé | 2026-09-23 | DV-21 | — |
 
 **À venir** (IX §54.3) : 0020, gateway LLM retenu, au Sprint 6 ; 0021, Docker en développement, par T0.9 (#60) ;
 ADR conditionnels, au prochain numéro libre, seulement si leur déclencheur survient.
