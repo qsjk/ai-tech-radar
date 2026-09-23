@@ -619,7 +619,7 @@ Décision (2026-09-23) : option A retenue : uid et gid 10001 fixes ; `/data` cr�
 - **Recommandation** : aucun choix ici ; l'ADR-0021 fixe le mode de développement (rootless ou non) et, s'il est
   rootless, la parade retenue pour chaque écart.
 
-Décision (2026-09-23) : reste ouvert ; il est tranché par l'ADR-0021 (T0.9, #60). L'écart A-04 lui est rattaché.
+Décision (2026-09-23) : tranché par l'ADR-0021, accepté le 2026-09-23 : option A, parade (a). L'écart A-04 lui est rattaché.
 
 Renvoi : [ADR-0021](adr/0021-acces-cloisonne-a-docker-en-developpement.md) — option A, Docker rootless sur le poste de
 développement, avec la parade (a) pour les ports 80 et 443 (`net.ipv4.ip_unprivileged_port_start=80` sur le poste).
