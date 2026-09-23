@@ -15,7 +15,7 @@
 2. **Une seule image backend** (`radar-backend:<git sha>`) pour `migrate`, `app` et `worker` ; une image `radar-caddy:<git sha>` qui embarque le build Vite. Le tag Git sert au rollback.
 3. **Segmentation réseau** : `app` n'a **aucune sortie Internet** et n'est joignable que par Caddy ; `worker` **ne peut pas joindre** `app` ; `migrate` n'a aucun réseau.
 4. **Moindre privilège des secrets** : chaque service ne reçoit que ses variables. **`app` ne reçoit aucun secret** (il lit l'état des canaux et du LLM dans `SystemState`).
-5. **Conteneurs durcis** : utilisateur non-root, `no-new-privileges`, `cap_drop: ALL`, système de fichiers racine en lecture seule pour `app` et `worker`, **jamais de montage du socket Docker**.
+5. **Conteneurs durcis** : utilisateur non-root, `no-new-privileges`, `cap_drop: ALL`, système de fichiers racine en lecture seule pour `app`, `worker` et `caddy`, **jamais de montage du socket Docker**.
 6. **`depends_on` ne joue qu'au `docker compose up`** : au redémarrage du démon (reboot), `app` et `worker` repartent directement ; c'est la **vérification de schéma au démarrage** (III §10.1) qui protège, pas l'ordre Compose.
 7. **Déploiement** : backup → arrêt de `app` et `worker` → `up -d` (qui rejoue `migrate`) → contrôle de santé. Jamais d'ancienne version qui tourne sur un schéma migré.
 8. **Caddy** : un seul site, adresse = `DASHBOARD_URL` ; TLS Let's Encrypt automatique ; `/health` public, tout le reste sous basic_auth ; en-têtes de sécurité complétés (`frame-ancestors`, `base-uri`, `form-action`, `object-src`, `nosniff`, HSTS).
@@ -191,6 +191,9 @@ services:
   caddy:
     image: radar-caddy:${RADAR_VERSION:-dev}
     build: { context: ., dockerfile: docker/caddy.Dockerfile }   # multi-stage : build Vite → /srv
+    user: "10001:10001"          # non-root ; /data et /config de Caddy à cet uid dès la création des volumes
+    read_only: true
+    tmpfs: [/tmp]
     ports: ["80:80", "443:443", "443:443/udp"]
     environment:
       DASHBOARD_URL: "${DASHBOARD_URL}"
@@ -199,8 +202,9 @@ services:
       ACME_EMAIL: "${ACME_EMAIL:-}"
     volumes: [caddy_data:/data, caddy_config:/config]
     networks: [edge, public]
-    cap_drop: [ALL]
-    cap_add: [NET_BIND_SERVICE]
+    cap_drop: [ALL]              # sans cap_add : 80 et 443 liés grâce à
+                                 # net.ipv4.ip_unprivileged_port_start=0 (défaut Docker ≥ 20.10)
+    security_opt: ["no-new-privileges:true"]
     logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
     restart: unless-stopped
 
@@ -296,7 +300,7 @@ RADAR_VERSION=               # tag d'image (sha Git) déployé
 |---|---|
 | `caddy` | `DASHBOARD_URL` · `DASHBOARD_USER` · `DASHBOARD_PASSWORD_HASH` · `ACME_EMAIL` |
 | `app` | `DASHBOARD_URL` · `APP_ENV` · `LOG_LEVEL` · `RADAR_VERSION` — **aucun secret** |
-| `worker` | toutes les autres, sauf `DASHBOARD_USER` et `DASHBOARD_PASSWORD_HASH` |
+| `worker` | toutes les autres, sauf `DASHBOARD_USER`, `DASHBOARD_PASSWORD_HASH` et `ACME_EMAIL` (réservée à `caddy`) |
 | `migrate` | `LOG_LEVEL` |
 
 - `DASHBOARD_URL` est validée au démarrage de `app` et `worker` : schéma `https` (ou `http://localhost` en développement), sans chemin ni slash final.
@@ -796,7 +800,7 @@ Trois niveaux, cumulatifs :
 
 ### 43.2 Conteneurs
 
-- Utilisateur non-root ; `no-new-privileges` ; `cap_drop: ALL` (Caddy : `NET_BIND_SERVICE` seul) ; racine en lecture seule pour `app` et `worker` (§36.5).
+- Utilisateur non-root ; `no-new-privileges` ; `cap_drop: ALL`, sans exception : Caddy, non-root, lie 80 et 443 sans `NET_BIND_SERVICE` grâce à `net.ipv4.ip_unprivileged_port_start=0`, posé par Docker (≥ 20.10) dans l'espace réseau du conteneur ; racine en lecture seule pour `app`, `worker` et `caddy` (§36.5).
 - **Socket Docker jamais monté.**
 - Images de base épinglées ; **reconstruction mensuelle** pour intégrer les correctifs.
 - Segmentation réseau du §36.2 : `app` sans sortie Internet, `worker` sans accès à `app`, base jamais exposée.

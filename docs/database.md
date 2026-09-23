@@ -135,7 +135,8 @@ of SQLite's transaction control*. L'écouteur `connect` désactive le `BEGIN` im
 émet le `BEGIN` ; en asyncio, les deux écouteurs se posent sur `engine.sync_engine`.
 
 ```python
-engine = create_async_engine("sqlite+aiosqlite:////data/radar.db")
+# settings : configuration typée du processus ; radar_db_path vient de RADAR_DB_PATH (P-01 d'architecture.md)
+engine = create_async_engine(f"sqlite+aiosqlite:///{settings.radar_db_path}")
 
 @event.listens_for(engine.sync_engine, "connect")
 def _on_connect(dbapi_connection, connection_record):
@@ -1087,8 +1088,9 @@ INSERT INTO article_fts(article_fts) VALUES ('rebuild');
 - **Réversibilité** : chaque migration fournit un `downgrade`, **ou se déclare irréversible dans son en-tête**
   (VII §36.9, T-DB-08). `scripts/deploy.sh` refuse un rollback à travers une migration ; la procédure IX §56.6-P2
   s'applique (*downgrade* avec l'image courante, ou restauration du snapshot pris au déploiement) (VIII §49.5).
-- **Moteur de `migrate`** (III §10.5) : moteur **synchrone** propre à `migrate`, créé par `env.py` sur l'URL lue dans
-  la configuration. Même technique que §2.3 : l'écouteur `connect` pose `isolation_level = None` (pysqlite n'ouvre
+- **Moteur de `migrate`** (III §10.5) : moteur **synchrone** propre à `migrate`, créé par `env.py` sur l'URL
+  construite à partir de `RADAR_DB_PATH`, fixé par Compose ; `alembic.ini` ne porte aucune URL (P-01 de
+  `architecture.md`). Même technique que §2.3 : l'écouteur `connect` pose `isolation_level = None` (pysqlite n'ouvre
   plus de transaction implicite) et exécute les PRAGMA hors transaction ; l'écouteur `begin` émet `BEGIN IMMEDIATE`.
   Seul `foreign_keys` diffère.
 - **Clés étrangères désactivées pendant les migrations** (III §10.2, §10.5 ; I-16) : `PRAGMA foreign_keys=OFF` est
@@ -1112,11 +1114,12 @@ INSERT INTO article_fts(article_fts) VALUES ('rebuild');
 
 ```python
 # env.py (indicatif) — moteur synchrone propre à migrate, distinct de celui de app et worker
+import os
 from alembic import context
 from sqlalchemy import create_engine, event
 
-config = context.config
-engine = create_engine(config.get_main_option("sqlalchemy.url"))   # URL lue dans la configuration
+# chemin fixé par Compose (RADAR_DB_PATH=/data/radar.db) ; alembic.ini ne porte aucune URL (P-01)
+engine = create_engine(f"sqlite:///{os.environ['RADAR_DB_PATH']}")
 
 @event.listens_for(engine, "connect")
 def _on_connect(dbapi_connection, connection_record):
@@ -1345,7 +1348,7 @@ Décision (2026-09-23) : même règle que I-03 : chaque colonne de la liste est 
   échouerait sur les `RESTRICT`. La spec ne dit pas si la connexion du service `migrate` désactive les clés
   étrangères pendant une reconstruction.
 
-Décision (2026-09-23) : la connexion de `migrate` fonctionne avec `PRAGMA foreign_keys=OFF`, posé par l'écouteur `connect` du moteur synchrone de `migrate` sur la connexion DBAPI (`isolation_level = None`), avant toute transaction ; l'écouteur `begin` émet `BEGIN IMMEDIATE` ; `transactional_ddl=True` et `transaction_per_migration=False` font de l'exécution une seule transaction ; `env.py` exécute `PRAGMA foreign_key_check` après `run_migrations()`, dans cette transaction, et une violation annule tout, révision comprise (mécanisme précisé aux deux revues de #70, testé par T-DB-13) ; une migration qui reconstruit `article` recrée les triggers de `article_fts` ; `app` et `worker` gardent `foreign_keys=ON` — appliquée dans III §10.2, §10.5 et dans ce document (§2.2, §5).
+Décision (2026-09-23) : la connexion de `migrate` fonctionne avec `PRAGMA foreign_keys=OFF`, posé par l'écouteur `connect` du moteur synchrone de `migrate` (URL construite à partir de `RADAR_DB_PATH`, `alembic.ini` sans URL : P-01 de `architecture.md`) sur la connexion DBAPI (`isolation_level = None`), avant toute transaction ; l'écouteur `begin` émet `BEGIN IMMEDIATE` ; `transactional_ddl=True` et `transaction_per_migration=False` font de l'exécution une seule transaction ; `env.py` exécute `PRAGMA foreign_key_check` après `run_migrations()`, dans cette transaction, et une violation annule tout, révision comprise (mécanisme précisé aux deux revues de #70, testé par T-DB-13) ; une migration qui reconstruit `article` recrée les triggers de `article_fts` ; `app` et `worker` gardent `foreign_keys=ON` — appliquée dans III §10.2, §10.5 et dans ce document (§2.2, §5).
 
 #### I-17 — Dates de référence des rétentions
 

@@ -232,6 +232,7 @@ par un ADR pendant le Sprint 0 (IX §57.5) : voir E21.
 - **Bloque** : Sprint 1 (étape 1 de la CI) ; conception de `check-test-catalog.py` en T0.5.
 
 Décision du propriétaire (2026-09-23) : option A : contrôle du catalogue sur les sprints clos et en cours (liste lue dans les `sprint-NN.md`), contrôle complet au Sprint 11 — appliquée dans VIII §50.3 et décision 9.
+Précisé le 2026-09-23 par P-15 (T0.5, #71) : seuls les identifiants des sprints **clos** bloquent ; ceux du sprint en cours sont signalés sans bloquer jusqu'à la PR de bilan.
 
 #### E2 — T-DB-12 et T-CFG-09 rattachés à aucun sprint
 
