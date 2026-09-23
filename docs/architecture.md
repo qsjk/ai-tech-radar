@@ -176,4 +176,259 @@ Un worker qui refuse de démarrer sort en code non nul ; Docker le relance en bo
 `/health` passe à `down` quand le heartbeat est périmé (VII §40.2). La réponse d'exploitation est
 `validate-config` (IX §56.4, §56.6-P11).
 
+---
+
+## 4. Conteneurs
+
+Proposition conforme à VII §36 et §43.2. Les blocs ci-dessous seront les fichiers du Sprint 1 ; au Sprint 0, ce ne
+sont que des propositions (IX §57.6). Les écarts à l'esquisse de VII §36.5 sont marqués `# ajout proposé`.
+
+### 4.1 `docker-compose.yml` proposé
+
+```yaml
+name: radar
+
+x-backend: &backend
+  image: radar-backend:${RADAR_VERSION:-dev}
+  build: { context: ., dockerfile: docker/backend.Dockerfile }
+  user: "10001:10001"                      # uid/gid fixes : P-02
+  read_only: true                          # dès le Sprint 1 (CF-03, VIII décision 4)
+  tmpfs: [/tmp]                            # seul emplacement inscriptible hors /data
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  volumes: [radar_data:/data]              # volume nommé, jamais de bind mount (IX décision 26)
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+services:
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      TZ: UTC
+      RADAR_DB_PATH: /data/radar.db        # lu par env.py : P-01
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+    network_mode: none
+    restart: "no"
+
+  app:
+    <<: *backend
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000",
+              "--workers", "1", "--no-access-log"]
+    environment:                           # aucun secret (VII §36.7)
+      TZ: UTC
+      RADAR_DB_PATH: /data/radar.db
+      APP_ENV: "${APP_ENV:-production}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      DASHBOARD_URL: "${DASHBOARD_URL}"
+      RADAR_VERSION: "${RADAR_VERSION:-dev}"
+    expose: ["8000"]
+    networks: [edge]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    restart: unless-stopped
+
+  worker:
+    <<: *backend
+    command: ["python", "-m", "app.worker"]
+    environment:                           # toutes les variables « worker » de VII §36.7, une à une
+      TZ: UTC
+      RADAR_DB_PATH: /data/radar.db
+      APP_ENV: "${APP_ENV:-production}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      RADAR_VERSION: "${RADAR_VERSION:-dev}"
+      HTTP_CONTACT: "${HTTP_CONTACT}"
+      DASHBOARD_URL: "${DASHBOARD_URL}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      RESTIC_REPOSITORY: "${RESTIC_REPOSITORY:-}"
+      RESTIC_PASSWORD: "${RESTIC_PASSWORD:-}"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+      LLM_BASE_URL: "${LLM_BASE_URL:-}"
+      LLM_API_KEY: "${LLM_API_KEY:-}"
+      LLM_MODEL: "${LLM_MODEL:-}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+      ALERT_EMAIL_TO: "${ALERT_EMAIL_TO:-}"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-}"
+      ACME_EMAIL: "${ACME_EMAIL:-}"        # « toutes les autres » (VII §36.7) : sans usage côté worker, A-05
+    networks: [egress]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    stop_grace_period: 30s
+    # mem_limit: 2g                        # ajout proposé au Sprint 4, provisoire, recalé d'après M1 (P-07)
+    restart: unless-stopped
+
+  caddy:
+    image: radar-caddy:${RADAR_VERSION:-dev}
+    build: { context: ., dockerfile: docker/caddy.Dockerfile }
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      DASHBOARD_URL: "${DASHBOARD_URL}"
+      DASHBOARD_USER: "${DASHBOARD_USER}"
+      DASHBOARD_PASSWORD_HASH: "${DASHBOARD_PASSWORD_HASH}"
+      ACME_EMAIL: "${ACME_EMAIL:-}"
+    volumes: [caddy_data:/data, caddy_config:/config]
+    networks: [edge, public]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]   # ajout proposé (VII §43.2, T-SEC-08) : A-01, P-10
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
+    restart: unless-stopped
+
+  gateway:
+    profiles: [gateway]
+    image: <gateway-retenu>:<version>@sha256:<digest>
+    networks: [egress]
+    # mem_limit : fixé d'après M1 et M6 (VII §36.5)
+    restart: unless-stopped
+
+networks:
+  edge: { internal: true }
+  public: {}
+  egress: {}
+
+volumes:
+  radar_data: { driver: local }
+  caddy_data: {}
+  caddy_config: {}
+```
+
+- **Aucun healthcheck** Docker n'est proposé : la spec n'en prévoit pas, `depends_on` n'attend que la fin de
+  `migrate`, et la santé est portée par `/health`, le heartbeat, la supervision fail-fast et le monitoring externe
+  (VII §36.6, §40, §41). Voir P-06.
+- **Surcharge e2e** `docker-compose.test.yml` (VIII §46.1, §49.2) : `APP_ENV=test`, `HTTP_TEST_ALLOW_HOSTS`, doubles
+  (faux gateway, faux serveur de sources, dépôt restic local), réglages de `pipeline.yaml` raccourcis. Elle ne relâche
+  aucune option de durcissement.
+
+### 4.2 `docker/backend.Dockerfile` proposé
+
+```dockerfile
+# syntax=docker/dockerfile:1.7
+# Image de base vérifiée en T0.3 (E16, V-02) : tag complet ET digest de l'index multi-architecture.
+ARG PYTHON_IMAGE=python:3.12.14-slim-trixie@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9
+
+# ── 1. Dépendances et code ───────────────────────────────────────────────────
+FROM ${PYTHON_IMAGE} AS build
+COPY --from=ghcr.io/astral-sh/uv:<version>@sha256:<digest> /uv /usr/local/bin/uv      # P-13
+WORKDIR /app
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+COPY app/ app/
+COPY migrations/ migrations/
+COPY alembic.ini ./
+RUN uv sync --frozen --no-dev            # bytecode compilé ici : rien à écrire au runtime
+
+# ── 2. Modèle d'embeddings (à partir du Sprint 4) ────────────────────────────
+# Révision et empreinte relevées en T0.3 (V-01), consignées dans l'ADR-0008.
+FROM build AS model
+ARG MODEL_REPO=qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q
+ARG MODEL_REVISION=faf4aa4225822f3bc6376869cb1164e8e3feedd0
+ARG MODEL_ONNX_SHA256=634d0f66c29dc934c8fa72b8a4fe91dd4d420a22f1d82a241058d4316e659a99
+RUN /app/.venv/bin/python - <<'PY'
+import hashlib, os
+from huggingface_hub import snapshot_download
+d = snapshot_download(os.environ["MODEL_REPO"], revision=os.environ["MODEL_REVISION"],
+                      local_dir="/opt/models/embedding")
+h = hashlib.sha256(open(f"{d}/model_optimized.onnx", "rb").read()).hexdigest()
+assert h == os.environ["MODEL_ONNX_SHA256"], h
+PY
+
+# ── 3. restic statique (vérifié en T0.3, V-05) ──────────────────────────────
+FROM ${PYTHON_IMAGE} AS restic
+ARG RESTIC_VERSION=0.19.1
+ADD --checksum=sha256:f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c \
+    https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_amd64.bz2 \
+    /tmp/restic.bz2
+RUN python -c "import bz2,shutil; shutil.copyfileobj(bz2.open('/tmp/restic.bz2'), open('/usr/local/bin/restic','wb'))" \
+ && chmod 0755 /usr/local/bin/restic
+
+# ── 4. Image finale ──────────────────────────────────────────────────────────
+FROM ${PYTHON_IMAGE}
+RUN groupadd --gid 10001 radar \
+ && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin radar \
+ && mkdir -p /data && chown 10001:10001 /data && chmod 0750 /data            # propriétaire de /data : §4.4
+COPY --from=build  /app /app
+COPY --from=model  /opt/models /opt/models                                   # Sprint 4
+COPY --from=restic /usr/local/bin/restic /usr/local/bin/restic               # Sprint 11
+COPY config/ /app/config/
+ENV PATH=/app/.venv/bin:$PATH \
+    PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
+    HOME=/tmp TMPDIR=/tmp XDG_CACHE_HOME=/tmp/.cache \
+    HF_HUB_OFFLINE=1 RADAR_MODEL_DIR=/opt/models/embedding \
+    RESTIC_CACHE_DIR=/tmp/restic-cache
+WORKDIR /app
+USER 10001:10001
+```
+
+- **Pas d'instruction `VOLUME`** : elle créerait un volume anonyme ; `/data` est toujours le volume nommé de Compose.
+- **Code et modèle appartiennent à root**, en lecture seule pour l'uid 10001 : même sans `read_only`, le processus ne
+  peut pas modifier son code.
+- Les étapes 2 et 3 n'entrent dans l'image qu'aux sprints qui les utilisent (4 et 11) ; la vérification « modèle
+  présent dans l'image » de la CI suit le même calendrier (E5, §5.1).
+- Le chargement du modèle par fastembed depuis `RADAR_MODEL_DIR`, sans réseau, est à confirmer au Sprint 4 (P-09).
+
+### 4.3 `docker/caddy.Dockerfile` proposé
+
+```dockerfile
+# syntax=docker/dockerfile:1.7
+FROM node:<24-lts>-slim@sha256:<digest> AS front                               # P-13
+WORKDIR /front
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build                        # CSS Modules compilés par Vite, aucun style en ligne (E20)
+
+FROM caddy:<2.x>@sha256:<digest>
+COPY docker/Caddyfile /etc/caddy/Caddyfile
+COPY --from=front /front/dist /srv
+```
+
+Le `Caddyfile` est celui de VII §37.3.
+
+### 4.4 Volume `/data` et propriétaire
+
+- `radar_data` est un **volume nommé local**, monté sur `/data` par `migrate`, `app` et `worker` (VII §36.4,
+  IX décision 26). Il contient `radar.db`, `-wal`, `-shm` et `/data/backup/`.
+- **Propriétaire dès la création** : l'image crée `/data` avec pour propriétaire l'uid et le gid 10001, mode `0750`.
+  À la **première** montée d'un volume nommé **vide**, Docker y recopie le contenu et les droits du point de montage
+  de l'image : le volume appartient donc à 10001 sans aucune étape manuelle. `migrate`, qui démarre le premier, le
+  crée ; `app` et `worker` le trouvent dans cet état.
+- Cette recopie n'a lieu ni pour un bind mount (interdit), ni pour un volume déjà peuplé, ni avec l'option `nocopy`.
+  Un volume créé auparavant avec un autre propriétaire doit être corrigé une fois : P-02.
+- `/data/backup/` est créé par le worker au premier backup (VII §38.2) ; il ne vit jamais dans le tmpfs.
+
+### 4.5 Racine en lecture seule, tmpfs et caches (R-04)
+
+La racine de `app`, `worker` et `migrate` est en lecture seule **dès le Sprint 1** (CF-03, VIII décision 4) ; T-SEC-09
+la vérifie à l'arrivée de chaque bibliothèque (Sprint 1, puis Sprints 2, 4 et 11). Seuls `/tmp` (tmpfs, en mémoire)
+et `/data` (volume) sont inscriptibles.
+
+| Composant | Risque d'écriture | Parade | Vérifié au |
+|---|---|---|---|
+| Python | `__pycache__` | bytecode compilé au build (`UV_COMPILE_BYTECODE`), `PYTHONDONTWRITEBYTECODE=1` | Sprint 1 |
+| Bibliothèques qui écrivent sous `~` | `~/.cache`, `~/.config` | `HOME=/tmp`, `XDG_CACHE_HOME=/tmp/.cache` | Sprint 1 |
+| Alembic (`migrate`) | aucun fichier hors base | bytecode de `migrations/` compilé au build | Sprint 1 |
+| lingua | modèles de langues chargés depuis le paquet, en mémoire | aucune écriture attendue ; `TMPDIR=/tmp` par précaution | Sprint 2 |
+| fastembed, huggingface_hub | téléchargement et cache du modèle | modèle intégré à l'image (`/opt/models`, lecture seule), `HF_HUB_OFFLINE=1`, chargement local (P-09) | Sprint 4 (T-SEC-09, T-SEC-10) |
+| onnxruntime | aucun cache disque par défaut | `TMPDIR=/tmp` | Sprint 4 |
+| restic | cache local | `RESTIC_CACHE_DIR=/tmp/restic-cache` (VII §36.5) | Sprint 11 |
+| SQLite | fichiers temporaires (tris, index) | `TMPDIR=/tmp` ; pour `vacuum`, fichiers temporaires sur `/data` (IX §56.4.2) : P-14 | Sprint 1 · 11 |
+
+Le tmpfs occupe de la mémoire : sa taille compte dans `mem_limit` (P-07).
+
+### 4.6 Démarrage et ressources
+
+- **Ordre** : `migrate` → (`service_completed_successfully`) → `app` et `worker` ; `caddy` indépendant, 502 sur `/api`
+  tant que `app` n'est pas prêt (VII §36.3). Au reboot, `migrate` n'est pas rejoué ; la vérification de révision au
+  démarrage est le garde-fou (`database.md` §5).
+- **Healthchecks** : aucun (§4.1, P-06).
+- **`mem_limit`** : sur `worker` et `gateway`, fixé à pic mesuré × 1,5 après M1 (VII §36.5, §45.4). Valeur
+  provisoire proposée pour le worker à partir du Sprint 4 : P-07. T0.3 a mesuré environ 1,0 Gio de RSS après
+  chargement du seul modèle d'embeddings, avec un pic à 1,2 Gio (rapport de cadrage §3, V-01).
+
 <!-- SUITE -->
