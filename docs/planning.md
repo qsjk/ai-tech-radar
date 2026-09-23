@@ -1,6 +1,6 @@
 # Planning d'exécution — AI Tech Radar
 
-> Version 1 · 2026-09-22 · s'appuie sur `SPEC.md` V0.4 (VIII §46–§52, IX §53–§57).
+> Version 1.1 · 2026-09-23 · s'appuie sur `SPEC.md` V0.4 (VIII §46–§52, IX §53–§57).
 > Ce document dit **ce qui est prévu**. L'état courant vit dans le Project GitHub « Radar » ;
 > le réel (plan détaillé, bilan, écarts) vit dans `docs/sprints/sprint-NN.md`.
 > Il renvoie à la spec sans la recopier : en cas de divergence, la spec fait foi.
@@ -48,7 +48,7 @@ Prises le 2026-09-22, révisables par PR sur ce document.
 | C8 | Architecture du VPS | **amd64** (IX décision 27). Fournisseur choisi en S4–S6 |
 | C9 | LLM | **Go-live sans gateway** (VIII décision 21) ; LLMClient livré au S6 et testé contre le faux gateway ; accès ponctuel à un provider OpenAI-compatible aux S7–S8 pour enregistrer les fixtures (E8) ; branchement d'un gateway après le go-live, avec M6 |
 | C10 | Canaux d'alerte | **Telegram + email** (routage par défaut VI §33.9 : instantané Telegram, digests email, `system` sur les deux) |
-| C11 | Partie VII | Tableaux dégradés reconstitués par 🤖 dans la PR T0.1, relus ligne à ligne par 👤 (E9) |
+| C11 | Partie VII | **Non modifiée** en T0.1 : refaite proprement en amont, aucune reconstitution (décision du propriétaire du 2026-09-22, E9). Les impacts VIII/IX → VII non reportés sont traités dans `sprint-00-cadrage.md` (E11) |
 
 ---
 
@@ -66,7 +66,7 @@ Relevées à la lecture de `SPEC.md` V0.4. Le planning les applique ; elles sont
 | E6 | T-CFG-04 (toutes les sections de `pipeline.yaml`) listé au S2 | Validation **incrémentale** : chaque sprint ajoute et teste ses sections (DoD §51.1-5) |
 | E7 | `enrich_article` créés dès S2 (T-COL-12) | Table `AIJob` introduite **au S2** ; `database.md` (T0.4) le reflète |
 | E8 | T-LLM-16 (niveau U, donc bloquant) exige des sorties LLM **réelles** enregistrées | Accès ponctuel à un provider aux S7–S8 (C9), tâche 👤 |
-| E9 | Partie VII reconstituée depuis un PDF : §36.7 `.env.example`, §39.5 conditions, §45.3–§45.4 mesures dégradés ; §57.2 exige la source Markdown | Reconstitution dans la PR T0.1, relue par 👤 (C11) |
+| E9 | Partie VII reconstituée depuis un PDF : §36.7 `.env.example`, §39.5 conditions, §45.3–§45.4 mesures dégradés ; §57.2 exige la source Markdown | **Levé** le 2026-09-22 : Partie VII refaite en amont, non modifiée par T0.1 (C11) ; conséquences en E11 du rapport de cadrage |
 | E10 | §57.2 attend dix fichiers de spec ; `SPEC.md` est consolidé | T0.1 commence par un **découpage mécanique** en `docs/spec/partie-*.md`, dans un commit séparé, sans aucune modification |
 
 ---
@@ -135,12 +135,12 @@ Les entrées et sorties **communes** (§0) s'appliquent à chaque sprint ; les f
 | | |
 |---|---|
 | **Objectif** | Transformer la spec en contrat cohérent et vérifié, préparer le S1 |
-| **Livrables 🤖** | **T0.1a** découpage mécanique en `docs/spec/partie-*.md` (E10) · **T0.1b** report des impacts, retrait des marqueurs, reconstitution des tableaux de la Partie VII (E9), `SPEC.md` en index — **PR dédiée** · **T0.2** `sprint-00-cadrage.md` (conflits, décisions manquantes dont E1–E10, risques, questions) · **T0.3** vérifications §57.4 · **T0.4** `database.md` (table par table, sprint d'introduction) · **T0.5** `architecture.md` (arborescence, configuration, Compose proposé, CI, `Clock`, `check-test-catalog.py`) · **T0.6** ADR 0001–0019 + index + gabarit · **T0.7** `CLAUDE.md` · **T0.8** `sprints/sprint-01.md` |
+| **Livrables 🤖** | **T0.1a** découpage mécanique en `docs/spec/partie-*.md` (E10) · **T0.1b** report des impacts, retrait des marqueurs, `SPEC.md` en index, Partie VII non modifiée (C11, E9) — **PR dédiée** · **T0.2** `sprint-00-cadrage.md` (conflits, décisions manquantes dont E1–E10, risques, questions) · **T0.3** vérifications §57.4 · **T0.4** `database.md` (table par table, sprint d'introduction) · **T0.5** `architecture.md` (arborescence, configuration, Compose proposé, CI, `Clock`, `check-test-catalog.py`) · **T0.6** ADR 0001–0019 + index + gabarit · **T0.7** `CLAUDE.md` · **T0.8** `sprints/sprint-01.md` |
 | **Entrée** | Pré-S0 clos |
 | **Sortie** | check-list IX §57.7 entièrement cochée : PR T0.1 fusionnée · documents présents · ADR 0001–0019 `Accepté` · plus aucune question ouverte · vérifications concluantes ou couvertes par ADR · diff limité à `docs/`, `SPEC.md`, `CLAUDE.md` · validation 👤 |
 | **Dépendances** | T0.1 fusionnée **avant** T0.2–T0.8 (IX décision 11) |
 | **Effort** | 5–7 : relecture T0.1 (2) · arbitrages (1–2) · ADR (1–2) · plan S1 (1) |
-| **Risques** | diff T0.1 illisible (→ un commit par partie cible) · tableaux VII mal reconstitués (→ relecture ligne à ligne, surtout §39.5 et `.env.example`) · vérification bloquante en échec (→ **stop**, replanification, voir G1) |
+| **Risques** | diff T0.1 illisible (→ un commit par partie cible) · Partie VII non réconciliée avec VIII et IX (→ arbitrage E11 du rapport de cadrage) · vérification bloquante en échec (→ **stop**, replanification, voir G1) |
 | **👤** | relire et fusionner la PR T0.1 · trancher le rapport de cadrage · accepter les ADR · valider `sprint-01.md` · revue d'acceptation |
 
 ### S1 — Foundation
