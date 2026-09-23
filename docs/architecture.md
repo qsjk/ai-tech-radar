@@ -92,4 +92,88 @@ Fichiers de la racine (VIII §46.1) : `SPEC.md`, `CLAUDE.md` (T0.7), `README.md`
 `.dockerignore`, `.audit-exceptions.yaml`, `.github/workflows/ci.yml` et `scheduled.yml`. **Aucun n'est créé au
 Sprint 0** (IX §57.6) : ils arrivent au Sprint 1.
 
+---
+
+## 3. Stratégie de configuration
+
+### 3.1 Quatre sources, quatre usages
+
+| Source | Contient | Versionnée | Modifiée par | Prise en compte |
+|---|---|---|---|---|
+| `config/*.yaml` | configuration **fonctionnelle** : sources, taxonomie, entités, réglages du pipeline | oui (Git) | commit, PR, CI, déploiement (IX §56.6-P10) | redémarrage du processus qui la lit |
+| `.env` | **secrets** et **paramètres de déploiement** (VII §36.7) | **jamais** | l'exploitant, sur le VPS | `docker compose up -d <service>` (IX décision 22) |
+| `Setting` (table) | réglages **modifiables depuis le dashboard** : fuseau, seuils, alertes, digests (VI §34.3) | non (base) | l'utilisateur, par l'API | worker : relu à chaque tick ; app : à chaque requête |
+| Constantes du code | registres (collectors, `job_type`, clés `Setting`), schémas Pydantic, défauts | oui | code | déploiement |
+
+Règle : un réglage fonctionnel vit dans `config/pipeline.yaml` ou dans `Setting`, **jamais** dans `.env` ; un secret
+vit dans `.env`, **jamais** ailleurs (VII §36.7, VIII §46.2).
+
+### 3.2 Fichiers `config/`
+
+| Fichier | Chargé par | Quand | Destination | Réf. |
+|---|---|---|---|---|
+| `sources.yaml` | worker | démarrage, avant le scheduler | upsert `Source` (clé `key`) | IV §16.1, §16.2 |
+| `topics.yaml` | worker | démarrage | upsert `Topic` (clé `slug`, `origin = seeded`) ; `keywords` = `{include, exclude}` | IV §16.3 · III §11.4 |
+| `entities.yaml` | worker | démarrage | upsert `Entity` ; alias gardés **en mémoire**, jamais en base (CF-19) | IV §16.4 |
+| `pipeline.yaml` | worker **et app** (lecture seule) | démarrage de chaque processus | mémoire uniquement ; **optionnel** : absent → défauts | IV §16.1, §16.5, §16.6 · E17 |
+
+- **Emplacement** : `config/` est copié dans l'image backend au build (`COPY config/ /app/config/`). Aucun montage :
+  une modification de `config/` passe par un commit et un déploiement (IX §56.6-P10). Voir P-12.
+- **L'app** charge `pipeline.yaml` avec **les mêmes modèles Pydantic** que le worker, pour les seuls réglages qu'elle
+  utilise : `ops.heartbeat_stale_after`, `emerging.warmup`, `llm.daily_request_budget`, `llm.app_reserve` (IV §16.1,
+  E17, CF-22). Elle ne lit jamais les trois autres fichiers et n'écrit rien en base à partir de `config/`.
+- **Upsert en une transaction** d'écriture, idempotent ; le YAML n'écrase jamais les champs d'état (`checkpoint`,
+  `last_*`, `rate_limit_*`) (IV §16.1).
+- **Validation** : un modèle Pydantic par fichier, plus les contraintes croisées, dont
+  `clustering.embedding_wait + clustering.tick < llm.delay.enrich_article` (IV §16.5, V-B §28.15). Les sections de
+  `pipeline.yaml` sont ajoutées **sprint par sprint**, chacune avec ses tests (E6, T-CFG-04 complet au Sprint 11).
+
+Module proposé : `app/core/config.py` expose `load_config_files(path) -> ConfigFiles` (les quatre fichiers, pour le
+worker et `validate-config`) et `load_pipeline(path) -> PipelineConfig` (pour l'app). Les deux fonctions partagent
+les modèles et lèvent une erreur typée qui porte **fichier, clé et champ**.
+
+### 3.3 Variables d'environnement
+
+- **Liste unique** : `.env.example`, VII §36.7 (obligatoire, obligatoire en production, optionnel, réservé aux tests,
+  réservé V2). **Distribution par service** : tableau de VII §36.7 ; `app` ne reçoit **aucun secret**.
+- **Chargement** : un modèle `pydantic-settings` par processus (`AppSettings`, `WorkerSettings`), secrets en
+  `SecretStr` (VIII §46.1, T-SEC-02). Chaque processus ne déclare que ses variables : une variable absente du
+  modèle n'est jamais lue.
+- **Refus de démarrer** : `HTTP_CONTACT` absent (worker, IV §22) ; `DASHBOARD_URL` invalide (app et worker, VII §36.7,
+  T-CFG-07) ; `HTTP_TEST_ALLOW_HOSTS` renseignée avec `APP_ENV=production` (worker, VIII décision 23, T-CFG-09).
+- **Non bloquantes** : `GITHUB_TOKEN` absent → sources `github` non planifiées (IV §22) ; `LLM_BASE_URL` absent →
+  disjoncteur `not_configured` (V-A §24.2) ; `RESTIC_REPOSITORY` absent → backup `not_configured` (VII §38.3) ;
+  canal d'alerte incomplet → canal désactivé (VII §36.7).
+- **Paramètres fixés par Compose**, hors `.env` : `TZ=UTC` et `RADAR_DB_PATH=/data/radar.db` (VII §36.5). La source
+  de l'URL de la base pour Alembic est le point **P-01**.
+
+### 3.4 `Setting`
+
+Table et registre en code : `database.md` §3.16 et VI §34.3. Écrits par l'app seule, validés à l'écriture (422) ; une
+clé absente vaut son défaut, une valeur stockée invalide est ignorée au profit du défaut avec un `warning`. Aucun
+secret (T-SEC-11). Le worker les relit à chaque tick : un changement ne demande ni redémarrage ni déploiement.
+
+### 3.5 `validate-config`
+
+- `python -m app.cli validate-config` : même validation que le démarrage du worker, **sans base** (IV §16.5).
+- Exécution sur le VPS : `docker compose run --rm --no-deps worker python -m app.cli validate-config` (IX §56.4).
+  En CI : étape 2, sur le `config/` du dépôt (VIII §49.2, T-CFG-01).
+- Codes de sortie du contrat commun (IX §56.3, T-CFG-10) : `0` valide · `2` configuration invalide, avec fichier, clé
+  et champ sur stdout. Le code `1` (échec de l'opération) ne sert pas ici.
+
+### 3.6 Fichier absent ou invalide
+
+| Situation | `worker` | `app` | Réf. |
+|---|---|---|---|
+| `sources.yaml`, `topics.yaml` ou `entities.yaml` **invalide** | refuse de démarrer, message avec fichier, clé et champ | non concerné | IV §16.5, T-CFG-02 |
+| l'un de ces trois fichiers **absent** | non écrit par la spec (P-04) | non concerné | — |
+| `pipeline.yaml` **absent** | démarre avec les défauts | démarre avec les défauts | IV §16.5 |
+| `pipeline.yaml` **invalide** | refuse de démarrer | **non écrit par la spec** (P-05) | IV §16.5 · CF-22 |
+| `pipeline.yaml` **modifié** | pris en compte au redémarrage | pris en compte au redémarrage | IV §16.1 |
+| variable obligatoire absente ou invalide | refuse de démarrer (§3.3) | refuse de démarrer si `DASHBOARD_URL` est invalide | VII §36.7 |
+
+Un worker qui refuse de démarrer sort en code non nul ; Docker le relance en boucle (`restart: unless-stopped`) et
+`/health` passe à `down` quand le heartbeat est périmé (VII §40.2). La réponse d'exploitation est
+`validate-config` (IX §56.4, §56.6-P11).
+
 <!-- SUITE -->
