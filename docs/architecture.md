@@ -538,4 +538,153 @@ Mécanisme proposé (P-11) :
 code `0` si tout est couvert, `1` sinon, `2` sur une entrée illisible (contrat de IX §56.3, appliqué par analogie).
 Le script a ses propres tests, sur un catalogue et des sprints factices (R-07).
 
-<!-- SUITE -->
+---
+
+## 6. Points à trancher
+
+Choix que la spec ne fixe pas. Chacun porte des options et une recommandation ; **aucun n'est tranché ici**.
+
+#### P-01 — Source du chemin de la base pour `migrate`, `app` et `worker`
+
+- **Constat** : l'`env.py` de `database.md` §5 lit `sqlalchemy.url` dans la configuration Alembic ; `.env.example`
+  (VII §36.7) n'a aucune variable pour la base ; l'esquisse Compose de VII §36.5 passe pourtant
+  `RADAR_DB_PATH: /data/radar.db` aux trois services.
+- **Options** : A. `RADAR_DB_PATH`, fixé par Compose (hors `.env`), seule source : `env.py`, `app` et `worker`
+  construisent `sqlite:///{RADAR_DB_PATH}` (`sqlite+aiosqlite` pour les deux processus) ; `alembic.ini` sans URL.
+  B. Variable `DATABASE_URL` ajoutée à `.env.example`. C. URL en dur dans `alembic.ini` et dans le code.
+- **Recommandation** : A. La valeur est une constante de déploiement, pas un secret ; elle vit déjà dans VII §36.5.
+  `database.md` §5 remplace alors `config.get_main_option("sqlalchemy.url")` par la lecture de `RADAR_DB_PATH`.
+
+#### P-02 — uid et gid des conteneurs, propriétaire de `/data`
+
+- **Constat** : VII §36.5 écrit `user: "10001:10001"` dans une esquisse dont « les détails sont à l'implémenteur » ;
+  VII §36.4 dit que le Dockerfile crée `/data` avec le propriétaire de l'utilisateur non-root.
+- **Options** : A. uid et gid **10001** fixes, dans l'image et dans Compose ; `/data` créé `10001:10001`, `0750`, et
+  recopié à la création du volume (§4.4). B. uid de l'utilisateur de l'hôte, passé au build. C. Conteneur
+  d'initialisation root qui fait `chown` à chaque démarrage.
+- **Recommandation** : A. Pour un volume **déjà existant** avec un autre propriétaire, une correction ponctuelle au
+  runbook : `docker compose run --rm --no-deps --user 0 --cap-add CHOWN --cap-add FOWNER migrate chown -R
+  10001:10001 /data`. C ajoute un conteneur root permanent au démarrage, contraire à VII §43.2.
+
+#### P-03 — Développement en Docker rootless (ADR-0021, T0.9)
+
+Écarts attendus, à signaler dans `deployment.md` et à trancher par l'ADR-0021 (T0.9, #60) :
+
+- **Ports 80 et 443 de Caddy** : un démon rootless ne peut pas lier un port inférieur à 1024, sauf si
+  `net.ipv4.ip_unprivileged_port_start` est abaissé sur l'hôte. Sinon, publication sur 8080 et 8443 en
+  développement, ce qui change `DASHBOARD_URL` (`https://localhost:8443`) ; VII §36.7 ne dit pas si un port est admis
+  dans `DASHBOARD_URL` (A-04).
+- **uid des volumes** : l'uid 10001 du conteneur correspond à un sous-uid de l'hôte. Sans effet sur un volume nommé
+  vu depuis les conteneurs ; seul l'accès direct aux fichiers du volume depuis l'hôte change.
+- **Limites cgroup** : `mem_limit` exige la délégation du contrôleur mémoire de cgroup v2 à l'utilisateur (systemd) ;
+  sans elle, la limite est refusée ou ignorée.
+- **Réseau** : pile réseau en espace utilisateur (slirp4netns ou pasta), plus lente ; les réseaux `internal` et
+  `network_mode: none` restent disponibles.
+- **Poste actuel** : démon Docker du snap (Q-01, rapport de cadrage §3.A), nettoyage suivi en #61.
+- **Recommandation** : aucun choix ici ; l'ADR-0021 fixe le mode de développement (rootless ou non) et, s'il est
+  rootless, la parade retenue pour chaque écart.
+
+#### P-04 — Fichier `config/` obligatoire absent
+
+- **Constat** : IV §16.5 dit que `pipeline.yaml` est optionnel et que toute **erreur** fait refuser le démarrage du
+  worker ; l'absence de `sources.yaml`, `topics.yaml` ou `entities.yaml` n'est pas traitée.
+- **Options** : A. Absence = erreur : le worker refuse de démarrer, `validate-config` renvoie `2`. B. Absence = fichier
+  vide (aucune source, aucun topic, aucune entité).
+- **Recommandation** : A. Un fichier absent signale une erreur de déploiement, pas un choix.
+
+#### P-05 — `pipeline.yaml` invalide côté `app` (CF-22, E17)
+
+- **Constat** : l'app lit `pipeline.yaml` avec les mêmes modèles que le worker (IV §16.1) ; la spec ne dit pas ce
+  qu'elle fait s'il est invalide.
+- **Options** : A. L'app refuse de démarrer, avec le même message que le worker. B. L'app démarre avec les défauts et
+  journalise une erreur. C. L'app ne valide que les clés qu'elle lit.
+- **Recommandation** : A. Même fichier, même verdict : `validate-config` en CI empêche d'en arriver là, et un `/health`
+  calculé sur un seuil par défaut divergerait de celui du worker (VII §40.1).
+
+#### P-06 — Healthchecks Docker
+
+- **Constat** : la spec ne prévoit aucun healthcheck. Compose ne redémarre pas un conteneur `unhealthy` ; un
+  healthcheck ne sert qu'à `depends_on: service_healthy` et à l'affichage de `docker compose ps`.
+- **Options** : A. Aucun. B. `app` : requête locale sur `/health` (mais `/health` vaut 503 quand le worker est mort :
+  `app` apparaîtrait malade à tort). C. `worker` : âge du heartbeat via `app.cli health`.
+- **Recommandation** : A. Supervision fail-fast, watchdog, `/health` et monitoring externe couvrent déjà le besoin
+  (VII §36.6, §41).
+
+#### P-07 — `mem_limit` et taille du tmpfs, provisoires
+
+- **Constat** : `mem_limit` est fixé après M1 (VII §36.5) ; aucune valeur n'existe avant. Le tmpfs `/tmp` compte dans
+  la mémoire du conteneur et n'a pas de taille dans l'esquisse.
+- **Options** : A. Aucune limite avant M1. B. Limite provisoire à partir du Sprint 4 : `worker` 2 Gio (T0.3 : RSS
+  ≈ 1,0 Gio, pic 1,2 Gio pour le seul modèle, sans lingua ni matrice) ; tmpfs borné (`size=256m` pour `app` et
+  `migrate`, `512m` pour `worker`, cache restic compris).
+- **Recommandation** : B, recalé d'après M1 en pré-production (pic × 1,5).
+
+#### P-08 — Horodatage du build et reproductibilité
+
+- **Constat** : VIII §46.2 exige des versions épinglées partout ; la spec ne dit rien de la reproductibilité des
+  couches (dates des fichiers, ordre).
+- **Recommandation** : hors V1. Le tag par sha Git suffit au rollback (VII décision 2) ; aucune action proposée.
+
+#### P-09 — Chargement du modèle épinglé par fastembed
+
+- **Constat** : fastembed télécharge lui-même depuis Hugging Face, sans paramètre de révision documenté dans la
+  spec ; T0.3 a relevé le dépôt réel, la révision et les empreintes (V-01).
+- **Options** : A. Téléchargement au build par `huggingface_hub.snapshot_download(revision=…)` dans un dossier local,
+  contrôle de l'empreinte, puis chargement par fastembed depuis ce dossier, hors ligne (§4.2). B. Laisser fastembed
+  télécharger au build, puis contrôler les empreintes du cache.
+- **Recommandation** : A, à confirmer au Sprint 4 (option de chargement local de fastembed) et à consigner dans
+  l'ADR-0008.
+
+#### P-10 — Utilisateur et privilèges de `caddy`
+
+- **Constat** : VII §43.2 exige utilisateur non-root et `no-new-privileges` pour les conteneurs ; l'esquisse de
+  VII §36.5 n'en donne aucun à `caddy` (A-01).
+- **Options** : A. `no-new-privileges` ajouté ; utilisateur root conservé, avec `cap_drop: ALL` et
+  `NET_BIND_SERVICE` seul. B. En plus, `user` non-root, si l'image Caddy retenue permet de lier 80 et 443 sans root.
+- **Recommandation** : A dès le Sprint 1 ; B vérifié au Sprint 1 sur l'image épinglée.
+
+#### P-11 — Statut des sprints et format des identifiants visés
+
+- **Constat** : E1 fait lire les identifiants des sprints clos et en cours dans les `sprint-NN.md` ; ni le statut
+  d'un sprint ni le format de la liste ne sont fixés.
+- **Proposition** : en tête de chaque `sprint-NN.md`, une ligne `Statut : planifié | en cours | clos` ; une section
+  « Identifiants visés », une ligne par identifiant, avec ses volets entre crochets s'il est partiel
+  (`T-DB-13 [pragma, check]`). Marqueur de volet côté test : `spec("T-DB-13:rebuild")` (§5.3).
+- **Recommandation** : cette proposition, reprise dans le plan du Sprint 1 (T0.8).
+
+#### P-12 — `config/` dans l'image ou monté
+
+- **Options** : A. Copié dans l'image au build (§4.2) : une modification passe par un déploiement (IX §56.6-P10).
+  B. Monté en lecture seule depuis le clone du dépôt.
+- **Recommandation** : A. L'image est alors complète et testée telle quelle en CI (étape 6) ; B introduirait un
+  montage de l'hôte hors `/data`.
+
+#### P-13 — Versions épinglées des outils de build
+
+- **Constat** : VIII §46.2 impose des versions épinglées ; uv, Node et Caddy n'ont pas de version dans la spec.
+- **Recommandation** : épingler au Sprint 1, par tag et digest : uv (dernière version stable à cette date), Node 24 LTS
+  (version d'audit de T0.3, V-08), Caddy 2 (dernière version stable). Mise à jour par commit dédié (VIII §46.2).
+
+#### P-14 — Fichiers temporaires de `vacuum` sur `/data`
+
+- **Constat** : IX §56.4.2 place les fichiers temporaires de SQLite sur `/data`, jamais dans le tmpfs ; le mécanisme
+  n'est pas écrit.
+- **Options** : A. `SQLITE_TMPDIR=/data/tmp` dans l'environnement de la seule commande `vacuum`. B. `PRAGMA
+  temp_store_directory` (déprécié par SQLite).
+- **Recommandation** : A, avec création et nettoyage de `/data/tmp` par la commande.
+
+---
+
+## 7. Écarts de spec relevés
+
+Relevés en rédigeant ce document ; **non tranchés**.
+
+| # | Écart | Passages | Lien |
+|---|---|---|---|
+| A-01 | `caddy` sans `no-new-privileges` ni utilisateur non-root dans l'esquisse Compose, alors que les conteneurs doivent être non-root avec `no-new-privileges` | VII §36.5 · VII §43.2 · T-SEC-08 | P-10 |
+| A-02 | `alembic` lit `sqlalchemy.url` alors que Compose fournit `RADAR_DB_PATH` et que `.env.example` n'a aucune variable pour la base | `database.md` §5 · VII §36.5, §36.7 | P-01 |
+| A-03 | Absence d'un fichier `config/` obligatoire non traitée ; comportement de l'app sur un `pipeline.yaml` invalide non écrit | IV §16.1, §16.5 · CF-22 | P-04, P-05 |
+| A-04 | `DASHBOARD_URL` : la validation (« schéma `https` ou `http://localhost`, sans chemin ni slash final ») ne dit pas si un port est admis, cas du développement rootless | VII §36.7 · T-CFG-07 | P-03 |
+| A-05 | `ACME_EMAIL` fait partie de « toutes les autres » variables reçues par le worker, qui n'en a pas l'usage | VII §36.7 (distribution par service) | — |
+| A-06 | `gateway` sans durcissement dans l'esquisse (`cap_drop`, `no-new-privileges`, `read_only`), alors que VII §43.2 vise les conteneurs sans distinction | VII §36.5 · VII §43.2 | choix au Sprint 6 |
+| A-07 | `scripts/radar-dev` (T0.9) absent de l'arborescence contractuelle | VIII §46.1 | #60 |
