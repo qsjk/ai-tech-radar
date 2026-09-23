@@ -436,4 +436,106 @@ Le tmpfs occupe de la mémoire : sa taille compte dans `mem_limit` (P-07).
   provisoire proposée pour le worker à partir du Sprint 4 : P-07. T0.3 a mesuré environ 1,0 Gio de RSS après
   chargement du seul modèle d'embeddings, avec un pic à 1,2 Gio (rapport de cadrage §3, V-01).
 
+---
+
+## 5. Conception
+
+### 5.1 CI en six étapes
+
+Contrat : VIII §49 (workflows §49.1, étapes §49.2, règles §49.3, politique d'audit §49.4). Proposition de mise en
+œuvre pour `.github/workflows/ci.yml` :
+
+| Étape | Job | Contenu (VIII §49.2) | Outils (V-08) | Dépend de |
+|---|---|---|---|---|
+| 1 Statique | `static` | ruff, mypy strict, eslint, `tsc --noEmit`, `uv lock --check`, `npm ci`, analyse de secrets sur tout l'historique, `check-test-catalog.py` | gitleaks 8.30.1 (image officielle, `fetch-depth: 0`) | — |
+| 2 Configuration | `config` | `validate-config` sur `config/` ; `docker compose config` avec `.env.example` ; `caddy validate` ; politique Compose (T-SEC-08) | image `caddy` épinglée | 1 |
+| 3 Audit | `audit` | backend depuis `uv.lock`, frontend `npm audit --audit-level=high`, confrontés à `.audit-exceptions.yaml` | pip-audit 2.10.1 · npm 11.19.0 | 2 |
+| 4 Tests | `tests` | pytest unitaire et intégration, réseau bloqué, couverture publiée ; vitest | pytest-socket, vitest | 3 |
+| 5 Build | `build` | images `radar-backend:<sha>` et `radar-caddy:<sha>` ; vérifications d'image | BuildKit | 4 |
+| 6 e2e | `e2e` | Compose + `docker-compose.test.yml` sur les images de l'étape 5 ; tests `@pytest.mark.e2e` | Compose v2 | 5 |
+
+- Les étapes 1 à 5 tournent sur toute branche et toute PR ; l'étape 6 sur `main` et en nightly (VIII §49.1).
+  `scripts/deploy.sh` exige l'étape 6 verte pour le sha déployé (VIII §49.5).
+- Aucun secret : `.env.example` et les secrets factices suffisent (VIII §49.1).
+- **Vérifications de l'étape 5**, lancées sur l'image construite, par `docker run --rm --entrypoint …` :
+  - utilisateur non-root (`id -u` = 10001) — dès le Sprint 1 ;
+  - aucun `.env` dans les couches (inspection de l'historique et du système de fichiers) — dès le Sprint 1 ;
+  - **modèle d'embeddings présent dans l'image** : `RADAR_MODEL_DIR` existe et l'empreinte de `model_optimized.onnx`
+    est celle de l'ADR-0008 — **ajoutée au Sprint 4**, avec les embeddings (E5). La décision est consignée dans
+    `sprint-01.md` (T0.8) : l'étape 5 du Sprint 1 ne contient pas encore cette vérification.
+- **Durée** : étapes 1 à 5 sous 10 minutes (VIII §49.3) ; caches uv, npm et couches Docker (R-08).
+- `scheduled.yml` : nightly (1 à 6), audit hebdomadaire (3), reconstruction mensuelle sans cache (5 et 6) (VIII §49.1).
+
+### 5.2 `Clock` (DV-18, VIII décision 7, §50.1)
+
+Aucun instant n'est lu par `datetime.now()`, `time.time()` ou en SQL dans le code métier : tout passe par une
+`Clock` injectée.
+
+```python
+# app/core/clock.py (conception)
+class Clock(Protocol):
+    def now(self) -> datetime: ...           # UTC, avec fuseau (UTCDateTime refuse le naïf)
+    def monotonic(self) -> float: ...        # durées, délais, watchdog
+    async def sleep(self, seconds: float) -> None: ...
+
+class SystemClock:                           # production
+    def now(self): return datetime.now(timezone.utc)
+    def monotonic(self): return time.monotonic()
+    async def sleep(self, seconds): await asyncio.sleep(seconds)
+
+class ManualClock:                           # tests (tests/fakes/ ou tests/conftest.py)
+    def __init__(self, start: datetime): self._now, self._mono = start, 0.0
+    def now(self): return self._now
+    def monotonic(self): return self._mono
+    def advance(self, delta: timedelta): self._now += delta; self._mono += delta.total_seconds()
+    async def sleep(self, seconds): self.advance(timedelta(seconds=seconds)); await asyncio.sleep(0)
+```
+
+- **Injection** : une instance par processus, créée au démarrage et passée aux composants (runner, file de jobs,
+  disjoncteurs, purge, alertes, `ops.tick`, heartbeat). Les requêtes SQL reçoivent l'instant en paramètre
+  (`:now`), jamais `CURRENT_TIMESTAMP` (III §10.6).
+- **APScheduler** (`AsyncIOScheduler`, V-07) garde son horloge murale pour **déclencher** ; chaque job appelle une
+  fonction de tick qui reçoit la `Clock` et ne lit l'heure que par elle. Les tests appellent **directement** ces
+  fonctions de tick avec une `ManualClock`, sans faire tourner le scheduler (VIII §50.1). La coalescence des misfires
+  (T-OPS-16) se teste sur la configuration des jobs (`coalesce=True`, `max_instances=1`) et sur la fonction de
+  rattrapage au démarrage.
+- **Watchdog** (VII §36.6) : le thread compare `clock.monotonic()` à l'horodatage rafraîchi par l'event-loop.
+- **Aucun `sleep` réel** dans les tests unitaires et d'intégration (VIII §49.3) ; `ManualClock.sleep` avance le temps.
+
+### 5.3 `scripts/check-test-catalog.py` (VIII §50.3)
+
+**Entrées**
+
+1. `docs/spec/partie-VIII.md`, **§50.5 uniquement** (entre les titres `### 50.5` et `### 50.6`). Une ligne de
+   catalogue est reconnue par le motif, appliqué à la **première colonne** d'une ligne de tableau :
+   `^\|\s*(T-[A-Z]+-\d{2})\s*\|`. Le niveau est lu dans la troisième colonne (`U`, `I`, `E`, `F`, `M`). Le motif ne
+   dépend ni de la largeur des colonnes ni du texte du test (R-07).
+2. `docs/sprints/sprint-NN.md` : statut du sprint et identifiants visés (format : P-11).
+3. Les tests : marqueurs `@pytest.mark.spec("T-…")` sous `tests/`, tags `[T-FE-nn]` dans les noms des tests vitest.
+
+**Contrôles** (bloquants, étape 1)
+
+- **Sprints clos et en cours** (E1) : tout identifiant U, I, E ou F **visé par un sprint clos ou en cours** a au
+  moins un test. Au Sprint 11, le contrôle porte sur **tout** le catalogue (critère VIII §52 A2).
+- Tout marqueur renvoie à un identifiant existant ; aucun identifiant M n'est marqué dans le code (VIII §50.3).
+- Doublons dans le catalogue, identifiant mal formé, sprint sans statut lisible → erreur.
+
+**Identifiant partiel et test couvert en deux sprints** (E3)
+
+Certains identifiants sont couverts en plusieurs temps : T-JOB-04, T-LLM-18, T-PRG-05, T-PRG-06, T-DB-12 (E2, E3) et
+T-DB-13 (Sprint 1 : PRAGMA de `migrate` et `foreign_key_check` ; Sprint 3 : reconstruction d'`article` et triggers).
+Mécanisme proposé (P-11) :
+
+- le `sprint-NN.md` qui vise un identifiant en partie le déclare avec ses **volets** :
+  `T-DB-13 [pragma, check]` au Sprint 1, `T-DB-13 [rebuild]` au Sprint 3 ;
+- un test déclare le volet qu'il couvre : `@pytest.mark.spec("T-DB-13:rebuild")` ; `@pytest.mark.spec("T-DB-13")`
+  couvre l'identifiant entier ;
+- le script exige, pour chaque volet visé par un sprint clos ou en cours, au moins un test marqué de ce volet.
+  L'identifiant est **complet** quand tous ses volets, sur l'ensemble des sprints, ont un test ; le Sprint 11 exige
+  que tous les identifiants soient complets.
+
+**Sortie** : un rapport lisible sur stdout (identifiants sans test, par sprint et par volet ; marqueurs inconnus) ;
+code `0` si tout est couvert, `1` sinon, `2` sur une entrée illisible (contrat de IX §56.3, appliqué par analogie).
+Le script a ses propres tests, sur un catalogue et des sprints factices (R-07).
+
 <!-- SUITE -->
