@@ -173,7 +173,7 @@ read_session = async_sessionmaker(engine.execution_options(readonly=True))
 
 | Table (nom SQL) | Section | Sprint | Écrivain | Référence |
 |---|---|---|---|---|
-| `SystemState` (`system_state`) | §3.20 | **1** (clé `worker_heartbeat`) ; autres clés aux sprints qui les écrivent | worker | III §11.13 · VII §39.3 |
+| `SystemState` (`system_state`) | §3.19 | **1** (clé `worker_heartbeat`) ; autres clés aux sprints qui les écrivent | worker | III §11.13 · VII §39.3 |
 | `alembic_version` | §5 | **1** | `migrate` (Alembic) | III §10.5 |
 | `Source` (`source`) | §3.2 | **2** | worker | III §11.1 |
 | `Article` (`article`) | §3.3 | **2** ; colonnes du clustering au **4**, `processed_at` au **7** | worker | III §11.2 |
@@ -183,7 +183,7 @@ read_session = async_sessionmaker(engine.execution_options(readonly=True))
 | `ArticleTopic` (`article_topic`) | §3.7 | **2** | worker | III §11.5 |
 | `ArticleEntity` (`article_entity`) | §3.8 | **2** | worker | III §11.7 |
 | `AIJob` (`aijob`) | §3.11 | **2** (E7) | worker ; création aussi par l'app | III §11.10 · V-A §23 |
-| `article_fts` (FTS5) + 3 triggers | §3.21 | **3** | worker (triggers) | III §11.14 |
+| `article_fts` (FTS5) + 3 triggers | §3.20 | **3** | worker (triggers) | III §11.14 |
 | `Event` (`event`) | §3.9 | **4** | worker | III §11.3 · V-B §28 |
 | `Embedding` (`embedding`) | §3.10 | **4** | worker | III §11.9 · §12 |
 | `Signal` (`signal`) | §3.12 | **8** | worker | III §11.8 · V-B §29 |
@@ -202,6 +202,317 @@ Sprint 3, index `article_fts` et ses triggers ; Sprint 4, embeddings et clusteri
 
 Ordre des migrations : une table référencée par une clé étrangère existe avant la colonne qui la référence. D'où
 `Article.event_id` (vers `Event`) et `Article.duplicate_of_id` ajoutés au Sprint 4, avec `Event`.
+
+### 3.2 `Source` — *écrit par le worker*
+
+Une ligne par source de `config/sources.yaml`, upsertée au démarrage du worker sur `key` ; jamais supprimée
+(`enabled = false` si la clé disparaît du fichier, FK `RESTRICT`) (IV §16.2).
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 2 |
+| `key` | `TEXT` | `String` | n. p. | — | **UNIQUE** | identifiant stable de `sources.yaml`, slug `[a-z0-9-]+`, clé d'upsert, immuable | III §11.1 · IV §16.2 | 2 |
+| `name` | `TEXT` | `String` | n. p. | — | | libellé affiché | III §11.1 | 2 |
+| `type` | `TEXT` | `String` | n. p. | — | validé par le code (registre des collectors) | V1 : `rss · github · hackernews · reddit · youtube · webpage` ; ne change jamais pour une `key` | III §11.1, décision 7 · IV §16.2 | 2 |
+| `url` | `TEXT` | `String` | n. p. | — | | URL lisible de la source (page de liste pour `webpage`) | III §11.1 · IV §16.2 | 2 |
+| `config` | `TEXT` (JSON) | `JSON` | n. p. | — | Pydantic : `config_model` du collector | paramètres propres au collector | III §11.1 · IV §16.2 | 2 |
+| `enabled` | `INTEGER` | `Boolean` | n. p. | — | | source planifiée ou non | III §11.1 | 2 |
+| `poll_interval` | `INTEGER` | `Integer` | n. p. | — | | intervalle en secondes, ≥ minimum du type | III §11.1 · IV §16.2 | 2 |
+| `relevance` | `TEXT` | `String` | n. p. | — | `CHECK IN ('filter','always')` | `always` : article toujours `ready` | III §11.1 · IV §20.3 | 2 |
+| `extract` | `TEXT` | `String` | n. p. | — | `CHECK IN ('auto','never')` | extraction ciblée autorisée ou non | III §11.1 · IV §17.1 | 2 |
+| `checkpoint` | `TEXT` (JSON) | `JSON` | n. p. | — | Pydantic | curseur, `ETag`, `Last-Modified`, date de dernière collecte ; vide à l'insertion ; jamais écrasé par le YAML | III §11.1 · IV §14.3, §16.1 | 2 |
+| `last_success_at` | `TEXT` | `UTCDateTime` | n. p. | — | | fin du dernier run `success` ou `partial` | III §11.1 · IV §14.4 | 2 |
+| `last_error` | `TEXT` | `Text` | n. p. | — | | dernier run `partial` ou `failed`, après nettoyage des secrets par valeur | III §11.1 · IV §14.4 · VII §42.4 | 2 |
+| `last_http_status` | `INTEGER` | `Integer` | n. p. | — | | état de santé | III §11.1 | 2 |
+| `rate_limit_remaining` | `INTEGER` | `Integer` | oui | — | | `NULL` = quota inconnu | III §11.1 · IV §21.4 | 2 |
+| `rate_limit_reset_at` | `TEXT` | `UTCDateTime` | oui | — | | `NULL` = inconnu | III §11.1 · IV §21.3 | 2 |
+
+- Champs de configuration (mis à jour par l'upsert) : `name`, `url`, `config`, `enabled`, `poll_interval`,
+  `relevance`, `extract`. Champs d'état (jamais touchés par le YAML) : `checkpoint`, `last_*`, `rate_limit_*`
+  (IV §16.1, §16.2).
+- Aucun état de disjoncteur en colonne : il se lit dans `CollectorRun` (IV §21.5).
+
+```sql
+CREATE TABLE source (
+  id                   INTEGER PRIMARY KEY,
+  key                  TEXT UNIQUE,
+  name                 TEXT,
+  type                 TEXT,
+  url                  TEXT,
+  config               TEXT,          -- JSON
+  enabled              INTEGER,
+  poll_interval        INTEGER,       -- secondes
+  relevance            TEXT CHECK (relevance IN ('filter','always')),
+  extract              TEXT CHECK (extract IN ('auto','never')),
+  checkpoint           TEXT,          -- JSON
+  last_success_at      TEXT,
+  last_error           TEXT,
+  last_http_status     INTEGER,
+  rate_limit_remaining INTEGER,
+  rate_limit_reset_at  TEXT
+);
+```
+
+### 3.3 `Article` — *écrit par le worker*
+
+Insertion par le runner, une transaction `BEGIN IMMEDIATE` par page (IV §14.3). Un doublon exact n'est **pas**
+inséré ; un item malformé non plus (III décision 6).
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 2 |
+| `source_id` | `INTEGER` | `Integer` | n. p. | — | FK `source(id)` `RESTRICT` | | III §11.2 | 2 |
+| `external_id` | `TEXT` | `String` | oui | — | voir unicité partielle | identifiant chez le provider | III §11.2 | 2 |
+| `url` | `TEXT` | `String` | n. p. | — | | URL **propre à l'item** | III §11.2, décision 3 | 2 |
+| `canonical_url` | `TEXT` | `String` | n. p. | — | **UNIQUE** | base de la dédup exacte | III §11.2 · IV §18.3, §19.1 | 2 |
+| `link_url` | `TEXT` | `String` | oui | — | | URL **pointée** (lien externe) | III §11.2 | 2 |
+| `canonical_link_url` | `TEXT` | `String` | oui | — | index | critère « URL croisée » du clustering | III §11.2 · V-B §28.4 | 2 |
+| `title` | `TEXT` | `Text` | n. p. | — | | titre normalisé, une ligne, ≤ 500 caractères | III §11.2 · IV §18.2 | 2 |
+| `author` | `TEXT` | `String` | oui | — | | auteur vide → `NULL` | III §11.2 · IV §18.2 | 2 |
+| `language` | `TEXT` | `String` | oui | — | | `NULL` sous 20 caractères ou si le détecteur ne tranche pas | III §11.2 · IV §18.5 | 2 |
+| `published_at` | `TEXT` | `UTCDateTime` | **non** | — | index | absent ou futur → repli sur `discovered_at` | III §11.2 · IV §18.4 | 2 |
+| `discovered_at` | `TEXT` | `UTCDateTime` | **non** | — | | instant UTC du traitement de la page | III §11.2 · IV §14.2 | 2 |
+| `content` | `TEXT` | `Text` | oui | — | | **tampon de traitement**, purgé ; `NULL` dès l'insertion pour un `filtered` | III §11.2 · IV §14.3 · II §8.5 | 2 |
+| `content_hash` | `TEXT` | `String` | oui | — | index (non unique) | `NULL` sous 200 caractères ; conservé après purge ; jamais recalculé après extraction | III §11.2 · IV §19.2 | 2 |
+| `content_purged_at` | `TEXT` | `UTCDateTime` | oui | — | | posé à l'insertion d'un `filtered`, puis par la purge | III §11.2 · IV §14.3 | 2 |
+| `relevance_score` | `REAL` | `Float` | n. p. | — | | score du relevance filter | III §11.2 · IV §20 | 2 |
+| `status` | `TEXT` | `String` | n. p. | — | `CHECK IN ('ready','filtered','duplicate')` ; index | insertion en `ready` ou `filtered` ; seule transition : `ready → duplicate` | III §11.2 | 2 |
+| `summary` | `TEXT` | `Text` | **non** (E12) | — | | aperçu : repli à l'insertion (`ready` **et** `filtered`), puis synthèse LLM | III §11.2 · IV §14.5 | 2 |
+| `summary_origin` | `TEXT` | `String` | n. p. | — | `CHECK IN ('fallback','llm')` | | III §11.2 | 2 |
+| `summary_lang` | `TEXT` | `String` | oui | — | | langue du résumé ; au repli, `language` (éventuellement `NULL`) | III §11.2 · IV §14.5 | 2 |
+| `metrics` | `TEXT` (JSON) | `JSON` | n. p. | — | Pydantic | engagement à la collecte (points HN, vues YouTube…), instantané jamais mis à jour | III §11.2 · IV §15.4 | 2 |
+| `event_id` | `INTEGER` | `Integer` | oui | — | FK `event(id)` `RESTRICT` ; index | appartenance à un Event | III §11.2, décision 4 · V-B §28.5 | **4** |
+| `duplicate_of_id` | `INTEGER` | `Integer` | oui | — | FK `article(id)` `RESTRICT` | renseigné si `duplicate` | III §11.2 · V-B §28.7 | **4** |
+| `clustered_at` | `TEXT` | `UTCDateTime` | oui | — | index partiel | article évalué par le clustering | III §11.2 · V-B §28.2 | **4** |
+| `clustered_semantic` | `INTEGER` | `Boolean` | n. p. | `false` | | critère cosine évalué | III §11.2 · V-B §28.2 | **4** |
+| `importance` | `REAL` | `Float` | oui | — | | importance de l'article hors Event, dans [0, 1] | III §11.2 · V-B §28.9 | **4** |
+| `processed_at` | `TEXT` | `UTCDateTime` | oui | — | | tous traitements terminés ; posé par la seule passe `processed_at` de la purge | III §11.2 · V-A §24.5 | **7** |
+
+**Contraintes et index**
+
+| Élément | Définition | Réf. | Sprint |
+|---|---|---|---|
+| unicité | `UNIQUE(canonical_url)` | III §11.2 | 2 |
+| unicité partielle | `UNIQUE(source_id, external_id) WHERE external_id IS NOT NULL` | III §11.2 | 2 |
+| index | `published_at` | III §11.2 | 2 |
+| index | `canonical_link_url` | III §11.2 | 2 |
+| index | `content_hash` (non unique) | III §11.2 | 2 |
+| index | `status` | III §11.2 | 2 |
+| index | `event_id` | III §11.2 | 4 |
+| index partiel | `clustered_at WHERE clustered_at IS NULL AND status = 'ready'` (sélection du clustering) | III §11.2 · V-B §28.2 | 4 |
+| index | `(status, event_id, published_at)` (stories) | III §11.2 · VI §31.1 | 4 |
+
+- **Sprints** : le Sprint 2 insère les articles avec résumé de repli et purge immédiate du contenu des `filtered`
+  (IV §14.3) ; le Sprint 4 livre le clustering, qui écrit `event_id`, `status = duplicate`, `duplicate_of_id`,
+  `clustered_at`, `clustered_semantic` et `importance` (V-B §28.1) ; `event_id` référence `Event`, créé au même
+  sprint. Le Sprint 7 livre la purge et la passe `processed_at` (VIII §47.2). Le `CHECK` de `status` comprend
+  `duplicate` dès le Sprint 2, pour éviter une reconstruction de la table.
+- `Article.content` est lu par l'embedding (Sprint 4) tant que `content_purged_at IS NULL` (V-A §24.4).
+- Un article `duplicate` conserve ses topics et son résumé ; il est masqué à l'affichage (III §11.2).
+
+```sql
+CREATE TABLE article (
+  id                 INTEGER PRIMARY KEY,
+  source_id          INTEGER REFERENCES source(id) ON DELETE RESTRICT,
+  external_id        TEXT,
+  url                TEXT,
+  canonical_url      TEXT UNIQUE,
+  link_url           TEXT,
+  canonical_link_url TEXT,
+  title              TEXT,
+  author             TEXT,
+  language           TEXT,
+  published_at       TEXT NOT NULL,
+  discovered_at      TEXT NOT NULL,
+  content            TEXT,
+  content_hash       TEXT,
+  content_purged_at  TEXT,
+  relevance_score    REAL,
+  status             TEXT CHECK (status IN ('ready','filtered','duplicate')),
+  summary            TEXT NOT NULL,
+  summary_origin     TEXT CHECK (summary_origin IN ('fallback','llm')),
+  summary_lang       TEXT,
+  metrics            TEXT,                                            -- JSON
+  -- Sprint 4
+  event_id           INTEGER REFERENCES event(id) ON DELETE RESTRICT,
+  duplicate_of_id    INTEGER REFERENCES article(id) ON DELETE RESTRICT,
+  clustered_at       TEXT,
+  clustered_semantic INTEGER DEFAULT 0,
+  importance         REAL,
+  -- Sprint 7
+  processed_at       TEXT
+);
+CREATE UNIQUE INDEX ux_article_source_external ON article(source_id, external_id)
+  WHERE external_id IS NOT NULL;
+CREATE INDEX ix_article_published_at       ON article(published_at);
+CREATE INDEX ix_article_canonical_link_url ON article(canonical_link_url);
+CREATE INDEX ix_article_content_hash       ON article(content_hash);
+CREATE INDEX ix_article_status             ON article(status);
+-- Sprint 4
+CREATE INDEX ix_article_event_id           ON article(event_id);
+CREATE INDEX ix_article_to_cluster         ON article(clustered_at)
+  WHERE clustered_at IS NULL AND status = 'ready';
+CREATE INDEX ix_article_stories            ON article(status, event_id, published_at);
+```
+
+### 3.4 `CollectorRun` — *écrit par le worker*
+
+Une ligne **à la fin** de chaque run d'un collector ; un worker tué en cours de run n'en écrit pas (IV §14.4).
+Alimente les métriques par source (VII §39) et le disjoncteur par source (IV §21.5).
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 2 |
+| `source_id` | `INTEGER` | `Integer` | n. p. | — | FK `source(id)` `RESTRICT` | | III §11.11 | 2 |
+| `started_at` · `finished_at` | `TEXT` | `UTCDateTime` | n. p. | — | | bornes du run | III §11.11 | 2 |
+| `status` | `TEXT` | `String` | n. p. | — | `CHECK IN ('success','partial','failed')` | | III §11.11 · IV §14.4 | 2 |
+| `items_fetched` | `INTEGER` | `Integer` | n. p. | — | | entrées renvoyées par le provider, malformées comprises | III §11.11 · IV §14.4 | 2 |
+| `items_created` | `INTEGER` | `Integer` | n. p. | — | | insérés en `ready` | idem | 2 |
+| `items_duplicate` | `INTEGER` | `Integer` | n. p. | — | | doublons exacts non insérés, conflits `ON CONFLICT` compris | idem | 2 |
+| `items_filtered` | `INTEGER` | `Integer` | n. p. | — | | insérés en `filtered` | idem | 2 |
+| `items_skipped` | `INTEGER` | `Integer` | n. p. | — | | entrées malformées, non persistées | idem | 2 |
+| `items_too_old` | `INTEGER` | `Integer` | n. p. | — | | plus anciennes que `max_item_age` | idem | 2 |
+| `extractions_attempted` · `extractions_failed` | `INTEGER` | `Integer` | n. p. | — | | extraction ciblée (IV §17) | idem | 2 |
+| `requests_count` | `INTEGER` | `Integer` | n. p. | — | | requêtes HTTP du run, extraction comprise | idem | 2 |
+| `http_status` | `INTEGER` | `Integer` | n. p. | — | | | III §11.11 | 2 |
+| `error` | `TEXT` | `Text` | n. p. | — | | | III §11.11 | 2 |
+
+- **Invariant testé** : `items_fetched = items_created + items_filtered + items_duplicate + items_skipped +
+  items_too_old` (IV §14.4).
+- Aucun index secondaire n'est spécifié (§7, I-07).
+
+```sql
+CREATE TABLE collector_run (
+  id                    INTEGER PRIMARY KEY,
+  source_id             INTEGER REFERENCES source(id) ON DELETE RESTRICT,
+  started_at            TEXT,
+  finished_at           TEXT,
+  status                TEXT CHECK (status IN ('success','partial','failed')),
+  items_fetched         INTEGER,
+  items_created         INTEGER,
+  items_duplicate       INTEGER,
+  items_filtered        INTEGER,
+  items_skipped         INTEGER,
+  items_too_old         INTEGER,
+  extractions_attempted INTEGER,
+  extractions_failed    INTEGER,
+  requests_count        INTEGER,
+  http_status           INTEGER,
+  error                 TEXT
+);
+```
+
+### 3.5 `Topic` — *écrit par le worker*
+
+Upserté depuis `topics.yaml` au démarrage (clé `slug`, `origin = seeded`) ; créé en `origin = user` par le worker
+sur une décision `create_topic` de l'app (IV §16.3, V-B §30.8). `origin = discovered` n'est produit par aucun
+mécanisme en V1 (V-A §24.6). Le suivi et la sourdine ne sont pas ici : ce sont des préférences (§3.15).
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 2 |
+| `slug` | `TEXT` | `String` | n. p. | — | **UNIQUE** | clé d'upsert ; suffixe `-2`, `-3`… en collision pour un topic `user` | III §11.4 · IV §16.3 · V-B §30.8 | 2 |
+| `name` | `TEXT` | `String` | n. p. | — | | | III §11.4 | 2 |
+| `description` | `TEXT` | `Text` | oui | — | | `null` par défaut dans le YAML ; `llm_description` ou `NULL` pour un topic `user` | III §11.4 · IV §16.3 · V-B §30.8 | 2 |
+| `parent_id` | `INTEGER` | `Integer` | oui | — | FK `topic(id)` `RESTRICT` | hiérarchie ; `NULL` pour un topic `user` | III §11.4 · IV §16.3 · V-B §30.8 | 2 |
+| `origin` | `TEXT` | `String` | n. p. | — | `CHECK IN ('seeded','discovered','user')` | | III §11.4 | 2 |
+| `keywords` | `TEXT` (JSON) | `JSON` | n. p. | — | Pydantic | mots-clés et motifs du relevance filter | III §11.4 · IV §16.3 | 2 |
+| `enabled` | `INTEGER` | `Boolean` | n. p. | — | | un topic désactivé n'est pas utilisé par le scoring et n'a plus de Signal | III §11.4 · IV §16.3 · V-B §29.7 | 2 |
+| `created_at` | `TEXT` | `UTCDateTime` | n. p. | — | | couverture d'un topic `user` : `created_at − topic_backfill.window` | III §11.0 · V-B §29.3 | 2 |
+
+- Les exclusions (`exclude`) de `topics.yaml` n'ont pas de colonne (§7, I-05).
+
+```sql
+CREATE TABLE topic (
+  id          INTEGER PRIMARY KEY,
+  slug        TEXT UNIQUE,
+  name        TEXT,
+  description TEXT,
+  parent_id   INTEGER REFERENCES topic(id) ON DELETE RESTRICT,
+  origin      TEXT CHECK (origin IN ('seeded','discovered','user')),
+  keywords    TEXT,       -- JSON
+  enabled     INTEGER,
+  created_at  TEXT
+);
+```
+
+### 3.6 `Entity` — *écrit par le worker*
+
+Upsertée depuis `entities.yaml` (clé `(type, canonical_name)`, `origin = dictionary`) ; créée à la volée par le
+motif GitHub `owner/repo` (`origin = dictionary`) ou par `enrich_article` (`origin = llm`) (IV §16.4, V-A §27).
+**Les alias ne sont pas en base** : ils sont déclarés à la main dans `entities.yaml` et gardés en mémoire (III §11.6,
+CF-19). Alias et fusion automatiques en base : V2.
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 2 |
+| `type` | `TEXT` | `String` | n. p. | — | validé par le code | `company · product · person · project · technology · model · repository` | III §11.6 | 2 |
+| `name` | `TEXT` | `String` | n. p. | — | | libellé affiché, mis à jour par l'upsert | III §11.6 · IV §16.4 | 2 |
+| `canonical_name` | `TEXT` | `String` | n. p. | — | voir unicité | minuscules ; `owner/repo` pour un dépôt | III §11.6 · IV §16.4 | 2 |
+| `origin` | `TEXT` | `String` | n. p. | — | `CHECK IN ('dictionary','llm')` | | III §11.6 | 2 |
+
+**Unicité** : `UNIQUE(type, canonical_name)` (III §11.6), Sprint 2.
+
+```sql
+CREATE TABLE entity (
+  id             INTEGER PRIMARY KEY,
+  type           TEXT,
+  name           TEXT,
+  canonical_name TEXT,
+  origin         TEXT CHECK (origin IN ('dictionary','llm')),
+  UNIQUE (type, canonical_name)
+);
+```
+
+### 3.7 `ArticleTopic` — *écrit par le worker*
+
+Liaisons `keyword` écrites par le runner (Sprint 2) et par le backfill d'un topic créé (Sprint 8) ; liaisons `llm`
+remplacées en bloc par `enrich_article` (Sprint 7) (IV §14.3, V-A §24.6, §27).
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `article_id` | `INTEGER` | `Integer` | non (PK) | — | FK `article(id)` **`CASCADE`** | | III §11.5 · §11.0 | 2 |
+| `topic_id` | `INTEGER` | `Integer` | non (PK) | — | FK `topic(id)` `RESTRICT` | | III §11.5 | 2 |
+| `method` | `TEXT` | `String` | non (PK) | — | `CHECK IN ('keyword','llm')` | un même topic peut être attribué par les deux méthodes | III §11.5 | 2 |
+| `confidence` | `REAL` | `Float` | n. p. | — | | | III §11.5 | 2 |
+| `created_at` | `TEXT` | `UTCDateTime` | n. p. | — | | | III §11.5 | 2 |
+
+**Clé primaire** : `(article_id, topic_id, method)`. Les tendances comptent les **articles distincts** (III §11.5).
+
+```sql
+CREATE TABLE article_topic (
+  article_id INTEGER REFERENCES article(id) ON DELETE CASCADE,
+  topic_id   INTEGER REFERENCES topic(id)   ON DELETE RESTRICT,
+  method     TEXT CHECK (method IN ('keyword','llm')),
+  confidence REAL,
+  created_at TEXT,
+  PRIMARY KEY (article_id, topic_id, method)
+);
+```
+
+### 3.8 `ArticleEntity` — *écrit par le worker*
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `article_id` | `INTEGER` | `Integer` | non (PK) | — | FK `article(id)` **`CASCADE`** | | III §11.7 · §11.0 | 2 |
+| `entity_id` | `INTEGER` | `Integer` | non (PK) | — | FK `entity(id)` `RESTRICT` | | III §11.7 | 2 |
+| `method` | `TEXT` | `String` | non (PK) | — | `CHECK IN ('keyword','llm')` | | III §11.7 | 2 |
+| `confidence` | `REAL` | `Float` | n. p. | — | | | III §11.7 | 2 |
+
+**Clé primaire** : `(article_id, entity_id, method)` (III §11.7). Pas de `created_at`, contrairement à
+`ArticleTopic` (§7, I-06).
+
+```sql
+CREATE TABLE article_entity (
+  article_id INTEGER REFERENCES article(id) ON DELETE CASCADE,
+  entity_id  INTEGER REFERENCES entity(id)  ON DELETE RESTRICT,
+  method     TEXT CHECK (method IN ('keyword','llm')),
+  confidence REAL,
+  PRIMARY KEY (article_id, entity_id, method)
+);
+```
+
+<!-- TABLES -->
 
 ---
 
@@ -241,5 +552,27 @@ cite ses passages. Les identifiants `I-nn` sont stables.
 - Un défaut SQL « maintenant » ne peut s'écrire qu'avec une expression temporelle, et `CURRENT_TIMESTAMP` produit
   `AAAA-MM-JJ HH:MM:SS`, sans `T` ni fuseau, alors que `UTCDateTime` stocke de l'ISO-8601 avec fuseau (III §10.6).
   Non fixé : défaut SQL (et son format) ou défaut côté SQLAlchemy (`default=` Python, lu par la `Clock`).
+
+#### I-05 — Exclusions des topics sans colonne
+
+- **IV §16.3** : chaque topic de `topics.yaml` porte une liste `exclude` (termes masqués avant matching, §20.3).
+- **III §11.4** : colonnes de `Topic` = `slug · name · description · parent_id · origin · keywords · enabled` ;
+  `keywords` est décrit comme « mots-clés et motifs utilisés par le relevance filter ». Non fixé : si `exclude` est
+  stocké dans `keywords`, dans une autre colonne, ou seulement en mémoire.
+
+#### I-06 — `created_at` sur `ArticleTopic` mais pas sur `ArticleEntity`
+
+- **III §11.5** : `ArticleTopic` = `article_id · topic_id · method · confidence · created_at`.
+- **III §11.7** : `ArticleEntity` = `article_id · entity_id · method · confidence`, sans `created_at`.
+
+#### I-07 — Index de lecture non spécifiés
+
+- **IV §21.5** : le disjoncteur par source lit les runs `failed` consécutifs les plus récents dans `CollectorRun` ;
+  **III §13** : `CollectorRun` supprimé à 30 jours. **III §11.11** ne spécifie aucun index sur `CollectorRun`.
+- **V-B §29** (Trend Engine) et **VI §31.6** (vue Topic) lisent les liaisons par topic ; **V-B §28.4** compte les
+  entités communes. **III §11.5, §11.7** ne donnent que la clé primaire `(article_id, …)`, sans index sur `topic_id`
+  ni `entity_id`.
+- La spec ne dit pas si ces index sont voulus ou laissés à l'implémenteur (VII « Points d'interprétation » ne les
+  cite pas).
 
 <!-- INCOHERENCES -->
