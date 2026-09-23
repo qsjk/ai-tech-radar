@@ -101,7 +101,7 @@ La vérification de T0.3 (V-02) a trouvé SQLite **3.46.1** dans l'image de réf
 
 ### 2.2 PRAGMA de chaque connexion
 
-Appliqués par l'écouteur `connect` à **toute nouvelle connexion** (III §10.2, T-DB-03) :
+Appliqués par l'écouteur `connect` à **toute nouvelle connexion de `app` et `worker`** (III §10.2, T-DB-03) :
 
 ```sql
 PRAGMA journal_mode=WAL;
@@ -1013,7 +1013,7 @@ recherche accepte toute saisie, syntaxe FTS5 comprise (VI §31.4.1, VIII §47.2 
 |---|---|---|---|
 | table virtuelle | `article_fts` (`title`, `summary`), `content='article'`, `content_rowid='id'` | III §11.14 | 3 |
 | trigger d'insertion | `AFTER INSERT ON article` | III §11.14 | 3 |
-| trigger de mise à jour | `AFTER UPDATE OF title, summary ON article` : seules les colonnes indexées déclenchent la mise à jour (I-18) | III §11.14 | 3 |
+| trigger de mise à jour | `AFTER UPDATE OF title, summary ON article` : seules les colonnes indexées déclenchent la mise à jour (I-18, T-DB-11) | III §11.14 | 3 |
 | trigger de suppression | `AFTER DELETE ON article` (dont la suppression des `filtered` à 30 j) | III §11.14 · §13 | 3 |
 
 - **Sprint 3** : la migration crée la table et les triggers alors que des articles existent déjà (Sprint 2) ; elle
@@ -1097,6 +1097,9 @@ INSERT INTO article_fts(article_fts) VALUES ('rebuild');
 - **Contrôle d'intégrité** : `env.py` exécute `PRAGMA foreign_key_check` après `context.run_migrations()`, dans la
   même transaction, avant le commit ; une violation lève une exception et annule tout : aucune migration de
   l'exécution n'est appliquée (III §10.5).
+- **Test** : **T-DB-13** (VIII §50.5) vérifie `foreign_keys` = 0 sur la connexion de `migrate`, l'échec et l'annulation
+  sur violation (Sprint 1), puis la conservation des tables filles et la recréation des triggers d'`article_fts` lors
+  d'une reconstruction d'`article` (complément au Sprint 3).
 - **Connexions applicatives** : `app` et `worker` gardent toujours `foreign_keys=ON` (§2.2).
 - **Index plein texte** : la table virtuelle `article_fts` et ses triggers ne sont pas produits par l'autogénération
   d'Alembic ; ils s'écrivent en SQL explicite dans la migration du Sprint 3. Une migration qui reconstruit `article`
@@ -1324,7 +1327,7 @@ Décision (2026-09-23) : même règle que I-03 : chaque colonne de la liste est 
   échouerait sur les `RESTRICT`. La spec ne dit pas si la connexion du service `migrate` désactive les clés
   étrangères pendant une reconstruction.
 
-Décision (2026-09-23) : la connexion de `migrate` fonctionne avec `PRAGMA foreign_keys=OFF`, posé par l'écouteur `connect` du moteur de `migrate` sur la connexion DBAPI, avant toute transaction ; `env.py` exécute `PRAGMA foreign_key_check` après `run_migrations()`, dans la même transaction, et une violation annule tout (mécanisme précisé à la revue de #70) ; une migration qui reconstruit `article` recrée les triggers de `article_fts` ; `app` et `worker` gardent `foreign_keys=ON` — appliquée dans III §10.2, §10.5 et dans ce document (§2.2, §5).
+Décision (2026-09-23) : la connexion de `migrate` fonctionne avec `PRAGMA foreign_keys=OFF`, posé par l'écouteur `connect` du moteur de `migrate` sur la connexion DBAPI, avant toute transaction ; `env.py` exécute `PRAGMA foreign_key_check` après `run_migrations()`, dans la même transaction, et une violation annule tout (mécanisme précisé à la revue de #70, testé par T-DB-13) ; une migration qui reconstruit `article` recrée les triggers de `article_fts` ; `app` et `worker` gardent `foreign_keys=ON` — appliquée dans III §10.2, §10.5 et dans ce document (§2.2, §5).
 
 #### I-17 — Dates de référence des rétentions
 
