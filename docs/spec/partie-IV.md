@@ -1,7 +1,7 @@
 # Partie IV — Pipeline d'ingestion
 
 > **Partie IV — Pipeline d'ingestion.** Version durcie issue de la revue §14–§22.
-> Dernière révision : 2026-09-22. Prend les Parties I, II et III durcies comme acquis.
+> Dernière révision : 2026-09-23. Prend les Parties I, II et III durcies comme acquis.
 
 ---
 
@@ -306,7 +306,8 @@ Quatre fichiers versionnés dans `config/` :
 | `entities.yaml` | dictionnaire d'entités + alias | oui → `Entity` (alias gardés en mémoire) |
 | `pipeline.yaml` | réglages du pipeline (§16.6) | non (lu en mémoire) |
 
-- Chargement **au démarrage du worker uniquement**, après la vérification du schéma (Partie III §10.1) et **avant** le démarrage du scheduler. Modifier un fichier demande un redémarrage du worker. L'app ne charge pas ces fichiers.
+- Chargement par le worker **à son démarrage uniquement**, après la vérification du schéma (Partie III §10.1) et **avant** le démarrage du scheduler. Modifier un fichier demande un redémarrage du worker. Le worker est le seul à charger `sources.yaml`, `topics.yaml` et `entities.yaml` en base.
+- **L'app charge `pipeline.yaml` en lecture seule**, avec les mêmes modèles de validation que le worker, pour les réglages qu'elle utilise (`ops.heartbeat_stale_after`, `emerging.warmup`, `llm.daily_request_budget`, `llm.app_reserve`). Elle ne charge aucun des trois autres fichiers et n'écrit rien en base à partir de `config/`.
 - **Taxonomie du runner** : les topics de `topics.yaml` **plus** les topics activés d'origine `user` lus en base (issus d'un « Create topic », Partie V-B §30.8). Le runner recharge sa taxonomie à la création d'un topic, sans redémarrage.
 - Upsert dans **une seule transaction d'écriture**, idempotent : charger deux fois les mêmes fichiers ne change rien.
 - Le YAML écrase les **champs de configuration** ; il ne touche jamais aux **champs d'état** (`checkpoint`, `last_*`, `rate_limit_*`).
@@ -692,7 +693,7 @@ Un seul `HttpClient` (httpx asynchrone) pour les collectors, l'extraction et `ro
 - lecture des en-têtes de quota et production d'un `QuotaInfo` quand ils existent ;
 - incrément du compteur `requests_count` du run courant ;
 - masquage de l'en-tête `Authorization` et des paramètres sensibles dans tous les logs ;
-- **garde anti-SSRF** (Partie VII §43.3) : refus de toute destination dont l'adresse résolue est privée, de bouclage, lien-local, unique-local IPv6 ou non routable, **vérifiée après résolution DNS et à chaque redirection** ; exceptions explicites seulement pour `LLM_BASE_URL` et le dépôt restic ;
+- **garde anti-SSRF** (Partie VII §43.3) : refus de toute destination dont l'adresse résolue est privée, de bouclage, lien-local, unique-local IPv6 ou non routable, **vérifiée après résolution DNS et à chaque redirection**, **sans exception** : le `LLMClient` utilise son propre client HTTP (Partie V-A §25.2) et restic est un binaire externe (Partie VII §38.2), aucun des deux ne passe par le `HttpClient` ;
 - **liste d'hôtes autorisés de test** : injectée par les tests, ou lue dans `HTTP_TEST_ALLOW_HOSTS` **uniquement** si `APP_ENV=test` ; elle coexiste avec la garde anti-SSRF sans l'affaiblir en production. Renseignée avec `APP_ENV=production`, le worker refuse de démarrer (Partie VIII décision 23).
 
 ### 21.2 Retry et backoff

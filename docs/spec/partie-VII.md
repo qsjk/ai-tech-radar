@@ -1,7 +1,7 @@
 # Partie VII — Ops & Production
 
 > **Partie VII — Ops & Production.** Version durcie issue de la revue §35–§45.
-> Remplace la Partie VII de SPEC.md V0.3. Prend les Parties I, II, III, IV, V-A, V-B et VI durcies comme acquis.
+> Dernière révision : 2026-09-23. Prend les Parties I, II, III, IV, V-A, V-B et VI durcies comme acquis.
 
 > **Nature de cette partie** : essentiellement une **consolidation**. Les décisions Ops fléchées par les Parties I à VI sont rassemblées ici ; les doublons et contradictions sont réconciliés (§ « Réconciliations ») ; seul ce qui manquait est durci à neuf.
 
@@ -11,32 +11,30 @@
 
 ## Décisions tranchées dans cette revue (Partie VII)
 
-Les points marqués **(proposé)** n'avaient pas été discutés : ce sont des compléments nécessaires pour rendre la partie implémentable. Ils sont à confirmer à la relecture.
-
 1. **Topologie** : trois services permanents `caddy · app · worker`, un one-shot `migrate`, et `gateway` optionnel via un **profil Compose**. Le critère « ≤ 3–4 services » (Partie I §4.3) compte les services **permanents** ; `migrate` n'en fait pas partie.
 2. **Une seule image backend** (`radar-backend:<git sha>`) pour `migrate`, `app` et `worker` ; une image `radar-caddy:<git sha>` qui embarque le build Vite. Le tag Git sert au rollback.
-3. **(proposé) Segmentation réseau** : `app` n'a **aucune sortie Internet** et n'est joignable que par Caddy ; `worker` **ne peut pas joindre** `app` ; `migrate` n'a aucun réseau.
-4. **(proposé) Moindre privilège des secrets** : chaque service ne reçoit que ses variables. **`app` ne reçoit aucun secret** (il lit l'état des canaux et du LLM dans `SystemState`).
-5. **Conteneurs durcis** : utilisateur non-root, `no-new-privileges`, `cap_drop: ALL`, système de fichiers racine en lecture seule pour `app` et `worker` **(proposé)**, **jamais de montage du socket Docker**.
+3. **Segmentation réseau** : `app` n'a **aucune sortie Internet** et n'est joignable que par Caddy ; `worker` **ne peut pas joindre** `app` ; `migrate` n'a aucun réseau.
+4. **Moindre privilège des secrets** : chaque service ne reçoit que ses variables. **`app` ne reçoit aucun secret** (il lit l'état des canaux et du LLM dans `SystemState`).
+5. **Conteneurs durcis** : utilisateur non-root, `no-new-privileges`, `cap_drop: ALL`, système de fichiers racine en lecture seule pour `app` et `worker`, **jamais de montage du socket Docker**.
 6. **`depends_on` ne joue qu'au `docker compose up`** : au redémarrage du démon (reboot), `app` et `worker` repartent directement ; c'est la **vérification de schéma au démarrage** (III §10.1) qui protège, pas l'ordre Compose.
 7. **Déploiement** : backup → arrêt de `app` et `worker` → `up -d` (qui rejoue `migrate`) → contrôle de santé. Jamais d'ancienne version qui tourne sur un schéma migré.
 8. **Caddy** : un seul site, adresse = `DASHBOARD_URL` ; TLS Let's Encrypt automatique ; `/health` public, tout le reste sous basic_auth ; en-têtes de sécurité complétés (`frame-ancestors`, `base-uri`, `form-action`, `object-src`, `nosniff`, HSTS).
 9. **Le modèle d'embeddings est intégré à l'image** au build (aucun téléchargement au runtime).
-10. **Backup exécuté par le worker** (job planifié), via **`VACUUM INTO`** sur une connexion en lecture seule, contrôle d'intégrité de la copie, puis envoi par **restic** (chiffrement, rétention `7/4/3` native, backend S3-compatible ou SFTP au choix). **(proposé)**
-11. **Test de restauration mensuel automatisé** par le worker (`restore-test`), complété par un **exercice complet manuel** avant la mise en production. **(proposé)**
+10. **Backup exécuté par le worker** (job planifié), via **`VACUUM INTO`** sur une connexion en lecture seule, contrôle d'intégrité de la copie, puis envoi par **restic** (chiffrement, rétention `7/4/3` native, backend S3-compatible ou SFTP au choix).
+11. **Test de restauration mensuel automatisé** par le worker (`restore-test`), complété par un **exercice complet manuel** avant la mise en production.
 12. **`/health` public** = `{"status": "ok" | "degraded" | "down"}`, **HTTP 200 / 200 / 503**. **`down`** = base inaccessible **ou** worker mort (heartbeat périmé). Le monitoring externe n'alerte que sur un code ≠ 200.
 13. **Détail authentifié** = `GET /api/health`. Il coexiste avec `GET /api/status` (bandeau, Partie VI) ; les deux sont calculés par **le même module**.
-14. **Heartbeat** : tâche dédiée du worker toutes les **30 s** ; périmé au-delà de **120 s**. Il démarre **avant** le chargement des modèles. **(proposé — valeurs)**
-15. **Supervision fail-fast du worker (proposé)** : si une tâche permanente (boucle AI, file d'embeddings, scheduler, heartbeat) meurt sur une exception non gérée, le worker **se termine** en erreur et Docker le relance. Un **watchdog** tue le processus si l'event-loop est gelée plus de 5 min. Conséquence : le heartbeat suffit à qualifier la santé du worker, il n'y a plus de champ `scheduler` distinct.
+14. **Heartbeat** : tâche dédiée du worker toutes les **30 s** ; périmé au-delà de **120 s**. Il démarre **avant** le chargement des modèles.
+15. **Supervision fail-fast du worker** : si une tâche permanente (boucle AI, file d'embeddings, scheduler, heartbeat) meurt sur une exception non gérée, le worker **se termine** en erreur et Docker le relance. Un **watchdog** tue le processus si l'event-loop est gelée plus de 5 min. Conséquence : le heartbeat suffit à qualifier la santé du worker, il n'y a plus de champ `scheduler` distinct.
 16. **Toutes les métriques et conditions sont calculées par le worker** (tâche `ops` toutes les 60 s) et écrites dans `SystemState`. L'app ne fait que les lire : aucun balayage coûteux dans une requête HTTP.
 17. **Pas de Prometheus en V1** : les métriques sont exposées par `/api/health`, les tables d'historique et les logs.
-18. **Alertes d'exploitation = nouveau type d'alerte `system`**, émises par le worker via la séquence d'envoi existante (VI §33.5). **Une alerte par épisode** (passage de la condition de faux à vrai), épisodes persistés. Elles **ignorent** `alerts.mode`, les heures calmes et le plafond quotidien. Routage par défaut : **Telegram et email**. **(proposé)**
+18. **Alertes d'exploitation = nouveau type d'alerte `system`**, émises par le worker via la séquence d'envoi existante (VI §33.5). **Une alerte par épisode** (passage de la condition de faux à vrai), épisodes persistés. Elles **ignorent** `alerts.mode`, les heures calmes et le plafond quotidien. Routage par défaut : **Telegram et email**.
 19. **Seuil d'alerte du disjoncteur LLM ouvert : 24 h** (hors `not_configured`). `LLMConfigError` alerte immédiatement. Moteur d'embeddings `down` : alerte après 15 min.
 20. **Répartition des alertes** : le **worker** alerte sur tout ce qu'il peut observer ; le **monitoring externe** couvre ce que le worker ne peut pas signaler lui-même (worker mort, app morte, VPS ou Caddy tombés, certificat).
 21. **« Container stopped »** (V0.3) n'est plus une métrique : chaque arrêt de conteneur est couvert par une détection existante (tableau §39.5), sans accès au socket Docker.
 22. **Logs** : JSON sur stdout, **structlog**, rotation par le driver Docker (`10 Mo × 5` par service). Pas de fichier de log dans un volume. **Un seul access log** : celui de Caddy.
 23. **Rédaction des secrets à trois niveaux**, dont un **nettoyage par valeur** qui remplace toute occurrence d'un secret configuré, y compris dans les URLs d'exceptions (le token Telegram figure dans l'URL de l'API). Le même nettoyage s'applique à `Source.last_error` et `AlertLog.error`.
-24. **(proposé — impact Partie IV) Garde anti-SSRF** dans le `HttpClient` : refus des destinations privées, locales ou internes, vérifié après résolution DNS et à chaque redirection.
+24. **Garde anti-SSRF** dans le `HttpClient` (Partie IV §21.1) : refus des destinations privées, locales ou internes, vérifié après résolution DNS et à chaque redirection.
 25. **`.env.example` unique** (§36.7), avec statut obligatoire / obligatoire en production / optionnel / réservé V2.
 26. **« Estimated cost » LLM retiré en V1** : sans table de prix par provider, l'estimation serait fausse ; on suit requêtes et tokens.
 27. **Check-list des mesures avant production** unique (§45.4), avec critère d'acceptation et effet de chaque mesure.
@@ -67,6 +65,7 @@ Consolidation des choix déjà faits, plus ce que cette partie ajoute (**en gras
 | Couche | Choix |
 |---|---|
 | Langage | Python 3.12+ |
+| Image de base | image officielle `python:3.12-slim` (Debian), **tag complet et digest épinglés** ; valeur de référence vérifiée au Sprint 0 : `python:3.12.14-slim-trixie@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9` (`docs/sprints/sprint-00-cadrage.md` §3) |
 | API | FastAPI · uvicorn (**un seul processus**) · Pydantic v2 |
 | Base | SQLite ≥ 3.35 (FTS5, JSON1) · SQLAlchemy 2.x async · aiosqlite · Alembic (`render_as_batch`) |
 | Worker | asyncio · APScheduler **3.x** (`AsyncIOScheduler`) |
@@ -75,7 +74,7 @@ Consolidation des choix déjà faits, plus ce que cette partie ajoute (**en gras
 | Logs | **structlog** (rendu JSON) |
 | Backup | **restic** (binaire statique dans l'image backend) |
 | Qualité | pytest · ruff · mypy |
-| Dépendances | **uv** + `uv.lock` (backend) · npm + `package-lock.json` (frontend) **(proposé)** |
+| Dépendances | **uv** + `uv.lock` (backend) · npm + `package-lock.json` (frontend) |
 | Frontend | React · TypeScript · Vite (choix ferme) |
 | Infra | Linux · Docker · Docker Compose v2 · Caddy 2 |
 
@@ -100,7 +99,7 @@ Consolidation des choix déjà faits, plus ce que cette partie ajoute (**en gras
 | `worker` | `radar-backend:<sha>` | scheduler, pipeline, AI, alertes, ops, backup | `egress` | — | `unless-stopped` |
 | `gateway` | image épinglée du gateway retenu | gateway LLM auto-hébergé, **profil `gateway`** | `egress` | — | `unless-stopped` |
 
-**Réseaux** **(proposé)** :
+**Réseaux** :
 
 - `edge` : `internal: true`. Seuls `caddy` et `app` y sont. **`app` n'a donc aucune sortie Internet** — il n'en a pas besoin : il n'appelle ni LLM, ni canal d'alerte, ni source.
 - `public` : réseau par défaut de `caddy`, pour ACME et le trafic entrant.
@@ -224,7 +223,7 @@ volumes:
 
 - **`mem_limit`** sur `worker` (et `gateway`) : fixé **après** la mesure M1, à pic mesuré × 1,5. Sans limite, l'OOM killer de l'hôte choisit sa victime.
 - **Modèle d'embeddings** : téléchargé **au build** dans l'image (cache fastembed en lecture seule). Aucun accès à un hub de modèles au runtime.
-- Le système de fichiers racine en lecture seule est à valider au Sprint 11 (onnxruntime, lingua, restic). Le cache restic vit dans `/tmp` (tmpfs), la préparation du backup dans `/data/backup/`, jamais dans le tmpfs.
+- Le système de fichiers racine en lecture seule est actif dès le Sprint 1 et validé en continu (Partie VIII décision 4) ; le Sprint 11 confirme le cas de restic (Partie VIII §47.3). Le cache restic vit dans `/tmp` (tmpfs), la préparation du backup dans `/data/backup/`, jamais dans le tmpfs.
 
 ### 36.6 Cycle de vie du worker
 
@@ -240,7 +239,7 @@ volumes:
 ```dotenv
 # ── Obligatoire ─────────────────────────────────────────────────────────────
 # Contact inclus dans le User-Agent. Absent → le worker refuse de démarrer.
-HTTP_CONTACT=mailto:moi@example.com
+HTTP_CONTACT=https://github.com/qsjk/ai-tech-radar
 # URL publique du dashboard, sans slash final : adresse du site Caddy,
 # origine attendue par l'anti-CSRF, liens des alertes.
 DASHBOARD_URL=https://radar.example.com
@@ -278,9 +277,14 @@ TELEGRAM_CHAT_ID=
 
 # ── Optionnel : technique ──────────────────────────────────────────────────
 ACME_EMAIL=                  # contact Let's Encrypt
-APP_ENV=production           # « development » réactive /docs ; défaut sûr = production
+APP_ENV=production           # « development » réactive /docs ; « test » réservé aux tests ; défaut sûr = production
 LOG_LEVEL=INFO
 RADAR_VERSION=               # tag d'image (sha Git) déployé
+
+# ── Réservé aux tests (surcharge e2e, jamais en production) ───────────────
+# Lue seulement si APP_ENV=test ; renseignée avec APP_ENV=production → le worker
+# refuse de démarrer (Partie VIII décision 23, Partie IV §21.1).
+# HTTP_TEST_ALLOW_HOSTS=
 
 # ── Réservé V2 (non lu en V1) ──────────────────────────────────────────────
 # REDDIT_CLIENT_ID= REDDIT_CLIENT_SECRET= YOUTUBE_API_KEY=
@@ -300,34 +304,35 @@ RADAR_VERSION=               # tag d'image (sha Git) déployé
 
 ### 36.8 Commandes opérationnelles
 
-Inventaire. Leur mode d'emploi détaillé relève du runbook (Partie IX §56).
+Inventaire. Le contrat commun des commandes (codes de sortie `0` / `1` / `2`, stdout / stderr) et le mode d'exécution de chacune (`exec` ou `run --rm --no-deps`) sont fixés par la Partie IX §56.3–§56.4 ; leur mode d'emploi détaillé relève du runbook (Partie IX §56).
 
 | Commande | Où | Rôle | Origine |
 |---|---|---|---|
-| `python -m app.cli validate-config` | worker, CI | valide les quatre fichiers `config/` | IV |
+| `python -m app.cli validate-config` | worker (`run --rm --no-deps`), CI | valide les quatre fichiers `config/` | IV |
 | `python -m app.cli cluster-calibrate` | worker | histogrammes et échantillons pour caler les seuils | V-B §28.14 |
 | `python -m app.cli recount-events` | worker | recalcule les compteurs d'Event | V-B §28.9 |
 | `python -m app.cli send-test-alert --channel <email\|telegram>` | worker | message de test, hors `AlertLog` | VI §33.10 |
-| `python -m app.cli backup-now` | worker | backup immédiat (avant déploiement notamment) | **VII** |
+| `python -m app.cli backup-now` | worker | backup immédiat (avant déploiement notamment) ; affiche le `snapshot_id` | **VII** · IX §56.4 |
 | `python -m app.cli restore-test` | worker | test de restauration immédiat | **VII** |
 | `python -m app.cli health` | app ou worker | affiche le détail de santé (utile en SSH) | **VII** |
+| `python -m app.cli vacuum` | worker (`run --rm --no-deps`), worker arrêté | `VACUUM` manuel (§44.2) | IX §56.4.2 |
 | `docker compose run --rm caddy caddy hash-password` | caddy | génère le hash bcrypt ; rotation = nouveau hash + `docker compose up -d caddy` | VI §32.1 |
 | `docker compose run --rm migrate alembic current` | migrate | révision appliquée | III |
 
 ### 36.9 Déploiement
 
-Contrat ; la procédure détaillée et le rollback vont au runbook.
+Contrat. La séquence est exécutée par `scripts/deploy.sh [<sha>]`, après le contrôle CI (workflow du sha vert, étape 6 comprise) : Partie VIII §49.5. La procédure détaillée et le rollback vont au runbook (Partie IX §56.6-P1, P2).
 
 ```
-git pull → docker compose build (tag = sha Git)
-→ python -m app.cli backup-now            # point de retour garanti
+git checkout <sha> → docker compose build (tag = sha Git)
+→ docker compose exec worker python -m app.cli backup-now   # point de retour garanti ; succès vérifié, snapshot_id journalisé
 → docker compose stop app worker          # aucune ancienne version sur un schéma migré
 → docker compose up -d                    # migrate, puis app et worker
 → contrôle : /health = ok, docker compose ps
 ```
 
 - Coupure de quelques dizaines de secondes, acceptée (mono-utilisateur). Le monitoring externe exige deux échecs consécutifs (§41) : un déploiement normal ne déclenche pas d'alerte.
-- **Rollback** : redéployer le tag précédent. Si une migration irréversible est passée, **restaurer le backup pris avant le déploiement** (§38.5). Toute migration Alembic fournit un `downgrade` ou se déclare irréversible dans son en-tête.
+- **Rollback** : `scripts/deploy.sh <sha précédent>` quand aucune migration ne sépare les deux sha. Sinon, `deploy.sh` détecte la migration à défaire et **refuse** ; la procédure Partie IX §56.6-P2 s'applique : *downgrade* si les migrations sont réversibles, sinon **restauration du snapshot pris avant le déploiement** par `scripts/restore.sh` (§38.5). Toute migration Alembic fournit un `downgrade` ou se déclare irréversible dans son en-tête.
 - On conserve **l'image courante et la précédente** ; les plus anciennes sont supprimées manuellement (§44).
 
 ## 37. HTTPS & Caddy
@@ -401,6 +406,7 @@ Caddy est **le seul point d'entrée** : TLS, service du build statique, reverse 
 
 - **Portée du basic_auth** : `/` (SPA et ses assets) et `/api/*`, y compris `/api/health`. **Seul `/health` est exempté.**
 - **CSP `default-src 'self'`** : le frontend n'injecte ni script ni balise `<style>` en ligne. Une bibliothèque qui en injecterait (CSS-in-JS à l'exécution) est interdite, sauf ADR élargissant `style-src`. Les attributs `style` posés par React passent par le CSSOM et ne sont pas bloqués.
+- **Stylage du frontend : CSS Modules** (fournis par Vite, compilés au build), compatibles avec cette CSP.
 - **Pas de CORS** : même origine (VI §32.2).
 - **Cache** : `index.html` jamais mis en cache, assets hachés immuables — un déploiement n'affiche jamais une SPA périmée.
 
@@ -420,7 +426,7 @@ La base SQLite est la mémoire accumulée du produit. **Un backup jamais restaur
 - **RTO ≤ 1 h**, procédure manuelle.
 - **Effet de bord accepté** : les `AlertLog` de la période perdue disparaissent, une alerte peut donc être réémise après restauration ; `alerts.max_age` (48 h) borne ce cas.
 
-### 38.2 Mécanisme **(proposé)**
+### 38.2 Mécanisme
 
 Job `backup` du worker, exécuté **hors event-loop** :
 
@@ -435,6 +441,7 @@ Job `backup` du worker, exécuté **hors event-loop** :
    - chaque tentative → `backup_last_attempt = {at, status, error}`.
 
 - **Espace requis** : la copie locale occupe la taille de la base ; le seuil disque de 80 % garde cette marge (§44).
+- **Verrou** : les jobs `backup` et `restore_test` et les commandes `backup-now` et `restore-test` prennent un verrou exclusif `/data/backup/.lock`. Un job qui le trouve pris s'abstient et le journalise, sans ouvrir de condition `backup_failed` ; une commande s'arrête avec le code `1` (Partie IX §56.4.1).
 - **Rien d'autre n'est sauvegardé** : `config/` est dans Git ; les secrets ne sont ni en base, ni dans le backup ; `caddy_data` se régénère.
 - **`RESTIC_PASSWORD`** chiffre le dépôt : sa perte rend tous les backups inutilisables. Il est conservé **hors du VPS**, avec le `.env`.
 
@@ -447,7 +454,7 @@ Job `backup` du worker, exécuté **hors event-loop** :
 
 ### 38.4 Test de restauration
 
-**Automatisé mensuel (proposé)** — job `restore_test` du worker, le 1er du mois à 04:30 UTC, et au démarrage si aucun succès depuis 35 jours :
+**Automatisé mensuel** — job `restore_test` du worker, le 1er du mois à 04:30 UTC, et au démarrage si aucun succès depuis 35 jours :
 
 ```
 restic restore latest → /data/backup/restore-test/
@@ -458,6 +465,8 @@ restic restore latest → /data/backup/restore-test/
 → suppression de la copie
 → SystemState.last_restore_test = {at, status, snapshot_id, error}
 ```
+
+Le test de restauration est soumis au même verrou que le backup (§38.2).
 
 **Exercice complet manuel** — avant la mise en production, puis après toute évolution majeure du schéma : restauration sur une machine neuve (`git clone` + `.env` + restauration + `docker compose up -d`) jusqu'au dashboard fonctionnel, durée mesurée (M7). Critère Partie VIII.
 
@@ -472,7 +481,7 @@ docker compose up -d                                   # migrate, puis app et wo
 contrôle : /health, dashboard, bandeau d'état
 ```
 
-Le détail pas à pas va au runbook (`docs/backup-restore.md`).
+La procédure est outillée par `scripts/restore.sh <snapshot>` (Partie VIII décision 24), qui applique ce contrat, suppression de `-wal` et `-shm` comprise ; elle est testée en e2e (T-BKP-08, T-RES-07). Le pas-à-pas détaillé vit dans `docs/backup-restore.md` ; le runbook résume et renvoie (Partie IX §55.5, §56.6-P3).
 
 ## 39. Monitoring
 
@@ -799,18 +808,19 @@ Trois niveaux, cumulatifs :
 - Pas de CORS ; `/docs`, `/redoc`, `/openapi.json` désactivés ; en-têtes de sécurité du §37.3 ; corps de requête limité à 1 Mo.
 - **Sorties LLM** rendues en texte brut, `dangerouslySetInnerHTML` interdit (VI).
 - Aucun secret renvoyé par l'API ni stocké dans `Setting` (VI §32.3).
-- **(proposé — impact Partie IV) Anti-SSRF** : les URLs à récupérer proviennent de flux tiers. Le `HttpClient` refuse toute destination dont l'adresse résolue est privée, de bouclage, lien-local (dont `169.254.169.254`, métadonnées cloud), unique-local IPv6 ou non routable, **vérifiée après résolution DNS et à chaque redirection**. Défaut : appliqué à toutes les requêtes ; exceptions explicites seulement pour `LLM_BASE_URL` et le dépôt restic, qui peuvent être internes.
+- **Anti-SSRF** (Partie IV §21.1) : les URLs à récupérer proviennent de flux tiers. Le `HttpClient` refuse toute destination dont l'adresse résolue est privée, de bouclage, lien-local (dont `169.254.169.254`, métadonnées cloud), unique-local IPv6 ou non routable, **vérifiée après résolution DNS et à chaque redirection**. Appliqué à toutes les requêtes du `HttpClient`, **sans exception**. Le `LLMClient` a son propre client HTTP, qui n'appelle que `LLM_BASE_URL` (éventuellement interne) et ne suit aucune redirection vers un autre hôte (Partie V-A §25.2) ; restic, binaire externe, ne passe pas par le `HttpClient` (§38.2).
 
 ### 43.4 Secrets
 
 - **Uniquement dans `.env`** sur le VPS, droits `600`, propriétaire l'utilisateur de déploiement. Copie de référence dans un **gestionnaire de mots de passe**, avec `RESTIC_PASSWORD`.
+- **Seule exception : le jeton GitHub de `scripts/deploy.sh`**, nécessaire seulement si le dépôt est privé. Jeton *fine-grained* en lecture seule (statuts et actions du seul dépôt), stocké hors du `.env` applicatif, droits `600`, **jamais transmis à un conteneur** (Partie VIII §49.5, Partie IX §56.6-P5).
 - **Jamais** dans Git (`.gitignore`, analyse de secrets en CI), dans une image (`.dockerignore`, aucun `COPY .env`), dans la base, dans un backup ou dans un log.
-- **Rotation** : mot de passe du dashboard (nouveau hash, redémarrage de `caddy`) ; tokens GitHub, LLM, Telegram, SMTP (mise à jour du `.env`, redémarrage du `worker`). Procédures au runbook.
+- **Rotation** : mot de passe du dashboard (nouveau hash, `docker compose up -d caddy`) ; tokens GitHub, LLM, Telegram, SMTP (mise à jour du `.env`, `docker compose up -d worker`). Toute modification du `.env` s'applique par `docker compose up -d <service>`, jamais par `restart`, qui ne relit pas l'environnement (Partie IX décision 22). Procédures au runbook (Partie IX §56.6-P4, P5).
 - Le `GITHUB_TOKEN` est *fine-grained*, lecture seule, dépôts publics (IV §22).
 
 ### 43.5 Dépendances
 
-- Versions verrouillées (`uv.lock`, `package-lock.json`), mises à jour régulières, audit de vulnérabilités en CI (impact Partie VIII).
+- Versions verrouillées (`uv.lock`, `package-lock.json`), mises à jour régulières, audit de vulnérabilités en CI (Partie VIII §49.2, §49.4).
 
 ## 44. Stockage
 
@@ -819,7 +829,7 @@ Trois niveaux, cumulatifs :
 | Poste | Borne |
 |---|---|
 | `radar.db` | quelques centaines de Mo par an au volume réaliste (III §13) ; les pages libérées par la purge sont **réutilisées**, le fichier ne rétrécit pas |
-| `radar.db-wal` | borné par l'auto-checkpoint et `journal_size_limit` (impact Partie III) ; surveillé (§39.4) |
+| `radar.db-wal` | borné par l'auto-checkpoint et `journal_size_limit` (Partie III §10.2) ; surveillé (§39.4) |
 | `/data/backup/` | vide hors backup ; une copie de la base pendant le backup ou le test |
 | images Docker | image courante + précédente (rollback), mesurées (M8) |
 | logs conteneurs | ≤ 50 Mo par service (`10 Mo × 5`) |
@@ -831,7 +841,7 @@ Sur 40 Go, le budget est large ; le seuil de 80 % garantit la place d'une copie 
 
 - **Contrôlé et manuel** : suppression des images antérieures à la précédente, au déploiement (runbook).
 - **Interdit** : `docker system prune --volumes`, `docker volume prune`, toute commande de nettoyage qui touche aux volumes.
-- **Aucun `VACUUM` automatique de la base vivante** : il verrouille toute la base. Un `VACUUM` manuel, worker arrêté, reste possible via le runbook ; le backup (`VACUUM INTO`) est de toute façon compacté.
+- **Aucun `VACUUM` automatique de la base vivante** : il verrouille toute la base. Un `VACUUM` manuel, worker arrêté, reste possible par `python -m app.cli vacuum` (`run --rm --no-deps worker`, Partie IX §56.4.2, procédure §56.6-P8) : la commande refuse si le heartbeat du worker est frais ou si l'espace libre de `/data` est inférieur à deux fois la taille de la base, et place les fichiers temporaires de SQLite sur `/data`, jamais dans le tmpfs `/tmp`. Le backup (`VACUUM INTO`) est de toute façon compacté.
 - **Jamais de suppression automatique de données métier** hors de la table de rétention de la Partie III §13 (acquis).
 
 ## 45. Coût & performance cibles
@@ -853,7 +863,7 @@ Sur 40 Go, le budget est large ; le seuil de 80 % garantit la place d'une copie 
 
 ### 45.3 Cibles de performance
 
-Deux profils de charge, joués sur la **taille de VPS cible** avec un jeu de données synthétique (impact Partie VIII) :
+Deux profils de charge, joués sur la **taille de VPS cible** avec un jeu de données synthétique (Partie VIII §50.4), dans un **projet Compose distinct** (`-p radar-load`) avec son propre volume, jamais sur le volume de production (Partie VIII décision 20) :
 
 - **réaliste** : ordre de grandeur de la Partie III, ≈ 2 000 articles `ready` dans la fenêtre de 72 h ;
 - **cible** : 10 000 items collectés par jour, hypothèse haute où tous sont `ready` (≈ 30 000 vecteurs dans la fenêtre).
@@ -873,7 +883,7 @@ Deux profils de charge, joués sur la **taille de VPS cible** avec un jeu de don
 
 ### 45.4 Check-list des mesures avant production
 
-Chaque mesure est consignée dans `docs/measurements.md` (date, VPS, profil, résultat). Une mesure hors critère bloque la mise en production **ou** donne lieu à un ADR qui ajuste la cible.
+Chaque mesure est consignée dans `docs/measurements.md` (date, VPS, profil, résultat). Les mesures prises en développement sont indicatives ; les mesures **de référence** sont jouées en pré-production sur le VPS cible (Partie VIII §47.4, §50.7). Une mesure hors critère bloque la mise en production **ou** donne lieu à un ADR qui ajuste la cible.
 
 | # | Mesure | Méthode | Critère | Effet |
 |---|---|---|---|---|
@@ -882,7 +892,7 @@ Chaque mesure est consignée dans `docs/measurements.md` (date, VPS, profil, ré
 | M3 | Taille du fichier **`-wal`** en collecte soutenue, **pendant un `VACUUM INTO`** et pendant le job analytique | échantillonnage `ops.tick` | reste sous `ops.wal_max_bytes` | recale le seuil `wal_large` |
 | M4 | Durée de la **plus longue transaction** du worker | métrique dédiée | ≤ 500 ms | valide le découpage en lots (II §8.6) |
 | M5 | Durée du **job analytique** au volume nominal | chronométrage, profil cible | ≤ 5 min | valide le calcul horaire (V-B §29.4) |
-| M6 | **Gateway LLM** : checklist V0.3 §25 (RAM/CPU si auto-hébergé, requêtes multiples, quota épuisé, timeout, provider indisponible) **+ comportement 429 / `Retry-After` + disponibilité de `GET /models`** | contre le gateway retenu | 429 conforme aux attentes du disjoncteur (V-A §24.2) ; `health()` fiable | valide le gateway ; sinon `health()` adapté, tracé en ADR |
+| M6 | **Gateway LLM** — check-list de référence : RAM/CPU si auto-hébergé, requêtes multiples, quota épuisé, timeout, provider indisponible, **comportement 429 / `Retry-After`**, **disponibilité de `GET /models`**. Gateways candidats : OmniRoute, Free Model Router, FreeLLMAPI ; si trop lourd, déployable séparément | contre le gateway retenu | 429 conforme aux attentes du disjoncteur (V-A §24.2) ; `health()` fiable | valide le gateway ; sinon `health()` adapté, tracé en ADR |
 | M7 | **Backup et restauration** : durée, taille, exercice complet sur machine neuve | §38.4 | backup ≤ 10 min ; restauration ≤ 30 min | valide le RTO |
 | M8 | **Taille des images** et empreinte disque totale | `docker system df` | image courante + précédente + base + marge backup < 50 % du disque | valide le budget disque |
 | M9 | **Latence de l'API** (Overview, Feed, recherche, `/health`) | charge légère sur profil cible | p95 ≤ 300 ms ; `/health` ≤ 50 ms | valide la pagination et les index |
@@ -892,7 +902,7 @@ Rappels hors Partie VII, également bloquants : calibration du clustering (`clus
 
 ---
 
-## Points d'interprétation — tranchés ou à confirmer
+## Points d'interprétation
 
 **Tranchés dans cette partie** (l'implémenteur n'a pas à choisir) : topologie et réseaux · ordre de démarrage et procédure de déploiement · contenu du `Caddyfile` · sémantique `ok / degraded / down` et codes HTTP · valeurs du heartbeat et du watchdog · mécanisme, planification, rétention et test du backup · catalogue des métriques et seuils initiaux · qui alerte sur quoi · format et nettoyage des logs · durcissement hôte et conteneurs · liste des variables d'environnement · cibles et check-list de mesures.
 
@@ -900,7 +910,7 @@ Rappels hors Partie VII, également bloquants : calibration du clustering (`clus
 
 **Choix de déploiement, hors spec** (à noter dans `docs/deployment.md`) : fournisseur du VPS et distribution Linux · fournisseur du dépôt restic · service de monitoring externe · gateway LLM retenu.
 
-**À confirmer à la relecture** — décisions **(proposé)** qui ont un poids réel :
+**Décisions à poids réel, prises par défaut puis validées avec la partie** (Partie IX décision 12) :
 
 1. **Backup exécuté par le worker** (plutôt qu'un conteneur ou un cron hôte) : cohérent avec l'écrivain unique de `SystemState.last_backup` et le plafond de services ; en contrepartie, le worker embarque restic et les identifiants du dépôt.
 2. **`down` quand le worker est mort**, alors que le dashboard reste lisible : c'est ce qui permet au monitoring externe d'alerter sur l'arrêt de la collecte.
@@ -921,68 +931,3 @@ Rappels hors Partie VII, également bloquants : calibration du clustering (`clus
 - **Alertes sur le taux d'échec d'extraction** et sur une source isolée en panne prolongée.
 - **Déploiement continu** (déjà reporté par la V0.3 §49).
 - **`auto_vacuum` / `VACUUM` incrémental** de la base vivante.
-
----
-
-## Impacts à répercuter dans les autres parties
-
-### Partie I — Vision
-
-- §4.3 « Simple » : préciser « ≤ 3–4 services **permanents** » (le one-shot `migrate` n'est pas compté).
-
-### Partie II — Architecture
-
-- §8.1 : ajouter `migrate` (one-shot) et le profil `gateway` ; nouveaux composants du worker : heartbeat, watchdog, `ops.tick`, backup, test de restauration.
-- §8.1 : segmentation réseau (§36.2) — `app` sans sortie Internet, `worker` sans accès à `app`.
-- §8.4 : **supervision fail-fast** des tâches permanentes du worker (§36.6).
-- §9.4 « Backup échoué » : détection par condition `backup_failed` / `backup_stale` et alerte `system` ; reprise au job suivant ou par `backup-now`.
-
-### Partie III — Données
-
-- **`SystemState`** : nouvelles clés `ops_metrics`, `ops_conditions`, `alerting`, `backup_last_attempt`, `last_restore_test` ; schéma de valeur de `worker_heartbeat` = `{at, started_at, version, pid}` et de `last_backup` = `{at, snapshot_id, size_bytes, duration_s}`.
-- **`AlertLog`** : ajouter `system` au `CHECK` de `alert_type` ; pour ce type, `subject_type = 'system'`, `subject_id` NULL, condition portée par `dedup_key`. (Rappel VI : `status` doit accepter `sending` et `suppressed`.)
-- **§10.2** : ajouter `PRAGMA journal_size_limit` (valeur initiale 64 Mo) pour que le `-wal` soit tronqué après checkpoint et que sa taille reste une métrique lisible.
-
-### Partie IV — Pipeline d'ingestion
-
-- **§21.1 `HttpClient`** : garde anti-SSRF (§43.3) — refus des adresses privées, locales, lien-local et non routables, après résolution DNS et à chaque redirection ; exceptions explicites pour `LLM_BASE_URL` et le dépôt restic.
-- **`Source.last_error`** : passe par le nettoyage des secrets par valeur (§42.4).
-
-### Partie V-A — Machinerie & tâches LLM
-
-- La boucle AI et la file d'embeddings sont des **tâches permanentes supervisées** (§36.6) : leur mort arrête le worker.
-- `LLMClient.health()` : implémentation conditionnée par la mesure M6 (`GET /models`).
-
-### Partie VI — Interfaces
-
-- **§31.11** : ajouter `GET /api/health` (détail, §40.3) au tableau des endpoints de lecture ; `GET /api/status` inchangé, calculé par le même module.
-- **§31.10 bandeau** : ajouter les conditions `system` actives (au minimum `backup_*`, `restore_test_*`, `disk_*`, `no_alert_channel`).
-- **§33.3–§33.9** : nouveau type `system` ; `dedup_key` `system:{condition}:{since}:{channel}` ; hors `alerts.mode`, heures calmes et plafond ; routage par défaut `[telegram, email]` dans `alerts.routing`.
-- **`AlertLog.error`** : nettoyage des secrets par valeur (§42.4).
-
-### Partie VIII — Livraison
-
-- **CI** : `docker compose config` · `caddy validate` sur le `Caddyfile` · analyse de secrets (type gitleaks) · audit de dépendances (backend et frontend).
-- **Jeu de données synthétique** (profils réaliste et cible, §45.3) et script de charge dans `scripts/`.
-- **Tests** :
-  - `/health` public : `{status}` seul, 200 / 200 / 503 ; heartbeat périmé → 503 ; base inaccessible → 503 ; aucune donnée interne exposée ;
-  - `/api/health` : 401 sans identifiants ; composants conformes à la table §39.5 ;
-  - watchdog : event-loop gelée → processus arrêté ; tâche permanente en exception → sortie non nulle ;
-  - alertes `system` : une alerte par épisode, **pas de réémission après redémarrage du worker**, hystérésis du disque, contournement des heures calmes et du plafond, échec d'envoi sans récursion ;
-  - backup : `VACUUM INTO` pendant des écritures concurrentes ; copie corrompue → échec ; restic injoignable → `backup_failed`, copie locale supprimée ; démarrage avec dernier succès > 24 h → backup lancé ;
-  - restauration : `-wal` d'une autre base présent → procédure qui le supprime ; `restore-test` sur un backup valide et sur un backup tronqué ;
-  - nettoyage des secrets : scénarios du §42.4 ;
-  - Caddy : `Authorization` absent des logs ; en-têtes de sécurité présents ; `/health` sans auth, `/` et `/api/*` avec ;
-  - réseau : `app` sans sortie Internet ; `worker` ne joint pas `app:8000` ; garde anti-SSRF sur `127.0.0.1`, `169.254.169.254`, `10.0.0.0/8` et une redirection vers une adresse privée.
-- **Critères de mise en production** (§52) : au moins un canal d'alerte configuré et `send-test-alert` réussi · dépôt restic configuré, un backup et un `restore-test` réussis · exercice complet de restauration réalisé · monitoring externe configuré et testé (arrêt de `app`) · check-list M1–M10 consignée · `mem_limit` fixés.
-
-### Partie IX — Gouvernance & démarrage
-
-- **Runbook** : déploiement (§36.9), rollback, restauration (§38.5), rotation des secrets (§43.4), inventaire CLI (§36.8), mise en pause du monitoring externe, nettoyage des images.
-- **Documentation** : `docs/deployment.md`, `docs/monitoring.md` (table §39.5, seuils, service externe), `docs/backup-restore.md`, `docs/measurements.md` (nouveau).
-- **ADR** : restic et backup dans le worker · segmentation réseau · sémantique de `/health` · pas de Prometheus en V1 · APScheduler 3.x.
-
----
-
----
-

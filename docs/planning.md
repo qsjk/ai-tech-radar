@@ -54,20 +54,20 @@ Prises le 2026-09-22, révisables par PR sur ce document.
 
 ## 2. Hypothèses sur la spec (E1–E10)
 
-Relevées à la lecture de `SPEC.md` V0.4. Le planning les applique ; elles sont **consignées** dans `docs/sprints/sprint-00-cadrage.md` (T0.2) et tranchées au S0 par 👤.
+Relevées à la lecture de `SPEC.md` V0.4. Le planning les applique ; elles sont **consignées** dans `docs/sprints/sprint-00-cadrage.md` (T0.2) et ont été **tranchées le 2026-09-23** par 👤 : chaque hypothèse est retenue (décisions consignées dans le rapport, appliquées à la spec par T0.2b, #66).
 
-| # | Écart | Hypothèse retenue |
-|---|---|---|
-| E1 | VIII §50.3 bloque la CI si un identifiant U/I/E/F n'a pas de test ; dès S1, ≈ 180 n'en ont pas, alors que chaque sprint finit CI verte (§47.1) | `check-test-catalog.py` contrôle les identifiants des sprints **clos et en cours** (liste tirée des `sprint-NN.md`) ; contrôle **complet** au S11 (critère A2) |
-| E2 | T-DB-12 et T-CFG-09 ne sont rattachés à aucun sprint | T-CFG-09 au S2 (avec le `HttpClient`) ; T-DB-12 au S2 (`Article.status`), complété S5 (`AIJob.status`) et S10 (`AlertLog.status`) |
-| E3 | Tests attribués avant que leur objet existe : T-PRG-05 volet `AlertLog` et T-PRG-06 (`Signal`) au S7 ; T-LLM-18 volet `discover_topics` au S7 ; T-JOB-04 `candidate_decided` au S5 | Couverture partielle au sprint annoncé, **complétée** au sprint qui livre l'objet (S8 : T-PRG-06, T-LLM-18, T-JOB-04 · S10 : T-PRG-05) |
-| E4 | Rattachés trop tard par le joker du S11 : T-OPS-16 (misfires, scheduler du S2), T-SEC-10 (modèle intégré à l'image, S4) | T-OPS-16 au S2, T-SEC-10 au S4 |
-| E5 | CI étape 5 : « modèle d'embeddings présent dans l'image » dès S1 | Vérification **activée au S4** ; tranché dans `sprint-01.md` |
-| E6 | T-CFG-04 (toutes les sections de `pipeline.yaml`) listé au S2 | Validation **incrémentale** : chaque sprint ajoute et teste ses sections (DoD §51.1-5) |
-| E7 | `enrich_article` créés dès S2 (T-COL-12) | Table `AIJob` introduite **au S2** ; `database.md` (T0.4) le reflète |
-| E8 | T-LLM-16 (niveau U, donc bloquant) exige des sorties LLM **réelles** enregistrées | Accès ponctuel à un provider aux S7–S8 (C9), tâche 👤 |
-| E9 | Partie VII reconstituée depuis un PDF : §36.7 `.env.example`, §39.5 conditions, §45.3–§45.4 mesures dégradés ; §57.2 exige la source Markdown | **Levé** le 2026-09-22 : Partie VII refaite en amont, non modifiée par T0.1 (C11) ; conséquences en E11 du rapport de cadrage |
-| E10 | §57.2 attend dix fichiers de spec ; `SPEC.md` est consolidé | T0.1 commence par un **découpage mécanique** en `docs/spec/partie-*.md`, dans un commit séparé, sans aucune modification |
+| # | Écart | Hypothèse retenue | Décision (2026-09-23) |
+|---|---|---|---|
+| E1 | VIII §50.3 bloque la CI si un identifiant U/I/E/F n'a pas de test ; dès S1, ≈ 180 n'en ont pas, alors que chaque sprint finit CI verte (§47.1) | `check-test-catalog.py` contrôle les identifiants des sprints **clos et en cours** (liste tirée des `sprint-NN.md`) ; contrôle **complet** au S11 (critère A2) | retenue — VIII §50.3 |
+| E2 | T-DB-12 et T-CFG-09 ne sont rattachés à aucun sprint | T-CFG-09 au S2 (avec le `HttpClient`) ; T-DB-12 au S2 (`Article.status`), complété S5 (`AIJob.status`) et S10 (`AlertLog.status`) | retenue — VIII §47.2 |
+| E3 | Tests attribués avant que leur objet existe : T-PRG-05 volet `AlertLog` et T-PRG-06 (`Signal`) au S7 ; T-LLM-18 volet `discover_topics` au S7 ; T-JOB-04 `candidate_decided` au S5 | Couverture partielle au sprint annoncé, **complétée** au sprint qui livre l'objet (S8 : T-PRG-06, T-LLM-18, T-JOB-04 · S10 : T-PRG-05) | retenue — VIII §47.2 ; identifiant « partiel » précisé en T0.5 |
+| E4 | Rattachés trop tard par le joker du S11 : T-OPS-16 (misfires, scheduler du S2), T-SEC-10 (modèle intégré à l'image, S4) | T-OPS-16 au S2, T-SEC-10 au S4 | retenue — VIII §47.2 |
+| E5 | CI étape 5 : « modèle d'embeddings présent dans l'image » dès S1 | Vérification **activée au S4** ; tranché dans `sprint-01.md` | retenue — VIII §49.2 ; reprise dans `sprint-01.md` (T0.8) |
+| E6 | T-CFG-04 (toutes les sections de `pipeline.yaml`) listé au S2 | Validation **incrémentale** : chaque sprint ajoute et teste ses sections (DoD §51.1-5) | retenue — VIII §47.2 ; T-CFG-04 complet au S11 |
+| E7 | `enrich_article` créés dès S2 (T-COL-12) | Table `AIJob` introduite **au S2** ; `database.md` (T0.4) le reflète | retenue — VIII §47.2 ; `database.md` (T0.4) |
+| E8 | T-LLM-16 (niveau U, donc bloquant) exige des sorties LLM **réelles** enregistrées | Accès ponctuel à un provider aux S7–S8 (C9), tâche 👤 | retenue ; en repli, T-LLM-16 scindé (option B du rapport) |
+| E9 | Partie VII reconstituée depuis un PDF : §36.7 `.env.example`, §39.5 conditions, §45.3–§45.4 mesures dégradés ; §57.2 exige la source Markdown | **Levé** le 2026-09-22 : Partie VII refaite en amont, non modifiée par T0.1 (C11) ; conséquences en E11 du rapport de cadrage | levée confirmée ; Partie VII réconciliée par T0.1c, intégrée à T0.2b (#66) |
+| E10 | §57.2 attend dix fichiers de spec ; `SPEC.md` est consolidé | T0.1 commence par un **découpage mécanique** en `docs/spec/partie-*.md`, dans un commit séparé, sans aucune modification | réalisé par T0.1a (#57) |
 
 ---
 
@@ -124,7 +124,7 @@ Les entrées et sorties **communes** (§0) s'appliquent à chaque sprint ; les f
 | | |
 |---|---|
 | **Objectif** | Réunir les préalables d'IX §57.2 et l'outillage GitHub |
-| **Livrables** | dépôt public `ai-tech-radar` · `docs/spec/SPEC-V0.4.md` (spec brute) · `docs/planning.md` · règle de protection de `main` · labels, milestones, Project « Radar », issues de Pré-S0, S0 et piste 👤 |
+| **Livrables** | dépôt public `ai-tech-radar` · `docs/spec/SPEC.md` (spec brute, découpée ensuite en `docs/spec/partie-*.md` par T0.1a) · `docs/planning.md` · règle de protection de `main` · labels, milestones, Project « Radar », issues de Pré-S0, S0 et piste 👤 |
 | **Entrée** | — |
 | **Sortie** | depuis Claude Code, `gh issue list --milestone S0` renvoie les issues du S0 · une PR de test ne peut pas être poussée directement sur `main` |
 | **Effort** | 1–2 · entièrement 👤 |
@@ -424,7 +424,7 @@ Cibles et méthodes : VII §45.3–§45.4. Indicatives en développement (VIII �
 
 ```text
 Tu démarres le Sprint 0 du projet AI Tech Radar.
-Lis docs/spec/SPEC-V0.4.md, en priorité IX §53–§57 et VIII §46–§52, puis docs/planning.md
+Lis docs/spec/SPEC.md (spec brute), en priorité IX §53–§57 et VIII §46–§52, puis docs/planning.md
 (sections 0, 1, 2 et la fiche S0).
 Le Sprint 0 suit IX §57 : documents uniquement, le diff ne touche que docs/, SPEC.md et CLAUDE.md.
 Les écarts E1–E10 de docs/planning.md §2 sont à consigner dans sprint-00-cadrage.md, pas à trancher.
@@ -439,7 +439,7 @@ Tu ne fusionnes jamais une PR, tu ne passes jamais un ADR en Accepté et tu ne d
 ## Annexe B — Initialisation (Pré-S0)
 
 1. Créer le dépôt **public** `ai-tech-radar` sur GitHub.
-2. Premier commit, directement sur `main` (avant la règle de protection) : `docs/spec/SPEC-V0.4.md` (spec brute) et `docs/planning.md`.
+2. Premier commit, directement sur `main` (avant la règle de protection) : `docs/spec/SPEC.md` (spec brute V0.4) et `docs/planning.md`.
 3. Installer `gh` et Claude Code ; `gh auth login` puis `gh auth refresh -s project`.
 4. Lancer `REPO=<owner>/ai-tech-radar ./init-github.sh`, **hors dépôt** (jamais commité) : ruleset `main-protegee`, labels, 14 milestones, Project « Radar », ≈ 56 issues (Pré-S0, S0, arrêts de sprint, piste 👤, pré-prod). Relançable sans doublon.
 5. Dans l'interface du Project : options du champ Status et les quatre vues (§11).

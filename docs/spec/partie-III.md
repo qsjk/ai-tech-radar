@@ -1,7 +1,7 @@
 # Partie III — Données
 
 > **Partie III — Données.** Version durcie issue de la revue §10–§13.
-> Dernière révision : 2026-09-22. Prend les Parties I et II durcies comme acquis.
+> Dernière révision : 2026-09-23. Prend les Parties I et II durcies comme acquis.
 
 ---
 
@@ -344,5 +344,5 @@ Un nouveau modèle produit de nouvelles lignes (`model` différent). Les anciens
 
 - **Index vectoriel** (`sqlite-vec` ou équivalent) : uniquement si le cosine brute-force devient mesurablement insuffisant.
 - **Recherche sémantique** de l'historique (déjà reportée par la Partie I) — les embeddings conservés indéfiniment la rendront possible.
-- **Alias et fusion d'entités** (ex. « Claude Code » / « claude-code » / « CC ») au-delà du `canonical_name`.
+- **Alias et fusion automatiques d'entités, en base** (ex. « Claude Code » / « claude-code » / « CC ») au-delà du `canonical_name`. En V1, les alias sont **déclarés à la main** dans `config/entities.yaml` (§11.6, Partie IV §16.4) et servent aussi à canonicaliser les entités LLM (Partie V-A décision 17).
 - **Ré-embedding complet** lors d'un changement de modèle.

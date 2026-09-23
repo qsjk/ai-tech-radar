@@ -1,7 +1,7 @@
 # Partie V-A — Intelligence : machinerie & tâches LLM
 
 > **Partie V-A — Machinerie & tâches LLM.** Version durcie issue de la revue §23–§27.
-> Dernière révision : 2026-09-22. Prend les Parties I, II, III et IV durcies comme acquis.
+> Dernière révision : 2026-09-23. Prend les Parties I, II, III et IV durcies comme acquis.
 > Les §28–§30 (clustering, trend engine, sujets émergents) relèvent de la **Partie V-B** : ils ne sont pas traités ici.
 
 > **Déjà tranché ailleurs, non repris ici** : claim atomique, deux producteurs de jobs (l'app insère, le worker exécute), contrat d'interface = schéma SQLite, modèle d'exécution asyncio avec le travail CPU hors event-loop, heartbeat, coalescence des misfires, purge (Partie II §8) ; résilience LLM, repli déterministe, JSON malformé → `dead_letter` (Partie II §9) ; table `AIJob`, index unique partiel sur les jobs actifs, idempotence par remplacement des résultats (Partie III §11.10). Cette partie ne durcit que ce qui est **propre aux tâches LLM**.
@@ -219,7 +219,7 @@ WHERE status = 'ready' AND processed_at IS NULL
 
 Ce traitement est **déterministe** et hors `AIJob` (décision 18). Il est déclenché par la lecture des `EmergingDecision` de type `create_topic` que le worker n'a pas encore traitées (coordination par la base, Partie II §8.3).
 
-1. Le worker crée le `Topic` avec `origin = user`. Son slug est dérivé de `llm_label`, ou à défaut de `label`. Ses mots-clés sont `suggested_keywords` ∪ {`key`}.
+1. Le worker crée le `Topic` avec `origin = user`, selon la Partie V-B §30.8 : `name` = `llm_label`, ou à défaut `label` ; slug dérivé de `name`, suffixé `-2`, `-3`… en cas de collision ; mots-clés = `suggested_keywords` ∪ {terme de base}, où le terme de base est `key` pour un `ngram` et `canonical_name` (`owner/repo`) pour un `repository`.
 2. Il renseigne `EmergingCandidate.topic_id`.
 3. Il re-score, **pour ce seul topic**, les articles `ready` des `topic_backfill.window` derniers jours (30 j) sur **titre + URL**, plus le **résumé seulement si `summary_origin = fallback`** (contenu purgé ; V-B §30.8) : une liaison keyword ne dépend jamais d'un texte produit par le LLM. Il écrit des `ArticleTopic` `method=keyword`, par lots bornés.
 
@@ -229,7 +229,7 @@ Ce n'est pas le re-scoring rétroactif reporté par la Partie IV : ce dernier po
 
 ## 25. LLM Gateway & LLMClient
 
-Chaîne `AI Tech Radar → LLMClient → API OpenAI-compatible → LLM Gateway → Providers` : **inchangée**. Choix du gateway et checklist de mesure : inchangés (V0.3 §25, `docs/llm-gateway.md`).
+Chaîne `AI Tech Radar → LLMClient → API OpenAI-compatible → LLM Gateway → Providers` : **inchangée**. Le choix du gateway est documenté dans `docs/llm-gateway.md` au Sprint 6 ; la check-list de mesure de référence, avec les gateways candidats, est la ligne M6 de la Partie VII §45.4.
 
 ### 25.1 Configuration
 
@@ -275,7 +275,8 @@ class LLMClient:
 
 - **`generate`** fait un `POST {LLM_BASE_URL}/chat/completions` avec `model = LLM_MODEL`, les deux messages, `max_tokens` et `temperature`, plus `response_format={"type":"json_object"}` uniquement si `llm.json_mode = true`.
 - **`health`** fait un `GET {LLM_BASE_URL}/models`, avec un timeout de 5 s. Il ne consomme pas de quota de génération. Cette implémentation est **conditionnée par la mesure M6** (Partie VII §45.4) : si `GET /models` est absent ou peu fiable sur le gateway retenu, `health()` est adapté par ADR (Partie IX §54.3).
-- **Client HTTP dédié** (httpx asynchrone), distinct du `HttpClient` des collectors : pas de limiteur par hôte ni de User-Agent de collecte.
+- **Client HTTP dédié** (httpx asynchrone), distinct du `HttpClient` des collectors : pas de limiteur par hôte ni de User-Agent de collecte, et pas de garde anti-SSRF (Partie IV §21.1), `LLM_BASE_URL` pouvant être interne (`http://gateway:<port>/v1`, Partie VII §36.2).
+- **Destination unique** : le client n'appelle que `LLM_BASE_URL` et **ne suit aucune redirection vers un autre hôte** (T-LLM-20).
 - **Aucun retry interne.** Un appel = une requête. La résilience vit au niveau du job et du disjoncteur ; aucun appel n'est multiplié en silence.
 - **Timeouts** : connexion 5 s, lecture 60 s (configurables).
 
