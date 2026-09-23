@@ -1,0 +1,46 @@
+[project]
+name = "ai-tech-radar"
+version = "0.1.0"
+description = "Radar de veille technologique : collecte, regroupement et tendances (docs/spec/)."
+readme = "README.md"
+requires-python = "==3.12.*"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "mypy==2.3.1",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "pytest-socket==0.8.1",
+    "ruff==0.16.8",
+]
+
+[build-system]
+requires = ["hatchling==1.32.4"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.uv]
+required-version = "==0.12.18"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+# Les blocs de code des documents Markdown sont indicatifs (IX §57.6) : ruff ne les vérifie ni ne les reformate.
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Blocage réseau pour toute la session (VIII §50.1) : seules les connexions vers 127.0.0.1 et ::1 sont permises ;
+# les sockets Unix restent autorisées. Couverture de app/ mesurée à chaque exécution, jamais bloquante (VIII §49.2).
+addopts = ["--allow-hosts=127.0.0.1,::1", "--allow-unix-socket", "--cov=app", "--cov-report=term-missing"]

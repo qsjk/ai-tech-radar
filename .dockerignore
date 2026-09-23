@@ -1,0 +1,27 @@
+# Secrets : jamais dans une image (VIII §46.2, VII §43.4)
+.env
+.env.*
+!.env.example
+
+# Dépôt, environnements et caches locaux
+.git/
+.github/
+.claude/
+.venv/
+**/__pycache__/
+**/*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Documentation et tests : hors des images
+docs/
+tests/
