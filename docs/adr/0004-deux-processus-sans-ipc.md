@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Statut** | Proposé |
+| **Statut** | Accepté |
 | **Date** | 2026-09-23 |
 | **Décision(s) couverte(s)** | DV-06 ; II §8.1–§8.4 · V-A §23.6, décision 19 · `docs/database.md` §1.4 |
 

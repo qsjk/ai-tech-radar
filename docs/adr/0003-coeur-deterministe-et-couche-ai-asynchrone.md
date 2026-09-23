@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Statut** | Proposé |
+| **Statut** | Accepté |
 | **Date** | 2026-09-23 |
 | **Décision(s) couverte(s)** | DV-05 ; I §3, §4 · II §6, §6.1, §9.1 · V-A décisions 4, 7 |
 

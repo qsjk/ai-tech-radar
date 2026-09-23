@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Statut** | Proposé |
+| **Statut** | Accepté |
 | **Date** | 2026-09-23 |
 | **Décision(s) couverte(s)** | DV-14 ; VI décision 14 · VII §39.5, §40, §41 · VIII §47.2 (Sprints 1 et 11) |
 

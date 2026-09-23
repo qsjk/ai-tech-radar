@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Statut** | Proposé |
+| **Statut** | Accepté |
 | **Date** | 2026-09-23 |
 | **Décision(s) couverte(s)** | DV-15 ; VII §35, §37.3 · VIII §46.2 · VI §31 ; décision E20 ; `docs/architecture.md` §2, §4.3 |
 

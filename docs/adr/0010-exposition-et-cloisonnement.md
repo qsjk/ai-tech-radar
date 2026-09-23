@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Statut** | Proposé |
+| **Statut** | Accepté |
 | **Date** | 2026-09-23 |
 | **Décision(s) couverte(s)** | DV-12 ; VII §36.2, §36.5, §43.1–§43.3 · IV §21.1 · V-A §25.2 ; `docs/architecture.md` §4, P-02, P-10 |
 

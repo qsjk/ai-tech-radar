@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Statut** | Proposé |
+| **Statut** | Accepté |
 | **Date** | 2026-09-23 |
 | **Décision(s) couverte(s)** | DV-03, DV-04 ; II décision 10 · III §11.14, §12.3, §12.4 · VII §45.3 (M2) · IX §53.3 |
 

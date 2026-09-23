@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Statut** | Proposé |
+| **Statut** | Accepté |
 | **Date** | 2026-09-23 |
 | **Décision(s) couverte(s)** | DV-10 ; III §12 · V-A §24.4 · VII décision 9, §36.5, §45.4 (M1) · IX §57.4 ; rapport de cadrage §3 (V-01) ; `docs/architecture.md` §4.2, P-09 |
 
