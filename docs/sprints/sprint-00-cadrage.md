@@ -460,10 +460,10 @@ Dans toutes les commandes ci-dessous : `IMG=python:3.12.14-slim-trixie@sha256:2f
 | V-02 | SQLite de l'image de base Python retenue (voir E16) | ≥ 3.35, FTS5 et JSON1 compilés | autre image de base ou wheel SQLite, consigné | **concluant** — SQLite 3.46.1 ; FTS5 et JSON1 prouvés par requêtes réelles |
 | V-03 | `BEGIN IMMEDIATE` avec SQLAlchemy 2.x async et aiosqlite | transaction d'écriture ouverte en `IMMEDIATE`, mécanisme noté (gestion des transactions du driver) | proposition alternative, question au propriétaire | **concluant** — SQLAlchemy 2.0.54, aiosqlite 0.22.1 ; événements `connect` + `begin` sur `engine.sync_engine` ; verrou pris dès le `BEGIN`, pas en lecture seule |
 | V-04 | WAL sur **volume nommé** Docker | `journal_mode=wal` effectif, fichiers `-wal` / `-shm` créés sur le volume | bloquant | **concluant** — `wal` effectif, `-wal` et `-shm` sur le volume ; 2 conteneurs pendant 75 s, 0 erreur ; `integrity_check` = `ok` |
-| V-05 | restic en binaire statique pour l'architecture cible | version épinglée disponible | bloquant | à faire en T0.3 (#6) |
+| V-05 | restic en binaire statique pour l'architecture cible | version épinglée disponible | bloquant | **concluant** — restic 0.19.1 `linux_amd64`, sha256 et signature GPG contrôlés, `statically linked` |
 | V-06 | onnxruntime et lingua pour l'architecture cible | wheels disponibles | bloquant | **concluant** — wheels binaires cp312 manylinux x86_64 : onnxruntime 1.30.0, lingua-language-detector 2.2.0 |
-| V-07 | APScheduler 3.x sur Python 3.12 | dernière 3.x compatible, version notée | bloquant | à faire en T0.3 (#6) |
-| V-08 | Outils CI (analyse de secrets, audit backend et frontend) | outil retenu et version | outil équivalent, consigné | à faire en T0.3 (#6) |
+| V-07 | APScheduler 3.x sur Python 3.12 | dernière 3.x compatible, version notée | bloquant | **concluant** — APScheduler 3.11.3, `AsyncIOScheduler` déclenche le job |
+| V-08 | Outils CI (analyse de secrets, audit backend et frontend) | outil retenu et version | outil équivalent, consigné | **concluant** — gitleaks 8.30.1 · pip-audit 2.10.1 · `npm audit` (npm 11.19.0, Node 24.21.0) |
 
 ### 3.C Détail par vérification
 
@@ -658,6 +658,38 @@ count 78200
   connexion, SQLite fait un checkpoint et supprime `-wal` et `-shm` : comportement normal. Rejouée sur le VPS en
   pré-production (seule vérification dépendante de l'hôte Docker).
 
+#### V-05 — restic statique `linux_amd64`
+
+```sh
+docker run --rm --platform linux/amd64 --name radar-t03-v05dl -v ~/radar-t03:/w:ro -v radar-t03-restic:/out $IMG sh /w/v05.sh
+docker run --rm --platform linux/amd64 --name radar-t03-v05 -v radar-t03-restic:/opt/restic:ro $IMG /opt/restic/restic version
+```
+
+`v05.sh` installe `file`, `bzip2` et `gnupg` dans le conteneur, lit la dernière release sur l'API GitHub
+(`repos/restic/restic/releases/latest`), télécharge `restic_<v>_linux_amd64.bz2`, `SHA256SUMS` et `SHA256SUMS.asc`,
+contrôle l'empreinte (`sha256sum -c`), vérifie la signature GPG de `SHA256SUMS` (clé récupérée sur
+`keyserver.ubuntu.com`), décompresse puis lance `file`. Le binaire est ensuite exécuté dans un conteneur neuf de l'image.
+
+- **Version** : restic **0.19.1** (dernière release au 2026-09-23), compilé avec Go 1.26.4.
+- **Sortie** (extraits) :
+
+```text
+dernière release : v0.19.1
+restic_0.19.1_linux_amd64.bz2: OK
+f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c  restic_0.19.1_linux_amd64.bz2
+gpg: Good signature from "Alexander Neumann <alexander@bumpern.de>" [unknown]
+Primary key fingerprint: CF8F 18F2 8445 7597 3F79  D4E1 91A6 868B D3F7 A907
+20d4142678d0d95ec11a4759def1b73fd9190abc9ca19e4b62d067c0b387e639  restic
+restic: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, Go BuildID=…, stripped
+restic 0.19.1 compiled with go1.26.4 on linux/amd64
+```
+
+- **Conclusion** : concluant. Version à épingler : 0.19.1 ; sha256 de l'archive `.bz2`
+  `f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c` (conforme au `SHA256SUMS` signé de la release),
+  sha256 du binaire décompressé `20d4142678d0d95ec11a4759def1b73fd9190abc9ca19e4b62d067c0b387e639`. Le binaire est
+  lié statiquement et s'exécute dans l'image sans dépendance. La clé GPG n'est pas certifiée par une chaîne de confiance
+  locale (« [unknown] ») : son empreinte est celle publiée par le projet restic.
+
 #### V-06 — Wheels onnxruntime et lingua
 
 ```sh
@@ -685,6 +717,77 @@ lingua-language-detector 2.2.0
 
 - **Conclusion** : concluant. Les deux paquets existent en wheels binaires `cp312` `manylinux` `x86_64`, compatibles
   avec la glibc de Debian trixie (manylinux 2.28 requis pour onnxruntime), et fonctionnent dans l'image.
+
+#### V-07 — APScheduler 3.x sur Python 3.12
+
+```sh
+docker run --rm --platform linux/amd64 --name radar-t03-v07 -v ~/radar-t03:/w:ro $IMG sh -c '
+  pip index versions apscheduler --pre | head -2
+  pip install -q "apscheduler>=3,<4" && python -W error::DeprecationWarning /w/v07.py'
+```
+
+Le script crée un `AsyncIOScheduler(timezone="UTC")`, ajoute un job coroutine à intervalle d'une seconde
+(`max_instances=1`, `coalesce=True`), démarre le scheduler dans la boucle asyncio, attend 3,5 s puis l'arrête.
+Les `DeprecationWarning` sont transformés en erreurs.
+
+- **Versions** : APScheduler **3.11.3** (dernière 3.x ; la branche 4.0 n'existe qu'en pré-versions, 4.0.0a6),
+  tzlocal 5.4.4, Python 3.12.14.
+- **Sortie** :
+
+```text
+apscheduler (4.0.0a6)
+Available versions: 4.0.0a6, 4.0.0a5, 4.0.0a4, 4.0.0a3, 4.0.0a2, 4.0.0a1, 3.11.3, 3.11.2, …
+python 3.12.14 | apscheduler 3.11.3 | tzlocal 5.4.4
+  job exécuté #1
+  job exécuté #2
+  job exécuté #3
+3 exécutions en 3.6s ; running=False
+```
+
+- **Conclusion** : concluant. APScheduler 3.11.3 fonctionne sous Python 3.12 avec `AsyncIOScheduler`, sans
+  avertissement de dépréciation. À épingler en `<4` : `pip install apscheduler --pre` installerait la 4.0 alpha,
+  dont l'API est différente.
+
+#### V-08 — Outils de CI
+
+```sh
+# analyse de secrets : image officielle, dépôt monté en lecture seule, historique complet
+docker run --rm --platform linux/amd64 --name radar-t03-gitleaks -v "$PWD":/repo:ro \
+  -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo \
+  ghcr.io/gitleaks/gitleaks:latest git /repo --redact --no-banner -v
+# audit backend : dans l'image, sur les dépendances vérifiées ici
+docker run --rm --platform linux/amd64 --name radar-t03-pipaudit -v ~/radar-t03:/w:ro $IMG \
+  sh -c 'pip install -q pip-audit && pip-audit -r /w/requirements-t03.txt --progress-spinner off'
+# audit frontend : image Node LTS officielle, package.json jetable (react, react-dom, vite, typescript, @vitejs/plugin-react)
+docker run --rm --platform linux/amd64 --name radar-t03-npm -v ~/radar-t03/front:/src:ro node:lts-slim \
+  sh -c 'cp /src/package.json /tmp/ && cd /tmp && npm install --package-lock-only && npm audit --audit-level=high'
+```
+
+`requirements-t03.txt` : `fastembed`, `sqlalchemy>=2,<3`, `aiosqlite`, `apscheduler>=3,<4`, `onnxruntime`,
+`lingua-language-detector`. Le dépôt ne contient encore ni `pyproject.toml` ni `package.json` (**IX §57.6**) : les
+audits portent sur un jeu jetable, pour valider les outils et non les dépendances finales.
+
+- **Sorties** (extraits) :
+
+```text
+v8.30.1                                   # gitleaks version
+INF 27 commits scanned.
+INF scanned ~1030398 bytes (1.03 MB) in 1.93s
+INF no leaks found                        # code de sortie 0
+pip-audit 2.10.1
+No known vulnerabilities found            # code de sortie 0
+node v24.21.0 npm 11.19.0
+found 0 vulnerabilities                   # code de sortie 0
+```
+
+| Rôle | Outil retenu | Version | Justification |
+|---|---|---|---|
+| Analyse de secrets | gitleaks (image `ghcr.io/gitleaks/gitleaks`, digest `sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f`) | 8.30.1 | binaire unique, image officielle, parcourt tout l'historique git en lecture seule, code de sortie ≠ 0 en cas de fuite |
+| Audit backend | pip-audit (PyPA) | 2.10.1 | outil de la PyPA, base OSV / PyPI Advisory, audite un fichier d'exigences ou l'environnement installé |
+| Audit frontend | `npm audit` (image `node:lts-slim`, digest `sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6`) | npm 11.19.0, Node 24.21.0 | intégré à npm, aucune dépendance supplémentaire, seuil réglable par `--audit-level` |
+
+- **Conclusion** : concluant. Les trois outils tournent en conteneur sur `linux/amd64` et rendent un code de sortie
+  exploitable par la CI. Les versions (et tags d'image) sont à épingler dans les workflows du Sprint 1.
 
 ---
 
