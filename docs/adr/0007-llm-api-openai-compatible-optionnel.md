@@ -14,8 +14,10 @@ et parfois indisponibles. L'enrichissement est best-effort (ADR-0003).
 
 ## Décision
 
-L'app et le worker n'accèdent au LLM que par une **API OpenAI-compatible**, via un `LLMClient` dédié, derrière un
-gateway **hors de l'app** (auto-hébergé en profil Compose, ou externe) ; aucun SDK de provider dans le code (V-A §25).
+Seul le **worker** accède au LLM, par le `LLMClient` dédié, et uniquement par une **API OpenAI-compatible**, derrière
+un gateway **hors de l'app** (auto-hébergé en profil Compose, ou externe) ; aucun SDK de provider dans le code (V-A §25).
+L'app n'appelle jamais le LLM : elle dépose des jobs (II §8.3) et n'a aucune sortie réseau (réseau `edge` interne,
+VII §36.2).
 Le LLM est **optionnel** : sans `LLM_BASE_URL`, le produit est complet et tourne à 0 € (V-A §24.2, VIII décision 21).
 Le client n'appelle que `LLM_BASE_URL` et ne suit aucune redirection vers un autre hôte (CF-16, T-LLM-20).
 
