@@ -425,20 +425,369 @@ Décision du propriétaire : —
 
 ## 3. Résultats des vérifications (IX §57.4)
 
-Aucune vérification n'est exécutée en T0.2. Elles sont jouées en **T0.3 (#6)**, qui consigne pour chacune la commande,
-la version et le résultat. Le planning (G1, §9) distingue les vérifications **bloquantes** des vérifications
-**contournables par ADR**.
+Vérifications jouées en **T0.3 (#6)** le 2026-09-23, sur le poste de développement, dans des conteneurs Docker
+`linux/amd64` construits sur l'image de base recommandée par E16. Le planning (G1, §9) distingue les vérifications
+**bloquantes** (V-04 à V-07) des vérifications **contournables par ADR** (V-01 à V-03, V-08). Les scripts utilisés sont
+jetables, gardés hors du dépôt et jamais commités (**IX §57.4**) ; les extraits utiles à l'implémentation sont recopiés
+ci-dessous. Aucun paquet, binaire ni modèle n'a été installé sur le poste hôte : tout est téléchargé et exécuté dans
+les conteneurs.
+
+### 3.A Environnement d'exécution
+
+| Élément | Valeur |
+|---|---|
+| OS du poste | Ubuntu 24.04.5 LTS, x86_64, noyau 7.0.0-31-generic |
+| Docker | client Docker Engine - Community 29.8.1 (`/usr/bin/docker`) ; **démon 29.6.1 fourni par le snap `docker` (Canonical, canal `latest/stable`)**, API 1.55, pilote `overlay2`, cgroup v2, racine `/var/snap/docker/common/var-lib-docker` |
+| Compose | plugin v5.5.1 |
+| Image de base | `python:3.12.14-slim-trixie` (Python 3.12.14, Debian 13.7 « trixie ») — c'est le tag vers lequel pointait `python:3.12-slim` au moment des tests |
+| Digest de l'image (index multi-architecture) | `sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9` |
+| Digest du manifeste `linux/amd64` | `sha256:44ff437bba879d4941b710a369a8f19266aea34b29002807f0c487fabc9eec9b` (créé le 2026-09-19) |
+| Plateforme | `--platform linux/amd64` explicite sur chaque `docker run`, exécution native (sans émulation) |
+
+Dans toutes les commandes ci-dessous : `IMG=python:3.12.14-slim-trixie@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9`, `/w` est le dossier des scripts jetables (`~/radar-t03`) monté en lecture seule, et les options
+`--root-user-action=ignore --disable-pip-version-check` de `pip` sont omises pour la lisibilité. Les volumes
+`radar-t03-cache` et `radar-t03-restic` sont créés à la volée par `docker run`.
+
+> Constat pour Q-01 : `docker version` montre un client `docker-ce` 29.8.1 mais un **démon installé par snap** (29.6.1).
+> Les volumes nommés sont donc stockés sous `/var/snap/docker/common/var-lib-docker/volumes/`. V-04 a été jouée
+> dans cette configuration ; elle est rejouée sur le VPS en pré-production de toute façon (issue #6).
+
+### 3.B Synthèse
 
 | # | Vérification | Attendu | Si échec | Résultat |
 |---|---|---|---|---|
-| V-01 | `paraphrase-multilingual-MiniLM-L12-v2` disponible dans `fastembed`, sur l'architecture cible (`amd64`, **IX décision 27**) | modèle chargé, 384 dimensions ; révision et empreinte sha256 du modèle notées pour épinglage au build | repli : autre modèle multilingue ≤ 384 dimensions supporté par fastembed, consigné dans l'ADR-0008 | à faire en T0.3 (#6) |
-| V-02 | SQLite de l'image de base Python retenue (voir E16) | ≥ 3.35, FTS5 et JSON1 compilés | autre image de base ou wheel SQLite, consigné | à faire en T0.3 (#6) |
-| V-03 | `BEGIN IMMEDIATE` avec SQLAlchemy 2.x async et aiosqlite | transaction d'écriture ouverte en `IMMEDIATE`, mécanisme noté (gestion des transactions du driver) | proposition alternative, question au propriétaire | à faire en T0.3 (#6) |
-| V-04 | WAL sur **volume nommé** Docker | `journal_mode=wal` effectif, fichiers `-wal` / `-shm` créés sur le volume | bloquant | à faire en T0.3 (#6) |
-| V-05 | restic en binaire statique pour l'architecture cible | version épinglée disponible | bloquant | à faire en T0.3 (#6) |
-| V-06 | onnxruntime et lingua pour l'architecture cible | wheels disponibles | bloquant | à faire en T0.3 (#6) |
-| V-07 | APScheduler 3.x sur Python 3.12 | dernière 3.x compatible, version notée | bloquant | à faire en T0.3 (#6) |
-| V-08 | Outils CI (analyse de secrets, audit backend et frontend) | outil retenu et version | outil équivalent, consigné | à faire en T0.3 (#6) |
+| V-01 | `paraphrase-multilingual-MiniLM-L12-v2` disponible dans `fastembed`, sur l'architecture cible (`amd64`, **IX décision 27**) | modèle chargé, 384 dimensions ; révision et empreinte sha256 du modèle notées pour épinglage au build | repli : autre modèle multilingue ≤ 384 dimensions supporté par fastembed, consigné dans l'ADR-0008 | **concluant** — fastembed 0.8.1, dimension 384 mesurée ; dépôt `qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q`, révision `faf4aa42…` (détail en V-01) |
+| V-02 | SQLite de l'image de base Python retenue (voir E16) | ≥ 3.35, FTS5 et JSON1 compilés | autre image de base ou wheel SQLite, consigné | **concluant** — SQLite 3.46.1 ; FTS5 et JSON1 prouvés par requêtes réelles |
+| V-03 | `BEGIN IMMEDIATE` avec SQLAlchemy 2.x async et aiosqlite | transaction d'écriture ouverte en `IMMEDIATE`, mécanisme noté (gestion des transactions du driver) | proposition alternative, question au propriétaire | **concluant** — SQLAlchemy 2.0.54, aiosqlite 0.22.1 ; événements `connect` + `begin` sur `engine.sync_engine` ; verrou pris dès le `BEGIN`, pas en lecture seule |
+| V-04 | WAL sur **volume nommé** Docker | `journal_mode=wal` effectif, fichiers `-wal` / `-shm` créés sur le volume | bloquant | **concluant** — `wal` effectif, `-wal` et `-shm` sur le volume ; 2 conteneurs pendant 75 s, 0 erreur ; `integrity_check` = `ok` |
+| V-05 | restic en binaire statique pour l'architecture cible | version épinglée disponible | bloquant | **concluant** — restic 0.19.1 `linux_amd64`, sha256 et signature GPG contrôlés, `statically linked` |
+| V-06 | onnxruntime et lingua pour l'architecture cible | wheels disponibles | bloquant | **concluant** — wheels binaires cp312 manylinux x86_64 : onnxruntime 1.30.0, lingua-language-detector 2.2.0 |
+| V-07 | APScheduler 3.x sur Python 3.12 | dernière 3.x compatible, version notée | bloquant | **concluant** — APScheduler 3.11.3, `AsyncIOScheduler` déclenche le job |
+| V-08 | Outils CI (analyse de secrets, audit backend et frontend) | outil retenu et version | outil équivalent, consigné | **concluant** — gitleaks 8.30.1 · pip-audit 2.10.1 · `npm audit` (npm 11.19.0, Node 24.21.0) |
+
+### 3.C Détail par vérification
+
+#### V-01 — Modèle d'embeddings dans fastembed
+
+```sh
+docker run --rm --platform linux/amd64 --name radar-t03-v01 -v ~/radar-t03:/w:ro -v radar-t03-cache:/cache $IMG \
+  sh -c 'pip install -q fastembed && python /w/v01.py'
+```
+
+Le script charge `TextEmbedding(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", cache_dir="/cache")`
+deux fois (avec puis sans téléchargement), calcule trois embeddings, puis hache les fichiers du cache Hugging Face.
+
+- **Versions** : fastembed 0.8.1, onnxruntime 1.30.0, huggingface_hub 1.32.0, tokenizers 0.23.2, numpy 2.5.3.
+- **Sortie** (extrait) :
+
+```text
+description fastembed: {'model': 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
+  'sources': {'hf': 'qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q'}, 'model_file': 'model_optimized.onnx',
+  'license': 'apache-2.0', 'size_in_GB': 0.22, 'dim': 384}
+chargement (téléchargement compris): 9.41s
+chargement (depuis le cache): 1.66s ; RSS après chargement (kB): 1059452
+embed 3 textes: 0.023s ; dimension mesurée = (384,) dtype=float64
+cosinus FR/EN (même sens) = 0.962 ; FR/autre = 0.210
+RSS après embed (kB): 1060416 ; ru_maxrss (kB): 1263460
+dépôt HF en cache: /cache/models--qdrant--paraphrase-multilingual-MiniLM-L12-v2-onnx-Q
+  ref main = faf4aa4225822f3bc6376869cb1164e8e3feedd0
+```
+
+- **Mesures indicatives pour M1** (un seul processus, CPU, sans limite mémoire) : chargement 1,7 s depuis le cache ;
+  mémoire résidente d'environ 1,0 Gio après chargement, pic à 1,2 Gio. Point d'attention pour R-10 (RAM du worker).
+- **Conclusion** : concluant. Le modèle est servi par fastembed et produit des vecteurs de 384 dimensions. Le
+  rapprochement FR/EN d'une même phrase (cosinus 0,96) confirme le caractère multilingue.
+
+> **À reprendre dans l'ADR-0008**
+>
+> - Nom du modèle dans fastembed : `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, licence Apache-2.0, 384 dimensions.
+> - Dépôt Hugging Face réellement téléchargé : **`qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q`** (conversion ONNX
+>   publiée par Qdrant, fichier `model_optimized.onnx`), et non le dépôt `sentence-transformers` d'origine.
+> - Révision (commit, `refs/main` au 2026-09-23) : **`faf4aa4225822f3bc6376869cb1164e8e3feedd0`**.
+> - Empreintes sha256 des fichiers de cette révision :
+>
+>   | Fichier | Taille (octets) | sha256 |
+>   |---|---|---|
+>   | `model_optimized.onnx` | 235 052 644 | `634d0f66c29dc934c8fa72b8a4fe91dd4d420a22f1d82a241058d4316e659a99` |
+>   | `tokenizer.json` | 17 083 009 | `fa685fc160bbdbab64058d4fc91b60e62d207e8dc60b9af5c002c5ab946ded00` |
+>   | `config.json` | 673 | `c8ec081fdad2df991bf5abbf18418fec7a5cdaa421f60ffb060a30040b8c376f` |
+>   | `special_tokens_map.json` | 964 | `8c785abebea9ae3257b61681b4e6fd8365ceafde980c21970d001e834cf10835` |
+>   | `tokenizer_config.json` | 1 416 | `0666eebf692422757e1dddf3c9fb1ded73ba3dc726c5828671fc89e45bf3609f` |
+>
+> - Versions testées : fastembed 0.8.1, onnxruntime 1.30.0, sur `python:3.12.14-slim-trixie` `linux/amd64`.
+> - fastembed renvoie des vecteurs `float64` : le type de stockage (par exemple `float32`) est à fixer avec le modèle SQL (T0.4).
+> - Mesures indicatives : chargement 1,7 s depuis le cache, RSS ≈ 1,0 Gio, pic ≈ 1,2 Gio.
+
+#### V-02 — SQLite de l'image
+
+```sh
+docker run --rm --platform linux/amd64 --name radar-t03-v02 -v ~/radar-t03:/w:ro $IMG python /w/v02.py
+```
+
+Le script crée une table `CREATE VIRTUAL TABLE docs USING fts5(title, body)`, y insère une ligne, l'interroge par
+`MATCH`, puis exécute `json_extract('{"a":{"b":[1,2,3]}}', '$.a.b[2]')`, le tout avec le module `sqlite3` de l'image.
+
+- **Versions** : Python 3.12.14, SQLite 3.46.1 (bibliothèque liée au module `sqlite3` de l'image).
+- **Sortie** :
+
+```text
+python 3.12.14
+sqlite_version 3.46.1
+fts5 MATCH [('Radar',)]
+json_extract (3,)
+compile_options ['ENABLE_FTS3', 'ENABLE_FTS3_PARENTHESIS', 'ENABLE_FTS3_TOKENIZER', 'ENABLE_FTS4', 'ENABLE_FTS5', 'THREADSAFE=1']
+```
+
+- **Conclusion** : concluant. 3.46.1 ≥ 3.35 ; FTS5 est compilé et fonctionne ; JSON1 fonctionne (il est intégré
+  d'office depuis SQLite 3.38, d'où l'absence d'option de compilation dédiée).
+
+#### V-03 — `BEGIN IMMEDIATE` avec SQLAlchemy 2.x async et aiosqlite
+
+```sh
+docker run --rm --platform linux/amd64 --name radar-t03-v03 -v ~/radar-t03:/w:ro $IMG \
+  sh -c 'pip install -q "sqlalchemy>=2,<3" aiosqlite && python /w/v03.py'
+docker run --rm --platform linux/amd64 --name radar-t03-v03alt -v ~/radar-t03:/w:ro $IMG \
+  sh -c 'pip install -q "sqlalchemy>=2,<3" aiosqlite && python /w/v03_alt.py'
+```
+
+- **Versions** : SQLAlchemy 2.0.54, aiosqlite 0.22.1, SQLite 3.46.1, Python 3.12.14.
+- **Mécanisme documenté** : documentation SQLAlchemy 2.0, dialecte SQLite, section *Enabling Non-Legacy SQLite
+  Transactional Modes with the sqlite3 or aiosqlite driver* (ancre `sqlite_enabling_transactions`), variante
+  *Using SQLAlchemy to emit BEGIN in lieu of SQLite's transaction control (all Python versions, sqlite3 and aiosqlite)* :
+  l'événement `connect` met `dbapi_connection.isolation_level = None` (le driver n'émet plus de `BEGIN`), l'événement
+  `begin` émet le `BEGIN` lui-même ; en asyncio, les deux écouteurs se posent sur `engine.sync_engine`. La section
+  *Serializable isolation / Savepoints / Transactional DDL (asyncio version)* du dialecte aiosqlite renvoie à celle-ci.
+- **Recette testée** (adaptation : `BEGIN IMMEDIATE` par défaut, `BEGIN DEFERRED` pour une connexion marquée lecture seule ;
+  le nom de l'option `readonly` est une proposition, à fixer en T0.4) :
+
+```python
+engine = create_async_engine("sqlite+aiosqlite:////data/radar.db", connect_args={"timeout": 5})
+
+@event.listens_for(engine.sync_engine, "connect")
+def _connect(dbapi_connection, connection_record):
+    dbapi_connection.isolation_level = None          # aiosqlite n'émet plus de BEGIN
+
+@event.listens_for(engine.sync_engine, "begin")
+def _begin(conn):
+    mode = "DEFERRED" if conn.get_execution_options().get("readonly") else "IMMEDIATE"
+    conn.exec_driver_sql(f"BEGIN {mode}")
+
+read_only = engine.execution_options(readonly=True)   # moteur des sessions de lecture seule
+```
+
+- **Protocole** : deux moteurs indépendants A et B sur le même fichier en WAL. Une sonde `sqlite3` tierce tente
+  `BEGIN IMMEDIATE` avec `timeout=0` pour lire l'état du verrou d'écriture sans attendre.
+- **Sortie** :
+
+```text
+sqlalchemy 2.0.54 | aiosqlite 0.22.1 | sqlite 3.46.1
+
+[1] A ouvre une transaction (AsyncSession) et ne fait qu'un SELECT, B tente BEGIN (timeout 1 s)
+  A : transaction ouverte, aucune écriture ; sonde : verrou d'écriture PRIS (database is locked)
+  B : échec sur BEGIN après 1.00s -> OperationalError: database is locked
+
+[2] B attend : A garde le verrou 2 s puis valide ; B (timeout 10 s) mesure la durée de son BEGIN
+  B : BEGIN IMMEDIATE obtenu après 1.73s (bloqué dans le BEGIN, avant toute écriture)
+
+[3] Session de lecture seule (execution_options readonly=True -> BEGIN DEFERRED)
+  lecture ouverte, lignes = ['A', 'B'] ; sonde : verrou d'écriture LIBRE
+  écrivain A : BEGIN IMMEDIATE + INSERT + COMMIT en 0.012s pendant la lecture
+  lecture seule toujours cohérente (instantané WAL) : 2
+  lecture seule OK en 0.001s, count=3 (ne voit pas A3 non validé)
+
+[4] Témoin sans la recette (comportement par défaut du driver) : B passe son BEGIN, échoue à la 1re écriture
+  B (défaut) : begin() réussi — aucun BEGIN émis
+  B (défaut) : SELECT réussi
+  B (défaut) : échec seulement à l'INSERT -> database is locked
+```
+
+- **Autres mécanismes de la même section, écartés** (`v03_alt.py`) : ni `connect_args={"isolation_level": "IMMEDIATE"}`
+  (mode historique du driver), ni `connect_args={"autocommit": False}` (mode Python 3.12, le plus récent documenté) ne
+  prennent le verrou au `begin()` : le `BEGIN` n'est émis qu'avec la première écriture (ou reste `DEFERRED`).
+
+```text
+connect_args isolation_level='IMMEDIATE' (legacy) verrou après begin+SELECT: LIBRE | après INSERT: PRIS
+connect_args autocommit=False (Python 3.12)      verrou après begin+SELECT: LIBRE | après INSERT: PRIS
+```
+
+- **Conclusion** : concluant. Avec les écouteurs `connect` et `begin` sur `engine.sync_engine`, la connexion B échoue
+  (ou attend, selon son `timeout`) **dès son `BEGIN`**, alors que A n'a encore rien écrit ; une session de lecture seule
+  (`BEGIN DEFERRED`) ne prend pas le verrou et ne bloque pas les écrivains. Limite notée par la documentation : cette
+  recette est incompatible avec le mode `AUTOCOMMIT` de SQLAlchemy au niveau du driver.
+
+#### V-04 — WAL sur volume nommé, deux conteneurs
+
+```sh
+docker volume create radar-t03-data
+R="docker run --platform linux/amd64 -v radar-t03-data:/data -v $HOME/radar-t03:/w:ro"
+$R --rm --name radar-t03-init   $IMG python /w/v04_init.py          # PRAGMA journal_mode=wal + table
+$R -d   --name radar-t03-worker $IMG python /w/v04_writer.py 75     # écrit en boucle (rôle worker)
+$R -d   --name radar-t03-app    $IMG python /w/v04_reader.py 75     # lit en boucle (rôle app)
+docker run --rm --platform linux/amd64 -v radar-t03-data:/data:ro --name radar-t03-ls $IMG ls -la /data
+$R --rm --name radar-t03-check  $IMG python /w/v04_check.py          # après l'arrêt des deux conteneurs
+```
+
+L'écrivain enchaîne des transactions `BEGIN IMMEDIATE` de 10 `INSERT` ; le lecteur enchaîne des transactions de lecture
+(`count(*)` et 50 dernières lignes). Les deux utilisent `PRAGMA busy_timeout=5000` et comptent toute
+`OperationalError`, dont « database is locked ».
+
+- **Versions** : SQLite 3.46.1 de l'image ; volume `local`, point de montage hôte
+  `/var/snap/docker/common/var-lib-docker/volumes/radar-t03-data/_data`.
+- **Sortie** (extraits) :
+
+```text
+journal_mode ('wal',)
+['radar.db', 'radar.db-shm', 'radar.db-wal']
+--- pendant l'exécution, vu depuis un 3e conteneur :
+-rw-r--r-- 1 root root  901120 Sep 23 15:02 radar.db
+-rw-r--r-- 1 root root   32768 Sep 23 15:02 radar.db-shm
+-rw-r--r-- 1 root root 4120032 Sep 23 15:02 radar.db-wal
+radar-t03-app Up 6 seconds
+radar-t03-worker Up 7 seconds
+writer journal_mode wal
+writer: 7820 transactions (78200 lignes) en 75.0s, erreurs=0
+reader: 4138 lectures en 75.0s, dernier count=78200, erreurs=0
+journal_mode wal
+integrity_check ok
+count 78200
+```
+
+- **Conclusion** : concluant. Le mode WAL est persistant sur le volume nommé, les fichiers `-wal` et `-shm` y sont
+  créés et visibles depuis un autre conteneur. Deux conteneurs ont écrit et lu en même temps pendant 75 s sans aucune
+  erreur (aucun « database is locked »), et `PRAGMA integrity_check` renvoie `ok`. À la fermeture de la dernière
+  connexion, SQLite fait un checkpoint et supprime `-wal` et `-shm` : comportement normal. Rejouée sur le VPS en
+  pré-production (seule vérification dépendante de l'hôte Docker).
+
+#### V-05 — restic statique `linux_amd64`
+
+```sh
+docker run --rm --platform linux/amd64 --name radar-t03-v05dl -v ~/radar-t03:/w:ro -v radar-t03-restic:/out $IMG sh /w/v05.sh
+docker run --rm --platform linux/amd64 --name radar-t03-v05 -v radar-t03-restic:/opt/restic:ro $IMG /opt/restic/restic version
+```
+
+`v05.sh` installe `file`, `bzip2` et `gnupg` dans le conteneur, lit la dernière release sur l'API GitHub
+(`repos/restic/restic/releases/latest`), télécharge `restic_<v>_linux_amd64.bz2`, `SHA256SUMS` et `SHA256SUMS.asc`,
+contrôle l'empreinte (`sha256sum -c`), vérifie la signature GPG de `SHA256SUMS` (clé récupérée sur
+`keyserver.ubuntu.com`), décompresse puis lance `file`. Le binaire est ensuite exécuté dans un conteneur neuf de l'image.
+
+- **Version** : restic **0.19.1** (dernière release au 2026-09-23), compilé avec Go 1.26.4.
+- **Sortie** (extraits) :
+
+```text
+dernière release : v0.19.1
+restic_0.19.1_linux_amd64.bz2: OK
+f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c  restic_0.19.1_linux_amd64.bz2
+gpg: Good signature from "Alexander Neumann <alexander@bumpern.de>" [unknown]
+Primary key fingerprint: CF8F 18F2 8445 7597 3F79  D4E1 91A6 868B D3F7 A907
+20d4142678d0d95ec11a4759def1b73fd9190abc9ca19e4b62d067c0b387e639  restic
+restic: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, Go BuildID=…, stripped
+restic 0.19.1 compiled with go1.26.4 on linux/amd64
+```
+
+- **Conclusion** : concluant. Version à épingler : 0.19.1 ; sha256 de l'archive `.bz2`
+  `f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c` (conforme au `SHA256SUMS` signé de la release),
+  sha256 du binaire décompressé `20d4142678d0d95ec11a4759def1b73fd9190abc9ca19e4b62d067c0b387e639`. Le binaire est
+  lié statiquement et s'exécute dans l'image sans dépendance. La clé GPG n'est pas certifiée par une chaîne de confiance
+  locale (« [unknown] ») : son empreinte est celle publiée par le projet restic.
+
+#### V-06 — Wheels onnxruntime et lingua
+
+```sh
+docker run --rm --platform linux/amd64 --name radar-t03-v06 -v ~/radar-t03:/w:ro $IMG sh -c '
+  pip download -q --only-binary=:all: --no-deps -d /tmp/wh onnxruntime lingua-language-detector && ls /tmp/wh &&
+  pip install -q --only-binary=:all: /tmp/wh/*.whl onnxruntime lingua-language-detector && python /w/v06.py'
+```
+
+`--only-binary=:all:` interdit toute compilation depuis les sources : l'installation échoue si aucune wheel ne
+correspond. Le script importe les deux paquets, liste les fournisseurs d'exécution d'onnxruntime et détecte la langue
+de trois phrases.
+
+- **Versions** : onnxruntime **1.30.0**, lingua-language-detector **2.2.0**.
+- **Sortie** :
+
+```text
+lingua_language_detector-2.2.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+onnxruntime-1.30.0-cp312-cp312-manylinux_2_28_x86_64.whl
+onnxruntime 1.30.0 | providers ['AzureExecutionProvider', 'CPUExecutionProvider'] | device CPU
+lingua-language-detector 2.2.0
+  Language.FRENCH <- Le radar suit les modèles de langage.
+  Language.ENGLISH <- The radar tracks language models.
+  Language.GERMAN <- Das Radar verfolgt Sprachmodelle.
+```
+
+- **Conclusion** : concluant. Les deux paquets existent en wheels binaires `cp312` `manylinux` `x86_64`, compatibles
+  avec la glibc de Debian trixie (manylinux 2.28 requis pour onnxruntime), et fonctionnent dans l'image.
+
+#### V-07 — APScheduler 3.x sur Python 3.12
+
+```sh
+docker run --rm --platform linux/amd64 --name radar-t03-v07 -v ~/radar-t03:/w:ro $IMG sh -c '
+  pip index versions apscheduler --pre | head -2
+  pip install -q "apscheduler>=3,<4" && python -W error::DeprecationWarning /w/v07.py'
+```
+
+Le script crée un `AsyncIOScheduler(timezone="UTC")`, ajoute un job coroutine à intervalle d'une seconde
+(`max_instances=1`, `coalesce=True`), démarre le scheduler dans la boucle asyncio, attend 3,5 s puis l'arrête.
+Les `DeprecationWarning` sont transformés en erreurs.
+
+- **Versions** : APScheduler **3.11.3** (dernière 3.x ; la branche 4.0 n'existe qu'en pré-versions, 4.0.0a6),
+  tzlocal 5.4.4, Python 3.12.14.
+- **Sortie** :
+
+```text
+apscheduler (4.0.0a6)
+Available versions: 4.0.0a6, 4.0.0a5, 4.0.0a4, 4.0.0a3, 4.0.0a2, 4.0.0a1, 3.11.3, 3.11.2, …
+python 3.12.14 | apscheduler 3.11.3 | tzlocal 5.4.4
+  job exécuté #1
+  job exécuté #2
+  job exécuté #3
+3 exécutions en 3.6s ; running=False
+```
+
+- **Conclusion** : concluant. APScheduler 3.11.3 fonctionne sous Python 3.12 avec `AsyncIOScheduler`, sans
+  avertissement de dépréciation. À épingler en `<4` : `pip install apscheduler --pre` installerait la 4.0 alpha,
+  dont l'API est différente.
+
+#### V-08 — Outils de CI
+
+```sh
+# analyse de secrets : image officielle, dépôt monté en lecture seule, historique complet
+docker run --rm --platform linux/amd64 --name radar-t03-gitleaks -v "$PWD":/repo:ro \
+  -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo \
+  ghcr.io/gitleaks/gitleaks:latest git /repo --redact --no-banner -v
+# audit backend : dans l'image, sur les dépendances vérifiées ici
+docker run --rm --platform linux/amd64 --name radar-t03-pipaudit -v ~/radar-t03:/w:ro $IMG \
+  sh -c 'pip install -q pip-audit && pip-audit -r /w/requirements-t03.txt --progress-spinner off'
+# audit frontend : image Node LTS officielle, package.json jetable (react, react-dom, vite, typescript, @vitejs/plugin-react)
+docker run --rm --platform linux/amd64 --name radar-t03-npm -v ~/radar-t03/front:/src:ro node:lts-slim \
+  sh -c 'cp /src/package.json /tmp/ && cd /tmp && npm install --package-lock-only && npm audit --audit-level=high'
+```
+
+`requirements-t03.txt` : `fastembed`, `sqlalchemy>=2,<3`, `aiosqlite`, `apscheduler>=3,<4`, `onnxruntime`,
+`lingua-language-detector`. Le dépôt ne contient encore ni `pyproject.toml` ni `package.json` (**IX §57.6**) : les
+audits portent sur un jeu jetable, pour valider les outils et non les dépendances finales.
+
+- **Sorties** (extraits) :
+
+```text
+v8.30.1                                   # gitleaks version
+INF 27 commits scanned.
+INF scanned ~1030398 bytes (1.03 MB) in 1.93s
+INF no leaks found                        # code de sortie 0
+pip-audit 2.10.1
+No known vulnerabilities found            # code de sortie 0
+node v24.21.0 npm 11.19.0
+found 0 vulnerabilities                   # code de sortie 0
+```
+
+| Rôle | Outil retenu | Version | Justification |
+|---|---|---|---|
+| Analyse de secrets | gitleaks (image `ghcr.io/gitleaks/gitleaks`, digest `sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f`) | 8.30.1 | binaire unique, image officielle, parcourt tout l'historique git en lecture seule, code de sortie ≠ 0 en cas de fuite |
+| Audit backend | pip-audit (PyPA) | 2.10.1 | outil de la PyPA, base OSV / PyPI Advisory, audite un fichier d'exigences ou l'environnement installé |
+| Audit frontend | `npm audit` (image `node:lts-slim`, digest `sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6`) | npm 11.19.0, Node 24.21.0 | intégré à npm, aucune dépendance supplémentaire, seuil réglable par `--audit-level` |
+
+- **Conclusion** : concluant. Les trois outils tournent en conteneur sur `linux/amd64` et rendent un code de sortie
+  exploitable par la CI. Les versions (et tags d'image) sont à épingler dans les workflows du Sprint 1.
 
 ---
 
