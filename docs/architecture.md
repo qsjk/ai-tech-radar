@@ -515,8 +515,10 @@ class ManualClock:                           # tests (tests/fakes/ ou tests/conf
 
 **Contrôles** (bloquants, étape 1)
 
-- **Sprints clos et en cours** (E1) : tout identifiant U, I, E ou F **visé par un sprint clos ou en cours** a au
-  moins un test. Au Sprint 11, le contrôle porte sur **tout** le catalogue (critère VIII §52 A2).
+- **Sprints clos** (E1, précisé par P-15) : tout identifiant U, I, E ou F **visé par un sprint clos** a au moins un
+  test ; sinon, échec. Les identifiants du sprint **en cours** sans test figurent dans le rapport, **sans bloquer** ;
+  ils deviennent bloquants quand le `sprint-NN.md` passe à `Statut : clos`, dans la PR de bilan du sprint. Au
+  Sprint 11, le contrôle porte sur **tout** le catalogue (critère VIII §52 A2).
 - Tout marqueur renvoie à un identifiant existant ; aucun identifiant M n'est marqué dans le code (VIII §50.3).
 - Doublons dans le catalogue, identifiant mal formé, sprint sans statut lisible → erreur.
 
@@ -524,17 +526,19 @@ class ManualClock:                           # tests (tests/fakes/ ou tests/conf
 
 Certains identifiants sont couverts en plusieurs temps : T-JOB-04, T-LLM-18, T-PRG-05, T-PRG-06, T-DB-12 (E2, E3) et
 T-DB-13 (Sprint 1 : PRAGMA de `migrate` et `foreign_key_check` ; Sprint 3 : reconstruction d'`article` et triggers).
-Mécanisme proposé (P-11) :
+Mécanisme retenu (P-11) :
 
 - le `sprint-NN.md` qui vise un identifiant en partie le déclare avec ses **volets** :
   `T-DB-13 [pragma, check]` au Sprint 1, `T-DB-13 [rebuild]` au Sprint 3 ;
 - un test déclare le volet qu'il couvre : `@pytest.mark.spec("T-DB-13:rebuild")` ; `@pytest.mark.spec("T-DB-13")`
   couvre l'identifiant entier ;
-- le script exige, pour chaque volet visé par un sprint clos ou en cours, au moins un test marqué de ce volet.
+- le script exige, pour chaque volet visé par un sprint clos, au moins un test marqué de ce volet ; les volets du
+  sprint en cours sont seulement signalés (P-15).
   L'identifiant est **complet** quand tous ses volets, sur l'ensemble des sprints, ont un test ; le Sprint 11 exige
   que tous les identifiants soient complets.
 
-**Sortie** : un rapport lisible sur stdout (identifiants sans test, par sprint et par volet ; marqueurs inconnus) ;
+**Sortie** : un rapport lisible sur stdout (identifiants sans test, par sprint et par volet, ceux du sprint en cours
+marqués « non bloquant » ; marqueurs inconnus) ;
 code `0` si tout est couvert, `1` sinon, `2` sur une entrée illisible (contrat de IX §56.3, appliqué par analogie).
 Le script a ses propres tests, sur un catalogue et des sprints factices (R-07).
 
@@ -542,7 +546,8 @@ Le script a ses propres tests, sur un catalogue et des sprints factices (R-07).
 
 ## 6. Points à trancher
 
-Choix que la spec ne fixe pas. Chacun porte des options et une recommandation ; **aucun n'est tranché ici**.
+Choix que la spec ne fixe pas, présentés avec options et recommandation. Le propriétaire les a tranchés le 2026-09-23
+(revue de #71), sauf P-03, tranché par l'ADR-0021 ; chaque décision figure sous son point.
 
 #### P-01 — Source du chemin de la base pour `migrate`, `app` et `worker`
 
@@ -555,6 +560,8 @@ Choix que la spec ne fixe pas. Chacun porte des options et une recommandation ; 
 - **Recommandation** : A. La valeur est une constante de déploiement, pas un secret ; elle vit déjà dans VII §36.5.
   `database.md` §5 remplace alors `config.get_main_option("sqlalchemy.url")` par la lecture de `RADAR_DB_PATH`.
 
+Décision (2026-09-23) : option A retenue : `RADAR_DB_PATH`, fixé par Compose, est la seule source du chemin de la base ; `env.py`, `app` et `worker` en construisent l'URL ; `alembic.ini` ne porte aucune URL — appliquée dans ce document (§3.3) et dans `database.md` §2.3, §5 et §7 (I-16).
+
 #### P-02 — uid et gid des conteneurs, propriétaire de `/data`
 
 - **Constat** : VII §36.5 écrit `user: "10001:10001"` dans une esquisse dont « les détails sont à l'implémenteur » ;
@@ -565,6 +572,8 @@ Choix que la spec ne fixe pas. Chacun porte des options et une recommandation ; 
 - **Recommandation** : A. Pour un volume **déjà existant** avec un autre propriétaire, une correction ponctuelle au
   runbook : `docker compose run --rm --no-deps --user 0 --cap-add CHOWN --cap-add DAC_OVERRIDE migrate chown -R
   10001:10001 /data`. C ajoute un conteneur root permanent au démarrage, contraire à VII §43.2.
+
+Décision (2026-09-23) : option A retenue : uid et gid 10001 fixes ; `/data` créé `10001:10001`, mode `0750`, dans l'image et recopié à la création du volume ; correction ponctuelle au runbook pour un volume existant — appliquée dans §4.1, §4.2 et §4.4.
 
 #### P-03 — Développement en Docker rootless (ADR-0021, T0.9)
 
@@ -584,6 +593,8 @@ Choix que la spec ne fixe pas. Chacun porte des options et une recommandation ; 
 - **Recommandation** : aucun choix ici ; l'ADR-0021 fixe le mode de développement (rootless ou non) et, s'il est
   rootless, la parade retenue pour chaque écart.
 
+Décision (2026-09-23) : reste ouvert ; il est tranché par l'ADR-0021 (T0.9, #60). L'écart A-04 lui est rattaché.
+
 #### P-04 — Fichier `config/` obligatoire absent
 
 - **Constat** : IV §16.5 dit que `pipeline.yaml` est optionnel et que toute **erreur** fait refuser le démarrage du
@@ -591,6 +602,8 @@ Choix que la spec ne fixe pas. Chacun porte des options et une recommandation ; 
 - **Options** : A. Absence = erreur : le worker refuse de démarrer, `validate-config` renvoie `2`. B. Absence = fichier
   vide (aucune source, aucun topic, aucune entité).
 - **Recommandation** : A. Un fichier absent signale une erreur de déploiement, pas un choix.
+
+Décision (2026-09-23) : option A retenue : un fichier `config/` obligatoire absent fait refuser le démarrage du worker, et `validate-config` renvoie `2` — appliquée dans IV §16.5 et §3.6.
 
 #### P-05 — `pipeline.yaml` invalide côté `app` (CF-22, E17)
 
@@ -601,6 +614,8 @@ Choix que la spec ne fixe pas. Chacun porte des options et une recommandation ; 
 - **Recommandation** : A. Même fichier, même verdict : `validate-config` en CI empêche d'en arriver là, et un `/health`
   calculé sur un seuil par défaut divergerait de celui du worker (VII §40.1).
 
+Décision (2026-09-23) : option A retenue : l'app refuse de démarrer sur un `pipeline.yaml` invalide, comme le worker — appliquée dans IV §16.5 et §3.6.
+
 #### P-06 — Healthchecks Docker
 
 - **Constat** : la spec ne prévoit aucun healthcheck. Compose ne redémarre pas un conteneur `unhealthy` ; un
@@ -609,6 +624,8 @@ Choix que la spec ne fixe pas. Chacun porte des options et une recommandation ; 
   `app` apparaîtrait malade à tort). C. `worker` : âge du heartbeat via `app.cli health`.
 - **Recommandation** : A. Supervision fail-fast, watchdog, `/health` et monitoring externe couvrent déjà le besoin
   (VII §36.6, §41).
+
+Décision (2026-09-23) : option A retenue : aucun healthcheck Docker — appliquée dans §4.1 et §4.6.
 
 #### P-07 — `mem_limit` et taille du tmpfs, provisoires
 
@@ -619,11 +636,15 @@ Choix que la spec ne fixe pas. Chacun porte des options et une recommandation ; 
   `migrate`, `512m` pour `worker`, cache restic compris).
 - **Recommandation** : B, recalé d'après M1 en pré-production (pic × 1,5).
 
+Décision (2026-09-23) : option B retenue : limites provisoires à partir du Sprint 4 (`worker` 2 Gio ; tmpfs 256 Mo pour `app` et `migrate`, 512 Mo pour `worker`), recalées d'après M1 — appliquée dans §4.1 et §4.6.
+
 #### P-08 — Horodatage du build et reproductibilité
 
 - **Constat** : VIII §46.2 exige des versions épinglées partout ; la spec ne dit rien de la reproductibilité des
   couches (dates des fichiers, ordre).
 - **Recommandation** : hors V1. Le tag par sha Git suffit au rollback (VII décision 2) ; aucune action proposée.
+
+Décision (2026-09-23) : hors V1, aucune action.
 
 #### P-09 — Chargement du modèle épinglé par fastembed
 
@@ -635,6 +656,8 @@ Choix que la spec ne fixe pas. Chacun porte des options et une recommandation ; 
 - **Recommandation** : A, à confirmer au Sprint 4 (option de chargement local de fastembed) et à consigner dans
   l'ADR-0008.
 
+Décision (2026-09-23) : option A retenue, à confirmer au Sprint 4 et à consigner dans l'ADR-0008 — appliquée dans §4.2.
+
 #### P-10 — Utilisateur et privilèges de `caddy`
 
 - **Constat** : VII §43.2 exige utilisateur non-root et `no-new-privileges` pour les conteneurs ; l'esquisse de
@@ -642,6 +665,8 @@ Choix que la spec ne fixe pas. Chacun porte des options et une recommandation ; 
 - **Options** : A. `no-new-privileges` ajouté ; utilisateur root conservé, avec `cap_drop: ALL` et
   `NET_BIND_SERVICE` seul. B. En plus, `user` non-root, si l'image Caddy retenue permet de lier 80 et 443 sans root.
 - **Recommandation** : A dès le Sprint 1 ; B vérifié au Sprint 1 sur l'image épinglée.
+
+Décision (2026-09-23) : option B retenue : `caddy` non-root dès le Sprint 1. Il lie 80 et 443 grâce à `net.ipv4.ip_unprivileged_port_start=0`, posé par défaut par Docker (≥ 20.10) dans l'espace réseau du conteneur ; `cap_drop: ALL` sans `cap_add`, `no-new-privileges`, `read_only: true`, tmpfs `/tmp` ; `caddy_data` et `caddy_config` appartiennent à cet uid par le même mécanisme que §4.4. Vérification au Sprint 1 sur l'image épinglée — appliquée dans §4.1, §4.3, VII §36.5 et VII §43.2.
 
 #### P-11 — Statut des sprints et format des identifiants visés
 
@@ -652,6 +677,8 @@ Choix que la spec ne fixe pas. Chacun porte des options et une recommandation ; 
   (`T-DB-13 [pragma, check]`). Marqueur de volet côté test : `spec("T-DB-13:rebuild")` (§5.3).
 - **Recommandation** : cette proposition, reprise dans le plan du Sprint 1 (T0.8).
 
+Décision (2026-09-23) : proposition retenue, reprise dans le plan du Sprint 1 (T0.8) — appliquée dans §5.3.
+
 #### P-12 — `config/` dans l'image ou monté
 
 - **Options** : A. Copié dans l'image au build (§4.2) : une modification passe par un déploiement (IX §56.6-P10).
@@ -659,11 +686,15 @@ Choix que la spec ne fixe pas. Chacun porte des options et une recommandation ; 
 - **Recommandation** : A. L'image est alors complète et testée telle quelle en CI (étape 6) ; B introduirait un
   montage de l'hôte hors `/data`.
 
+Décision (2026-09-23) : option A retenue : `config/` copié dans l'image au build — appliquée dans §3.2 et §4.2.
+
 #### P-13 — Versions épinglées des outils de build
 
 - **Constat** : VIII §46.2 impose des versions épinglées ; uv, Node et Caddy n'ont pas de version dans la spec.
 - **Recommandation** : épingler au Sprint 1, par tag et digest : uv (dernière version stable à cette date), Node 24 LTS
   (version d'audit de T0.3, V-08), Caddy 2 (dernière version stable). Mise à jour par commit dédié (VIII §46.2).
+
+Décision (2026-09-23) : recommandation retenue : uv, Node 24 LTS et Caddy 2 épinglés par tag et digest au Sprint 1 — appliquée dans §4.2 et §4.3.
 
 #### P-14 — Fichiers temporaires de `vacuum` sur `/data`
 
@@ -672,6 +703,20 @@ Choix que la spec ne fixe pas. Chacun porte des options et une recommandation ; 
 - **Options** : A. `SQLITE_TMPDIR=/data/tmp` dans l'environnement de la seule commande `vacuum`. B. `PRAGMA
   temp_store_directory` (déprécié par SQLite).
 - **Recommandation** : A, avec création et nettoyage de `/data/tmp` par la commande.
+
+Décision (2026-09-23) : option A retenue : `SQLITE_TMPDIR=/data/tmp` pour la seule commande `vacuum` — appliquée dans §4.5.
+
+#### P-15 — Identifiants du sprint en cours dans `check-test-catalog.py`
+
+- **Constat** (revue de #71) : si les identifiants du sprint **en cours** bloquent l'étape 1 de la CI, chaque PR du
+  sprint échoue tant que le dernier test n'existe pas ; les checks étant obligatoires sur `main`, plus rien ne
+  pourrait être fusionné.
+- **Option retenue** : les identifiants des sprints **clos** bloquent ; ceux du sprint **en cours** figurent dans le
+  rapport sans bloquer, et deviennent bloquants quand le `sprint-NN.md` passe à `Statut : clos` (PR de bilan).
+  L'intention de E1 est conservée : chaque sprint finit avec une CI verte.
+
+Décision (2026-09-23) : option retenue ci-dessus — appliquée dans §5.3, VIII §50.3 et décision 9, et sous E1 dans
+`docs/sprints/sprint-00-cadrage.md`.
 
 ---
 
