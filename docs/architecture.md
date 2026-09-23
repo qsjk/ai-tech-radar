@@ -563,7 +563,7 @@ Choix que la spec ne fixe pas. Chacun porte des options et une recommandation ; 
   recopié à la création du volume (§4.4). B. uid de l'utilisateur de l'hôte, passé au build. C. Conteneur
   d'initialisation root qui fait `chown` à chaque démarrage.
 - **Recommandation** : A. Pour un volume **déjà existant** avec un autre propriétaire, une correction ponctuelle au
-  runbook : `docker compose run --rm --no-deps --user 0 --cap-add CHOWN --cap-add FOWNER migrate chown -R
+  runbook : `docker compose run --rm --no-deps --user 0 --cap-add CHOWN --cap-add DAC_OVERRIDE migrate chown -R
   10001:10001 /data`. C ajoute un conteneur root permanent au démarrage, contraire à VII §43.2.
 
 #### P-03 — Développement en Docker rootless (ADR-0021, T0.9)
