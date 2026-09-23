@@ -49,7 +49,11 @@ l'appel direct à `docker`.
     `net.ipv4.ip_unprivileged_port_start` (1024 par défaut). Deux parades :
     - **(a), recommandée** : abaisser `net.ipv4.ip_unprivileged_port_start` à 80 sur le poste de développement,
       par un réglage sysctl persistant, posé une fois par le propriétaire. `https://localhost` reste identique à la
-      production, et `DASHBOARD_URL` continue de n'admettre aucun port (VII §36.7, T-CFG-07 inchangé) ;
+      production, et `DASHBOARD_URL` continue de n'admettre aucun port (VII §36.7, T-CFG-07 inchangé). Ce réglage
+      vaut pour **tout le poste** : n'importe quel processus non privilégié peut alors écouter sur les ports 80 à
+      1023. C'est acceptable sur un poste de développement mono-utilisateur. L'alternative ciblée, documentée par
+      Docker, donne la capacité `cap_net_bind_service` au seul binaire `rootlesskit` ; elle est à reposer après chaque
+      mise à jour du paquet qui fournit ce binaire. La recommandation reste le réglage sysctl ;
     - **(b)** : publier 8080 et 8443 en développement, et admettre un port dans `DASHBOARD_URL` pour `localhost`
       seulement ; la validation de VII §36.7 et T-CFG-07 changent, et l'URL de développement diffère de la production.
   - **uid des volumes** : l'uid 10001 des conteneurs correspond à un sous-uid de l'hôte. Sans effet vu des
