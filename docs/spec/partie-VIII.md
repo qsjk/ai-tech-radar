@@ -194,7 +194,7 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - `https://localhost/health` répond `{"status":"ok"}` sans identifiants, et `/api/health` demande une authentification ;
 - WAL actif ; `app` et `worker` refusent de démarrer sur un schéma qui n'est pas à `head` ;
 - CI verte, e2e compris.
-- **Tests** : T-DB-01 à 08 · T-DB-13 (PRAGMA de `migrate` et `foreign_key_check` ; complété au Sprint 3) · T-CFG-01, 02, 05, 07, 10 · T-OPS-01 à 03, 07 à 11 · T-SEC-01 à 03, 05, 06, 08 et 09 (sans restic) · T-RES-10.
+- **Tests** : T-DB-01 à 08 · T-DB-13 (PRAGMA de `migrate` et `foreign_key_check` ; complété au Sprint 3) · T-CFG-01, 02, 05, 07, 10, 11 · T-OPS-01 à 03, 07 à 11 · T-SEC-01 à 03, 05, 06, 08 et 09 (sans restic) · T-RES-10.
 
 #### Sprint 2 — Collecte & pipeline déterministe
 
@@ -520,6 +520,7 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | T-CFG-08 | Registre des `Setting` : clé absente → défaut ; valeur hors schéma refusée par l'API | I | VI §34.3 |
 | T-CFG-09 | `HTTP_TEST_ALLOW_HOSTS` renseignée avec `APP_ENV=production` → le worker refuse de démarrer | U | décision 23 |
 | T-CFG-10 | Commandes `app.cli` : code de sortie `2` sur usage ou configuration invalide ; résultat sur stdout, logs sur stderr | U | IX §56.3 |
+| T-CFG-11 | `scripts/radar-dev` : une sous-commande ou un argument hors liste renvoie le code `2`, avec un message sur stderr, **sans rien exécuter** (aucun appel à `docker`, vérifié par un `docker` factice placé en tête du `PATH`) | U | §46.1 · IX §56.3 · ADR-0021 |
 
 #### T-PIPE — Étages purs du pipeline *(IV §14, §18–§20, §14.5)*
 
