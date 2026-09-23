@@ -27,7 +27,7 @@
 6. **§48 devient une liste de contraintes de dépendance.** La liste linéaire de 29 étapes, qui doublonnait les sprints, est supprimée.
 7. **Horloge injectable obligatoire** : une abstraction `Clock` unique. Aucun `datetime.now()`, `time.time()`, `CURRENT_TIMESTAMP` ou `datetime('now')` dans le code métier ou les requêtes : l'instant est toujours passé par l'application. Sans cette règle, les TTL, warm-ups, rétentions, heartbeats et digests ne sont pas testables.
 8. **Réseau bloqué techniquement dans les tests** : seules les connexions locales vers les doubles de test sont autorisées. « Aucun test n'appelle un vrai provider » devient vérifiable, pas seulement déclaratif.
-9. **Identifiants de test** (`T-<DOMAINE>-nn`) pour chaque entrée du catalogue §50.5, portés par un marqueur pytest `spec`. La CI vérifie que chaque identifiant automatisé a au moins un test (identifiants des sprints clos et en cours, puis tous au Sprint 11 : §50.3), et que chaque marqueur renvoie à un identifiant existant.
+9. **Identifiants de test** (`T-<DOMAINE>-nn`) pour chaque entrée du catalogue §50.5, portés par un marqueur pytest `spec`. La CI vérifie que chaque identifiant automatisé a au moins un test (identifiants des sprints clos ; ceux du sprint en cours sont signalés sans bloquer ; tous au Sprint 11 : §50.3), et que chaque marqueur renvoie à un identifiant existant.
 10. **Pas de seuil de couverture bloquant.** La couverture est mesurée et affichée ; c'est la **traçabilité du catalogue** qui bloque.
 11. **CI en six étapes ordonnées et bloquantes** : statique → configuration → audit → tests → build → e2e Compose (§49.2).
 12. **e2e Compose sur `main` et en nightly**, pas à chaque push de branche. Les étapes 1 à 5 tournent à chaque push.
@@ -453,7 +453,8 @@ Fixtures et doubles : `tests/fixtures/` (réponses HTTP par type, configurations
 - **Source unique** : `scripts/check-test-catalog.py` extrait les identifiants de `docs/spec/partie-VIII.md`.
 - **Marqueur** : un test couvre un identifiant par `@pytest.mark.spec("T-CLU-03")`, ou par un tag `[T-FE-01]` dans le nom d'un test vitest. Un identifiant peut être couvert par plusieurs tests ; un test peut en couvrir plusieurs.
 - **Contrôles bloquants** :
-  - tout identifiant de niveau U, I, E ou F **d'un sprint clos ou en cours** a au moins un test. La liste de ces identifiants est lue dans les `docs/sprints/sprint-NN.md` de ces sprints ; le contrôle devient **complet** (tous les identifiants du catalogue) au Sprint 11, critère §52 A2 ;
+  - tout identifiant de niveau U, I, E ou F **d'un sprint clos** a au moins un test. La liste de ces identifiants est lue dans les `docs/sprints/sprint-NN.md` de ces sprints ; le contrôle devient **complet** (tous les identifiants du catalogue) au Sprint 11, critère §52 A2 ;
+  - les identifiants du **sprint en cours** sans test figurent dans le rapport **sans bloquer** ; ils deviennent bloquants quand le `sprint-NN.md` passe à `Statut : clos`, dans la PR de bilan du sprint. Sans cette règle, chaque PR du sprint échouerait tant que le dernier test n'existe pas, alors que les étapes de la CI sont obligatoires pour fusionner sur `main` (§46.2) ;
   - tout marqueur renvoie à un identifiant existant ;
   - aucun identifiant de niveau M n'est marqué dans le code.
 - Les identifiants de niveau M sont reportés dans `docs/go-live.md`.
