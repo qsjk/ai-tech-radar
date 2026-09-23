@@ -428,7 +428,7 @@ Chaque étape bloque les suivantes. Les travaux d'une même étape peuvent tourn
 ### 50.1 Principes
 
 - **Horloge** : `app/core/clock.py` expose une `Clock` (`now()` UTC avec fuseau, `sleep()`, `monotonic()`). La production utilise `SystemClock` ; les tests, une horloge manuelle qu'ils avancent. APScheduler est piloté par des déclencheurs appelables directement dans les tests : on teste la fonction du tick, pas le passage réel du temps.
-- **Temps en base** : aucune expression temporelle SQL (`CURRENT_TIMESTAMP`, `datetime('now')`) dans le code ni dans les requêtes. Les valeurs par défaut de colonnes restent un filet de sécurité ; le code fournit toujours l'instant explicitement.
+- **Temps en base** : aucune expression temporelle SQL (`CURRENT_TIMESTAMP`, `datetime('now')`) dans le code ni dans les requêtes, ni en valeur par défaut de colonne : l'instant est toujours fourni par la `Clock` (Partie III §10.6).
 - **Réseau** : un bloqueur de sockets actif pour toute la session pytest (type `pytest-socket`), qui n'autorise que `127.0.0.1` / `::1` et les sockets Unix. Un test qui tente une connexion externe échoue. En e2e, les conteneurs n'atteignent que les doubles : la surcharge de test déclare `APP_ENV=test` et `HTTP_TEST_ALLOW_HOSTS` (décision 23).
 - **Anti-SSRF en test** : l'accès des tests d'intégration aux doubles locaux passe par la liste de test injectée au `HttpClient`, jamais par un contournement de la garde. T-HTTP-08 vérifie que la garde refuse `127.0.0.1` en l'absence de cette liste.
 - **SQLite réel** : les tests d'intégration utilisent un fichier SQLite temporaire en WAL (jamais `:memory:`, qui masque le WAL et la concurrence), migré par Alembic à `head`.
