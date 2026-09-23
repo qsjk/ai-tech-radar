@@ -10,15 +10,15 @@ de cadrage (`docs/sprints/sprint-00-cadrage.md`) sont citées par leur identifia
 
 **Règles de lecture des tableaux de colonnes**
 
-- **Null** : `non` ou `oui` quand la spec le dit ; **`n. p.`** (non précisé) sinon. Les colonnes `n. p.` sont
-  recensées au §7 : leur nullabilité est à fixer avant la migration qui les crée.
+- **Null** : règle de III §11.0 (I-03) : **non nul par défaut** ; `oui` seulement si la spec le dit ou si `NULL` a
+  un sens (valeur inconnue ou absente). Chaque colonne nullable est justifiée dans la colonne Rôle.
 - **Défaut** : seulement les défauts écrits dans la spec ; `—` sinon.
 - **Sprint** : sprint de la migration qui crée la colonne, l'index ou le trigger. Il découle du contenu des sprints
   (VIII §47.2) et des arbitrages (E7) ; quand la spec ne le dit pas explicitement, la justification figure sous le
   tableau.
 - Les blocs SQL sont **indicatifs** : ils décrivent la cible, ce ne sont pas des migrations (IX §57.6). Les noms de
-  tables en SQL suivent ceux que la spec emploie dans ses requêtes (`article`, `aijob`, `embedding`, `article_fts`) ;
-  pour les autres tables, le nom `snake_case` est une **proposition**.
+  tables en SQL sont en `snake_case` ; `aijob` est gardé tel qu'il figure dans les requêtes de V-A (III §11.0,
+  I-01).
 
 ---
 
@@ -28,12 +28,19 @@ de cadrage (`docs/sprints/sprint-00-cadrage.md`) sont citées par leur identifia
 
 - **Clé primaire** : `id INTEGER PRIMARY KEY` partout, sauf les tables de liaison (clé composite) et les tables
   clé/valeur `Setting` et `SystemState` (clé texte) (III §11.0).
-- **Horodatage** : `created_at` et, pour les tables modifiables, `updated_at`, de type `UTCDateTime` (III §11.0,
-  §10.6). La spec ne dresse pas la liste des tables « modifiables » : les tableaux ci-dessous ne reprennent
-  `created_at` et `updated_at` que là où la spec les nomme ou les utilise, et signalent les autres cas (§7, I-02).
+- **Horodatage** (III §11.0, I-02), type `UTCDateTime` :
+  - `created_at` sur toutes les tables à identifiant `id`, ainsi que sur `ArticleTopic` et `ArticleEntity` ;
+  - `updated_at` sur les tables dont les lignes sont modifiées après insertion : `Source` · `Article` · `Topic` ·
+    `Entity` · `Event` · `Embedding` · `AIJob` · `Signal` · `EmergingCandidate` · `EmergingDecision` ·
+    `UserPreference` · `ReadState` · `AlertLog` · `Setting` · `SystemState` ;
+  - ni l'un ni l'autre n'a de défaut SQL : l'application fournit l'instant (§2.4).
 - **JSON** : colonne texte JSON (`JSON` côté SQLAlchemy, `TEXT` en SQLite), **validée par un schéma Pydantic à
   l'écriture** (III §11.0). JSON1 est un prérequis vérifié au démarrage (III §10.1).
-- **`NULL` = inconnu.** Jamais de valeur inventée par défaut : un quota inconnu est `NULL`, pas `0` (III §11.0).
+- **`NULL` = inconnu ou absent.** Jamais de valeur inventée par défaut : un quota inconnu est `NULL`, pas `0`. Toute
+  colonne est **non nulle par défaut** ; elle n'est nullable que si la spec le dit ou si `NULL` a un sens
+  (III §11.0, I-03).
+- **Nommage SQL** : tables en `snake_case`, sauf `aijob`, gardé tel qu'il figure dans les requêtes de V-A
+  (III §11.0, I-01).
 - **Booléens** : `BOOLEAN` SQLAlchemy, stocké en `INTEGER` 0 / 1 par SQLite (la requête de V-B §28.2 compare
   `clustered_semantic = 0`).
 
@@ -164,8 +171,8 @@ read_session = async_sessionmaker(engine.execution_options(readonly=True))
 - Type `UTCDateTime` (`TypeDecorator` sur `TEXT`) : **refuse un datetime sans fuseau** à l'écriture, renvoie un
   datetime UTC à la lecture (T-DB-07). Conversion en heure locale à l'affichage seulement.
 - **Aucune expression temporelle SQL** (`CURRENT_TIMESTAMP`, `datetime('now')`) dans le code ni dans les requêtes :
-  l'instant est fourni par l'application via la `Clock` (III §10.6, VIII décision 7, §50.1). Les valeurs par défaut
-  de colonnes restent un filet de sécurité (voir `AIJob.next_attempt_at`, §7 I-04).
+  l'instant est fourni par l'application via la `Clock` (III §10.6, VIII décision 7, §50.1). Aucune colonne n'a de
+  défaut temporel en SQL : `AIJob.next_attempt_at` est fourni par l'application (III §11.10, I-04).
 
 ---
 
@@ -213,21 +220,23 @@ Une ligne par source de `config/sources.yaml`, upsertée au démarrage du worker
 | Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
 |---|---|---|---|---|---|---|---|---|
 | `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 2 |
-| `key` | `TEXT` | `String` | n. p. | — | **UNIQUE** | identifiant stable de `sources.yaml`, slug `[a-z0-9-]+`, clé d'upsert, immuable | III §11.1 · IV §16.2 | 2 |
-| `name` | `TEXT` | `String` | n. p. | — | | libellé affiché | III §11.1 | 2 |
-| `type` | `TEXT` | `String` | n. p. | — | validé par le code (registre des collectors) | V1 : `rss · github · hackernews · reddit · youtube · webpage` ; ne change jamais pour une `key` | III §11.1, décision 7 · IV §16.2 | 2 |
-| `url` | `TEXT` | `String` | n. p. | — | | URL lisible de la source (page de liste pour `webpage`) | III §11.1 · IV §16.2 | 2 |
-| `config` | `TEXT` (JSON) | `JSON` | n. p. | — | Pydantic : `config_model` du collector | paramètres propres au collector | III §11.1 · IV §16.2 | 2 |
-| `enabled` | `INTEGER` | `Boolean` | n. p. | — | | source planifiée ou non | III §11.1 | 2 |
-| `poll_interval` | `INTEGER` | `Integer` | n. p. | — | | intervalle en secondes, ≥ minimum du type | III §11.1 · IV §16.2 | 2 |
-| `relevance` | `TEXT` | `String` | n. p. | — | `CHECK IN ('filter','always')` | `always` : article toujours `ready` | III §11.1 · IV §20.3 | 2 |
-| `extract` | `TEXT` | `String` | n. p. | — | `CHECK IN ('auto','never')` | extraction ciblée autorisée ou non | III §11.1 · IV §17.1 | 2 |
-| `checkpoint` | `TEXT` (JSON) | `JSON` | n. p. | — | Pydantic | curseur, `ETag`, `Last-Modified`, date de dernière collecte ; vide à l'insertion ; jamais écrasé par le YAML | III §11.1 · IV §14.3, §16.1 | 2 |
-| `last_success_at` | `TEXT` | `UTCDateTime` | n. p. | — | | fin du dernier run `success` ou `partial` | III §11.1 · IV §14.4 | 2 |
-| `last_error` | `TEXT` | `Text` | n. p. | — | | dernier run `partial` ou `failed`, après nettoyage des secrets par valeur | III §11.1 · IV §14.4 · VII §42.4 | 2 |
-| `last_http_status` | `INTEGER` | `Integer` | n. p. | — | | état de santé | III §11.1 | 2 |
+| `key` | `TEXT` | `String` | non | — | **UNIQUE** | identifiant stable de `sources.yaml`, slug `[a-z0-9-]+`, clé d'upsert, immuable | III §11.1 · IV §16.2 | 2 |
+| `name` | `TEXT` | `String` | non | — | | libellé affiché | III §11.1 | 2 |
+| `type` | `TEXT` | `String` | non | — | validé par le code (registre des collectors) | V1 : `rss · github · hackernews · reddit · youtube · webpage` ; ne change jamais pour une `key` | III §11.1, décision 7 · IV §16.2 | 2 |
+| `url` | `TEXT` | `String` | non | — | | URL lisible de la source (page de liste pour `webpage`) | III §11.1 · IV §16.2 | 2 |
+| `config` | `TEXT` (JSON) | `JSON` | oui | — | Pydantic : `config_model` du collector | paramètres propres au collector — `NULL` pour un type de collector sans paramètres : `config` n'est obligatoire que selon le type (IV §16.2). | III §11.1 · IV §16.2 | 2 |
+| `enabled` | `INTEGER` | `Boolean` | non | — | | source planifiée ou non | III §11.1 | 2 |
+| `poll_interval` | `INTEGER` | `Integer` | non | — | | intervalle en secondes, ≥ minimum du type | III §11.1 · IV §16.2 | 2 |
+| `relevance` | `TEXT` | `String` | non | — | `CHECK IN ('filter','always')` | `always` : article toujours `ready` | III §11.1 · IV §20.3 | 2 |
+| `extract` | `TEXT` | `String` | non | — | `CHECK IN ('auto','never')` | extraction ciblée autorisée ou non | III §11.1 · IV §17.1 | 2 |
+| `checkpoint` | `TEXT` (JSON) | `JSON` | oui | — | Pydantic | curseur, `ETag`, `Last-Modified`, date de dernière collecte ; vide à l'insertion ; jamais écrasé par le YAML — `NULL` tant qu'aucune page n'a été collectée (checkpoint vide à l'insertion, IV §16.2). | III §11.1 · IV §14.3, §16.1 | 2 |
+| `last_success_at` | `TEXT` | `UTCDateTime` | oui | — | | fin du dernier run `success` ou `partial` — `NULL` tant qu'aucun run n'a réussi. | III §11.1 · IV §14.4 | 2 |
+| `last_error` | `TEXT` | `Text` | oui | — | | dernier run `partial` ou `failed`, après nettoyage des secrets par valeur — `NULL` tant qu'aucun run n'a échoué. | III §11.1 · IV §14.4 · VII §42.4 | 2 |
+| `last_http_status` | `INTEGER` | `Integer` | oui | — | | état de santé — `NULL` tant qu'aucune réponse HTTP n'a été reçue. | III §11.1 | 2 |
 | `rate_limit_remaining` | `INTEGER` | `Integer` | oui | — | | `NULL` = quota inconnu | III §11.1 · IV §21.4 | 2 |
 | `rate_limit_reset_at` | `TEXT` | `UTCDateTime` | oui | — | | `NULL` = inconnu | III §11.1 · IV §21.3 | 2 |
+| `created_at` | `TEXT` | `UTCDateTime` | non | — | | insertion de la ligne | III §11.0 | 2 |
+| `updated_at` | `TEXT` | `UTCDateTime` | non | — | | dernière modification de la ligne | III §11.0 | 2 |
 
 - Champs de configuration (mis à jour par l'upsert) : `name`, `url`, `config`, `enabled`, `poll_interval`,
   `relevance`, `extract`. Champs d'état (jamais touchés par le YAML) : `checkpoint`, `last_*`, `rate_limit_*`
@@ -237,21 +246,23 @@ Une ligne par source de `config/sources.yaml`, upsertée au démarrage du worker
 ```sql
 CREATE TABLE source (
   id                   INTEGER PRIMARY KEY,
-  key                  TEXT UNIQUE,
-  name                 TEXT,
-  type                 TEXT,
-  url                  TEXT,
-  config               TEXT,          -- JSON
-  enabled              INTEGER,
-  poll_interval        INTEGER,       -- secondes
-  relevance            TEXT CHECK (relevance IN ('filter','always')),
-  extract              TEXT CHECK (extract IN ('auto','never')),
-  checkpoint           TEXT,          -- JSON
+  key                  TEXT NOT NULL UNIQUE,
+  name                 TEXT NOT NULL,
+  type                 TEXT NOT NULL,
+  url                  TEXT NOT NULL,
+  config               TEXT,  -- JSON
+  enabled              INTEGER NOT NULL,
+  poll_interval        INTEGER NOT NULL,
+  relevance            TEXT NOT NULL CHECK (relevance IN ('filter','always')),
+  extract              TEXT NOT NULL CHECK (extract IN ('auto','never')),
+  checkpoint           TEXT,  -- JSON
   last_success_at      TEXT,
   last_error           TEXT,
   last_http_status     INTEGER,
   rate_limit_remaining INTEGER,
-  rate_limit_reset_at  TEXT
+  rate_limit_reset_at  TEXT,
+  created_at           TEXT NOT NULL,
+  updated_at           TEXT NOT NULL
 );
 ```
 
@@ -263,13 +274,13 @@ inséré ; un item malformé non plus (III décision 6).
 | Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
 |---|---|---|---|---|---|---|---|---|
 | `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 2 |
-| `source_id` | `INTEGER` | `Integer` | n. p. | — | FK `source(id)` `RESTRICT` | | III §11.2 | 2 |
+| `source_id` | `INTEGER` | `Integer` | non | — | FK `source(id)` `RESTRICT` | | III §11.2 | 2 |
 | `external_id` | `TEXT` | `String` | oui | — | voir unicité partielle | identifiant chez le provider | III §11.2 | 2 |
-| `url` | `TEXT` | `String` | n. p. | — | | URL **propre à l'item** | III §11.2, décision 3 | 2 |
-| `canonical_url` | `TEXT` | `String` | n. p. | — | **UNIQUE** | base de la dédup exacte | III §11.2 · IV §18.3, §19.1 | 2 |
+| `url` | `TEXT` | `String` | non | — | | URL **propre à l'item** | III §11.2, décision 3 | 2 |
+| `canonical_url` | `TEXT` | `String` | non | — | **UNIQUE** | base de la dédup exacte | III §11.2 · IV §18.3, §19.1 | 2 |
 | `link_url` | `TEXT` | `String` | oui | — | | URL **pointée** (lien externe) | III §11.2 | 2 |
 | `canonical_link_url` | `TEXT` | `String` | oui | — | index | critère « URL croisée » du clustering | III §11.2 · V-B §28.4 | 2 |
-| `title` | `TEXT` | `Text` | n. p. | — | | titre normalisé, une ligne, ≤ 500 caractères | III §11.2 · IV §18.2 | 2 |
+| `title` | `TEXT` | `Text` | non | — | | titre normalisé, une ligne, ≤ 500 caractères | III §11.2 · IV §18.2 | 2 |
 | `author` | `TEXT` | `String` | oui | — | | auteur vide → `NULL` | III §11.2 · IV §18.2 | 2 |
 | `language` | `TEXT` | `String` | oui | — | | `NULL` sous 20 caractères ou si le détecteur ne tranche pas | III §11.2 · IV §18.5 | 2 |
 | `published_at` | `TEXT` | `UTCDateTime` | **non** | — | index | absent ou futur → repli sur `discovered_at` | III §11.2 · IV §18.4 | 2 |
@@ -277,18 +288,20 @@ inséré ; un item malformé non plus (III décision 6).
 | `content` | `TEXT` | `Text` | oui | — | | **tampon de traitement**, purgé ; `NULL` dès l'insertion pour un `filtered` | III §11.2 · IV §14.3 · II §8.5 | 2 |
 | `content_hash` | `TEXT` | `String` | oui | — | index (non unique) | `NULL` sous 200 caractères ; conservé après purge ; jamais recalculé après extraction | III §11.2 · IV §19.2 | 2 |
 | `content_purged_at` | `TEXT` | `UTCDateTime` | oui | — | | posé à l'insertion d'un `filtered`, puis par la purge | III §11.2 · IV §14.3 | 2 |
-| `relevance_score` | `REAL` | `Float` | n. p. | — | | score du relevance filter | III §11.2 · IV §20 | 2 |
-| `status` | `TEXT` | `String` | n. p. | — | `CHECK IN ('ready','filtered','duplicate')` ; index | insertion en `ready` ou `filtered` ; seule transition : `ready → duplicate` | III §11.2 | 2 |
+| `relevance_score` | `REAL` | `Float` | non | — | | score du relevance filter | III §11.2 · IV §20 | 2 |
+| `status` | `TEXT` | `String` | non | — | `CHECK IN ('ready','filtered','duplicate')` ; index | insertion en `ready` ou `filtered` ; seule transition : `ready → duplicate` | III §11.2 | 2 |
 | `summary` | `TEXT` | `Text` | **non** (E12) | — | | aperçu : repli à l'insertion (`ready` **et** `filtered`), puis synthèse LLM | III §11.2 · IV §14.5 | 2 |
-| `summary_origin` | `TEXT` | `String` | n. p. | — | `CHECK IN ('fallback','llm')` | | III §11.2 | 2 |
+| `summary_origin` | `TEXT` | `String` | non | — | `CHECK IN ('fallback','llm')` | | III §11.2 | 2 |
 | `summary_lang` | `TEXT` | `String` | oui | — | | langue du résumé ; au repli, `language` (éventuellement `NULL`) | III §11.2 · IV §14.5 | 2 |
-| `metrics` | `TEXT` (JSON) | `JSON` | n. p. | — | Pydantic | engagement à la collecte (points HN, vues YouTube…), instantané jamais mis à jour | III §11.2 · IV §15.4 | 2 |
+| `metrics` | `TEXT` (JSON) | `JSON` | oui | — | Pydantic | engagement à la collecte (points HN, vues YouTube…), instantané jamais mis à jour — `NULL` quand le provider ne fournit aucune métrique d'engagement (métrique absente, V-B §28.9). | III §11.2 · IV §15.4 | 2 |
 | `event_id` | `INTEGER` | `Integer` | oui | — | FK `event(id)` `RESTRICT` ; index | appartenance à un Event | III §11.2, décision 4 · V-B §28.5 | **4** |
 | `duplicate_of_id` | `INTEGER` | `Integer` | oui | — | FK `article(id)` `RESTRICT` | renseigné si `duplicate` | III §11.2 · V-B §28.7 | **4** |
 | `clustered_at` | `TEXT` | `UTCDateTime` | oui | — | index partiel | article évalué par le clustering | III §11.2 · V-B §28.2 | **4** |
-| `clustered_semantic` | `INTEGER` | `Boolean` | n. p. | `false` | | critère cosine évalué | III §11.2 · V-B §28.2 | **4** |
+| `clustered_semantic` | `INTEGER` | `Boolean` | non | `false` | | critère cosine évalué | III §11.2 · V-B §28.2 | **4** |
 | `importance` | `REAL` | `Float` | oui | — | | importance de l'article hors Event, dans [0, 1] | III §11.2 · V-B §28.9 | **4** |
 | `processed_at` | `TEXT` | `UTCDateTime` | oui | — | | tous traitements terminés ; posé par la seule passe `processed_at` de la purge | III §11.2 · V-A §24.5 | **7** |
+| `created_at` | `TEXT` | `UTCDateTime` | non | — | | insertion de la ligne | III §11.0 | 2 |
+| `updated_at` | `TEXT` | `UTCDateTime` | non | — | | dernière modification de la ligne | III §11.0 | 2 |
 
 **Contraintes et index**
 
@@ -315,13 +328,13 @@ inséré ; un item malformé non plus (III décision 6).
 ```sql
 CREATE TABLE article (
   id                 INTEGER PRIMARY KEY,
-  source_id          INTEGER REFERENCES source(id) ON DELETE RESTRICT,
+  source_id          INTEGER NOT NULL REFERENCES source(id) ON DELETE RESTRICT,
   external_id        TEXT,
-  url                TEXT,
-  canonical_url      TEXT UNIQUE,
+  url                TEXT NOT NULL,
+  canonical_url      TEXT NOT NULL UNIQUE,
   link_url           TEXT,
   canonical_link_url TEXT,
-  title              TEXT,
+  title              TEXT NOT NULL,
   author             TEXT,
   language           TEXT,
   published_at       TEXT NOT NULL,
@@ -329,17 +342,19 @@ CREATE TABLE article (
   content            TEXT,
   content_hash       TEXT,
   content_purged_at  TEXT,
-  relevance_score    REAL,
-  status             TEXT CHECK (status IN ('ready','filtered','duplicate')),
+  relevance_score    REAL NOT NULL,
+  status             TEXT NOT NULL CHECK (status IN ('ready','filtered','duplicate')),
   summary            TEXT NOT NULL,
-  summary_origin     TEXT CHECK (summary_origin IN ('fallback','llm')),
+  summary_origin     TEXT NOT NULL CHECK (summary_origin IN ('fallback','llm')),
   summary_lang       TEXT,
-  metrics            TEXT,                                            -- JSON
+  metrics            TEXT,  -- JSON
+  created_at         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL,
   -- Sprint 4
   event_id           INTEGER REFERENCES event(id) ON DELETE RESTRICT,
   duplicate_of_id    INTEGER REFERENCES article(id) ON DELETE RESTRICT,
   clustered_at       TEXT,
-  clustered_semantic INTEGER DEFAULT 0,
+  clustered_semantic INTEGER NOT NULL DEFAULT 0,
   importance         REAL,
   -- Sprint 7
   processed_at       TEXT
@@ -365,43 +380,46 @@ Alimente les métriques par source (VII §39) et le disjoncteur par source (IV �
 | Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
 |---|---|---|---|---|---|---|---|---|
 | `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 2 |
-| `source_id` | `INTEGER` | `Integer` | n. p. | — | FK `source(id)` `RESTRICT` | | III §11.11 | 2 |
-| `started_at` · `finished_at` | `TEXT` | `UTCDateTime` | n. p. | — | | bornes du run | III §11.11 | 2 |
-| `status` | `TEXT` | `String` | n. p. | — | `CHECK IN ('success','partial','failed')` | | III §11.11 · IV §14.4 | 2 |
-| `items_fetched` | `INTEGER` | `Integer` | n. p. | — | | entrées renvoyées par le provider, malformées comprises | III §11.11 · IV §14.4 | 2 |
-| `items_created` | `INTEGER` | `Integer` | n. p. | — | | insérés en `ready` | idem | 2 |
-| `items_duplicate` | `INTEGER` | `Integer` | n. p. | — | | doublons exacts non insérés, conflits `ON CONFLICT` compris | idem | 2 |
-| `items_filtered` | `INTEGER` | `Integer` | n. p. | — | | insérés en `filtered` | idem | 2 |
-| `items_skipped` | `INTEGER` | `Integer` | n. p. | — | | entrées malformées, non persistées | idem | 2 |
-| `items_too_old` | `INTEGER` | `Integer` | n. p. | — | | plus anciennes que `max_item_age` | idem | 2 |
-| `extractions_attempted` · `extractions_failed` | `INTEGER` | `Integer` | n. p. | — | | extraction ciblée (IV §17) | idem | 2 |
-| `requests_count` | `INTEGER` | `Integer` | n. p. | — | | requêtes HTTP du run, extraction comprise | idem | 2 |
-| `http_status` | `INTEGER` | `Integer` | n. p. | — | | | III §11.11 | 2 |
-| `error` | `TEXT` | `Text` | n. p. | — | | | III §11.11 | 2 |
+| `source_id` | `INTEGER` | `Integer` | non | — | FK `source(id)` `RESTRICT` | | III §11.11 | 2 |
+| `started_at` · `finished_at` | `TEXT` | `UTCDateTime` | non | — | | bornes du run | III §11.11 | 2 |
+| `status` | `TEXT` | `String` | non | — | `CHECK IN ('success','partial','failed')` | | III §11.11 · IV §14.4 | 2 |
+| `items_fetched` | `INTEGER` | `Integer` | non | — | | entrées renvoyées par le provider, malformées comprises | III §11.11 · IV §14.4 | 2 |
+| `items_created` | `INTEGER` | `Integer` | non | — | | insérés en `ready` | idem | 2 |
+| `items_duplicate` | `INTEGER` | `Integer` | non | — | | doublons exacts non insérés, conflits `ON CONFLICT` compris | idem | 2 |
+| `items_filtered` | `INTEGER` | `Integer` | non | — | | insérés en `filtered` | idem | 2 |
+| `items_skipped` | `INTEGER` | `Integer` | non | — | | entrées malformées, non persistées | idem | 2 |
+| `items_too_old` | `INTEGER` | `Integer` | non | — | | plus anciennes que `max_item_age` | idem | 2 |
+| `extractions_attempted` · `extractions_failed` | `INTEGER` | `Integer` | non | — | | extraction ciblée (IV §17) | idem | 2 |
+| `requests_count` | `INTEGER` | `Integer` | non | — | | requêtes HTTP du run, extraction comprise | idem | 2 |
+| `http_status` | `INTEGER` | `Integer` | oui | — | | `NULL` si le run n'a reçu aucune réponse HTTP (erreur réseau, timeout). | III §11.11 | 2 |
+| `error` | `TEXT` | `Text` | oui | — | | `NULL` pour un run sans erreur. | III §11.11 | 2 |
+| `created_at` | `TEXT` | `UTCDateTime` | non | — | | insertion de la ligne | III §11.0 | 2 |
 
 - **Invariant testé** : `items_fetched = items_created + items_filtered + items_duplicate + items_skipped +
   items_too_old` (IV §14.4).
-- Aucun index secondaire n'est spécifié (§7, I-07).
+- **Index** : `(source_id, finished_at)` : disjoncteur par source (IV §21.5) et rétention (III §11.11, §13, I-07), Sprint 2.
 
 ```sql
 CREATE TABLE collector_run (
   id                    INTEGER PRIMARY KEY,
-  source_id             INTEGER REFERENCES source(id) ON DELETE RESTRICT,
-  started_at            TEXT,
-  finished_at           TEXT,
-  status                TEXT CHECK (status IN ('success','partial','failed')),
-  items_fetched         INTEGER,
-  items_created         INTEGER,
-  items_duplicate       INTEGER,
-  items_filtered        INTEGER,
-  items_skipped         INTEGER,
-  items_too_old         INTEGER,
-  extractions_attempted INTEGER,
-  extractions_failed    INTEGER,
-  requests_count        INTEGER,
+  source_id             INTEGER NOT NULL REFERENCES source(id) ON DELETE RESTRICT,
+  started_at            TEXT NOT NULL,
+  finished_at           TEXT NOT NULL,
+  status                TEXT NOT NULL CHECK (status IN ('success','partial','failed')),
+  items_fetched         INTEGER NOT NULL,
+  items_created         INTEGER NOT NULL,
+  items_duplicate       INTEGER NOT NULL,
+  items_filtered        INTEGER NOT NULL,
+  items_skipped         INTEGER NOT NULL,
+  items_too_old         INTEGER NOT NULL,
+  extractions_attempted INTEGER NOT NULL,
+  extractions_failed    INTEGER NOT NULL,
+  requests_count        INTEGER NOT NULL,
   http_status           INTEGER,
-  error                 TEXT
+  error                 TEXT,
+  created_at            TEXT NOT NULL
 );
+CREATE INDEX ix_collector_run_source_finished ON collector_run(source_id, finished_at);
 ```
 
 ### 3.5 `Topic` — *écrit par le worker*
@@ -413,28 +431,30 @@ mécanisme en V1 (V-A §24.6). Le suivi et la sourdine ne sont pas ici : ce sont
 | Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
 |---|---|---|---|---|---|---|---|---|
 | `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 2 |
-| `slug` | `TEXT` | `String` | n. p. | — | **UNIQUE** | clé d'upsert ; suffixe `-2`, `-3`… en collision pour un topic `user` | III §11.4 · IV §16.3 · V-B §30.8 | 2 |
-| `name` | `TEXT` | `String` | n. p. | — | | | III §11.4 | 2 |
+| `slug` | `TEXT` | `String` | non | — | **UNIQUE** | clé d'upsert ; suffixe `-2`, `-3`… en collision pour un topic `user` | III §11.4 · IV §16.3 · V-B §30.8 | 2 |
+| `name` | `TEXT` | `String` | non | — | | | III §11.4 | 2 |
 | `description` | `TEXT` | `Text` | oui | — | | `null` par défaut dans le YAML ; `llm_description` ou `NULL` pour un topic `user` | III §11.4 · IV §16.3 · V-B §30.8 | 2 |
 | `parent_id` | `INTEGER` | `Integer` | oui | — | FK `topic(id)` `RESTRICT` | hiérarchie ; `NULL` pour un topic `user` | III §11.4 · IV §16.3 · V-B §30.8 | 2 |
-| `origin` | `TEXT` | `String` | n. p. | — | `CHECK IN ('seeded','discovered','user')` | | III §11.4 | 2 |
-| `keywords` | `TEXT` (JSON) | `JSON` | n. p. | — | Pydantic | mots-clés et motifs du relevance filter | III §11.4 · IV §16.3 | 2 |
-| `enabled` | `INTEGER` | `Boolean` | n. p. | — | | un topic désactivé n'est pas utilisé par le scoring et n'a plus de Signal | III §11.4 · IV §16.3 · V-B §29.7 | 2 |
-| `created_at` | `TEXT` | `UTCDateTime` | n. p. | — | | couverture d'un topic `user` : `created_at − topic_backfill.window` | III §11.0 · V-B §29.3 | 2 |
+| `origin` | `TEXT` | `String` | non | — | `CHECK IN ('seeded','discovered','user')` | | III §11.4 | 2 |
+| `keywords` | `TEXT` (JSON) | `JSON` | non | — | Pydantic | `{include, exclude}` : mots-clés et motifs du relevance filter, termes masqués avant matching | III §11.4 · IV §16.3, §20.3 | 2 |
+| `enabled` | `INTEGER` | `Boolean` | non | — | | un topic désactivé n'est pas utilisé par le scoring et n'a plus de Signal | III §11.4 · IV §16.3 · V-B §29.7 | 2 |
+| `created_at` | `TEXT` | `UTCDateTime` | non | — | | couverture d'un topic `user` : `created_at − topic_backfill.window` | III §11.0 · V-B §29.3 | 2 |
+| `updated_at` | `TEXT` | `UTCDateTime` | non | — | | dernière modification de la ligne | III §11.0 | 2 |
 
-- Les exclusions (`exclude`) de `topics.yaml` n'ont pas de colonne (§7, I-05).
+- Les exclusions (`exclude`) de `topics.yaml` sont stockées dans `keywords`, sous la clé `exclude` (III §11.4, IV §16.3, I-05).
 
 ```sql
 CREATE TABLE topic (
   id          INTEGER PRIMARY KEY,
-  slug        TEXT UNIQUE,
-  name        TEXT,
+  slug        TEXT NOT NULL UNIQUE,
+  name        TEXT NOT NULL,
   description TEXT,
   parent_id   INTEGER REFERENCES topic(id) ON DELETE RESTRICT,
-  origin      TEXT CHECK (origin IN ('seeded','discovered','user')),
-  keywords    TEXT,       -- JSON
-  enabled     INTEGER,
-  created_at  TEXT
+  origin      TEXT NOT NULL CHECK (origin IN ('seeded','discovered','user')),
+  keywords    TEXT NOT NULL,  -- JSON
+  enabled     INTEGER NOT NULL,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
 );
 ```
 
@@ -448,20 +468,24 @@ CF-19). Alias et fusion automatiques en base : V2.
 | Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
 |---|---|---|---|---|---|---|---|---|
 | `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 2 |
-| `type` | `TEXT` | `String` | n. p. | — | validé par le code | `company · product · person · project · technology · model · repository` | III §11.6 | 2 |
-| `name` | `TEXT` | `String` | n. p. | — | | libellé affiché, mis à jour par l'upsert | III §11.6 · IV §16.4 | 2 |
-| `canonical_name` | `TEXT` | `String` | n. p. | — | voir unicité | minuscules ; `owner/repo` pour un dépôt | III §11.6 · IV §16.4 | 2 |
-| `origin` | `TEXT` | `String` | n. p. | — | `CHECK IN ('dictionary','llm')` | | III §11.6 | 2 |
+| `type` | `TEXT` | `String` | non | — | validé par le code | `company · product · person · project · technology · model · repository` | III §11.6 | 2 |
+| `name` | `TEXT` | `String` | non | — | | libellé affiché, mis à jour par l'upsert | III §11.6 · IV §16.4 | 2 |
+| `canonical_name` | `TEXT` | `String` | non | — | voir unicité | minuscules ; `owner/repo` pour un dépôt | III §11.6 · IV §16.4 | 2 |
+| `origin` | `TEXT` | `String` | non | — | `CHECK IN ('dictionary','llm')` | | III §11.6 | 2 |
+| `created_at` | `TEXT` | `UTCDateTime` | non | — | | insertion de la ligne | III §11.0 | 2 |
+| `updated_at` | `TEXT` | `UTCDateTime` | non | — | | dernière modification de la ligne | III §11.0 | 2 |
 
 **Unicité** : `UNIQUE(type, canonical_name)` (III §11.6), Sprint 2.
 
 ```sql
 CREATE TABLE entity (
   id             INTEGER PRIMARY KEY,
-  type           TEXT,
-  name           TEXT,
-  canonical_name TEXT,
-  origin         TEXT CHECK (origin IN ('dictionary','llm')),
+  type           TEXT NOT NULL,
+  name           TEXT NOT NULL,
+  canonical_name TEXT NOT NULL,
+  origin         TEXT NOT NULL CHECK (origin IN ('dictionary','llm')),
+  created_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL,
   UNIQUE (type, canonical_name)
 );
 ```
@@ -476,20 +500,22 @@ remplacées en bloc par `enrich_article` (Sprint 7) (IV §14.3, V-A §24.6, §27
 | `article_id` | `INTEGER` | `Integer` | non (PK) | — | FK `article(id)` **`CASCADE`** | | III §11.5 · §11.0 | 2 |
 | `topic_id` | `INTEGER` | `Integer` | non (PK) | — | FK `topic(id)` `RESTRICT` | | III §11.5 | 2 |
 | `method` | `TEXT` | `String` | non (PK) | — | `CHECK IN ('keyword','llm')` | un même topic peut être attribué par les deux méthodes | III §11.5 | 2 |
-| `confidence` | `REAL` | `Float` | n. p. | — | | | III §11.5 | 2 |
-| `created_at` | `TEXT` | `UTCDateTime` | n. p. | — | | | III §11.5 | 2 |
+| `confidence` | `REAL` | `Float` | non | — | | | III §11.5 | 2 |
+| `created_at` | `TEXT` | `UTCDateTime` | non | — | | | III §11.5 | 2 |
 
 **Clé primaire** : `(article_id, topic_id, method)`. Les tendances comptent les **articles distincts** (III §11.5).
+**Index** : `topic_id` (lecture par topic : Trend Engine, vue Topic) (III §11.5, I-07), Sprint 2.
 
 ```sql
 CREATE TABLE article_topic (
-  article_id INTEGER REFERENCES article(id) ON DELETE CASCADE,
-  topic_id   INTEGER REFERENCES topic(id)   ON DELETE RESTRICT,
-  method     TEXT CHECK (method IN ('keyword','llm')),
-  confidence REAL,
-  created_at TEXT,
+  article_id INTEGER NOT NULL REFERENCES article(id) ON DELETE CASCADE,
+  topic_id   INTEGER NOT NULL REFERENCES topic(id) ON DELETE RESTRICT,
+  method     TEXT NOT NULL CHECK (method IN ('keyword','llm')),
+  confidence REAL NOT NULL,
+  created_at TEXT NOT NULL,
   PRIMARY KEY (article_id, topic_id, method)
 );
+CREATE INDEX ix_article_topic_topic_id ON article_topic(topic_id);
 ```
 
 ### 3.8 `ArticleEntity` — *écrit par le worker*
@@ -499,19 +525,22 @@ CREATE TABLE article_topic (
 | `article_id` | `INTEGER` | `Integer` | non (PK) | — | FK `article(id)` **`CASCADE`** | | III §11.7 · §11.0 | 2 |
 | `entity_id` | `INTEGER` | `Integer` | non (PK) | — | FK `entity(id)` `RESTRICT` | | III §11.7 | 2 |
 | `method` | `TEXT` | `String` | non (PK) | — | `CHECK IN ('keyword','llm')` | | III §11.7 | 2 |
-| `confidence` | `REAL` | `Float` | n. p. | — | | | III §11.7 | 2 |
+| `confidence` | `REAL` | `Float` | non | — | | | III §11.7 | 2 |
+| `created_at` | `TEXT` | `UTCDateTime` | non | — | | insertion de la ligne | III §11.0 | 2 |
 
-**Clé primaire** : `(article_id, entity_id, method)` (III §11.7). Pas de `created_at`, contrairement à
-`ArticleTopic` (§7, I-06).
+**Clé primaire** : `(article_id, entity_id, method)` (III §11.7). `created_at`, comme `ArticleTopic` (I-06).
+**Index** : `entity_id` (entités communes du clustering, V-B §28.4) (III §11.7, I-07), Sprint 2.
 
 ```sql
 CREATE TABLE article_entity (
-  article_id INTEGER REFERENCES article(id) ON DELETE CASCADE,
-  entity_id  INTEGER REFERENCES entity(id)  ON DELETE RESTRICT,
-  method     TEXT CHECK (method IN ('keyword','llm')),
-  confidence REAL,
+  article_id INTEGER NOT NULL REFERENCES article(id) ON DELETE CASCADE,
+  entity_id  INTEGER NOT NULL REFERENCES entity(id) ON DELETE RESTRICT,
+  method     TEXT NOT NULL CHECK (method IN ('keyword','llm')),
+  confidence REAL NOT NULL,
+  created_at TEXT NOT NULL,
   PRIMARY KEY (article_id, entity_id, method)
 );
+CREATE INDEX ix_article_entity_entity_id ON article_entity(entity_id);
 ```
 
 ### 3.9 `Event` — *écrit par le worker*
@@ -524,17 +553,19 @@ les membres dans chaque transaction qui modifie l'Event, jamais incrémentés** 
 |---|---|---|---|---|---|---|---|---|
 | `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 4 |
 | `title` | `TEXT` | `Text` | **non** | — | | repli = titre du représentant ; synthèse LLM ensuite | III §11.3 · V-B §28.5, §28.8 | 4 |
-| `title_origin` | `TEXT` | `String` | n. p. | — | `CHECK IN ('fallback','llm')` | ce que `resolve_event` doit encore enrichir | III §11.3 | 4 |
+| `title_origin` | `TEXT` | `String` | non | — | `CHECK IN ('fallback','llm')` | ce que `resolve_event` doit encore enrichir | III §11.3 | 4 |
 | `description` | `TEXT` | `Text` | oui | — | | produite par `resolve_event` ; `NULL` à la création | III §11.3 · V-B §28.5 | 4 |
-| `representative_article_id` | `INTEGER` | `Integer` | n. p. | — | FK `article(id)` `RESTRICT` | membre `ready` le plus ancien par `published_at` | III §11.3 · V-B §28.8, décision 10 | 4 |
-| `first_seen_at` · `last_seen_at` | `TEXT` | `UTCDateTime` | n. p. | — | | min · max de `published_at` des membres `ready` | III §11.3 · V-B §28.9 | 4 |
-| `article_count` | `INTEGER` | `Integer` | n. p. | — | | membres `ready` | III §11.3 · V-B §28.9 | 4 |
+| `representative_article_id` | `INTEGER` | `Integer` | non | — | FK `article(id)` `RESTRICT` | membre `ready` le plus ancien par `published_at` | III §11.3 · II §7.2 · V-B §28.8, décision 10 | 4 |
+| `first_seen_at` · `last_seen_at` | `TEXT` | `UTCDateTime` | non | — | | min · max de `published_at` des membres `ready` | III §11.3 · V-B §28.9 | 4 |
+| `article_count` | `INTEGER` | `Integer` | non | — | | membres `ready` | III §11.3 · V-B §28.9 | 4 |
 | `distinct_source_count` | `INTEGER` | `Integer` | **non** | `1` | | `source_id` distincts des membres `ready` (**hotness**) | III §11.3 · V-B §28.9 | 4 |
 | `distinct_channel_count` | `INTEGER` | `Integer` | **non** | `1` | | canaux distincts des membres `ready` | III §11.3, décision 16 · V-B §28.9 | 4 |
 | `importance` | `REAL` | `Float` | **non** | `0` | | dans [0, 1], indépendante du temps | III §11.3 · V-B §28.9 | 4 |
 | `resolve_enqueued_count` | `INTEGER` | `Integer` | oui | — | | `article_count` au dernier enqueue de `resolve_event` | III §11.3 · V-B §28.10 | 4 |
-| `status` | `TEXT` | `String` | n. p. | — | `CHECK IN ('active','merged','archived')` | `archived` = inactif depuis 7 j, informatif | III §11.3 · V-B §28.11 | 4 |
+| `status` | `TEXT` | `String` | non | — | `CHECK IN ('active','merged','archived')` | `archived` = inactif depuis 7 j, informatif | III §11.3 · V-B §28.11 | 4 |
 | `merged_into_id` | `INTEGER` | `Integer` | oui | — | FK `event(id)` `RESTRICT` | renseigné si `merged` | III §11.3 · V-B §28.6 | 4 |
+| `created_at` | `TEXT` | `UTCDateTime` | non | — | | insertion de la ligne | III §11.0 | 4 |
+| `updated_at` | `TEXT` | `UTCDateTime` | non | — | | dernière modification de la ligne | III §11.0 | 4 |
 
 - **Invariant testé** : `article_count`, `distinct_source_count` et `distinct_channel_count` égalent leur recalcul
   depuis les membres `ready` ; contrôlable et corrigé par `python -m app.cli recount-events` (III §11.3, V-B §28.9).
@@ -547,18 +578,20 @@ les membres dans chaque transaction qui modifie l'Event, jamais incrémentés** 
 CREATE TABLE event (
   id                        INTEGER PRIMARY KEY,
   title                     TEXT NOT NULL,
-  title_origin              TEXT CHECK (title_origin IN ('fallback','llm')),
+  title_origin              TEXT NOT NULL CHECK (title_origin IN ('fallback','llm')),
   description               TEXT,
-  representative_article_id INTEGER REFERENCES article(id) ON DELETE RESTRICT,
-  first_seen_at             TEXT,
-  last_seen_at              TEXT,
-  article_count             INTEGER,
+  representative_article_id INTEGER NOT NULL REFERENCES article(id) ON DELETE RESTRICT,
+  first_seen_at             TEXT NOT NULL,
+  last_seen_at              TEXT NOT NULL,
+  article_count             INTEGER NOT NULL,
   distinct_source_count     INTEGER NOT NULL DEFAULT 1,
   distinct_channel_count    INTEGER NOT NULL DEFAULT 1,
-  importance                REAL    NOT NULL DEFAULT 0,
+  importance                REAL NOT NULL DEFAULT 0,
   resolve_enqueued_count    INTEGER,
-  status                    TEXT CHECK (status IN ('active','merged','archived')),
-  merged_into_id            INTEGER REFERENCES event(id) ON DELETE RESTRICT
+  status                    TEXT NOT NULL CHECK (status IN ('active','merged','archived')),
+  merged_into_id            INTEGER REFERENCES event(id) ON DELETE RESTRICT,
+  created_at                TEXT NOT NULL,
+  updated_at                TEXT NOT NULL
 );
 CREATE INDEX ix_event_status_last_seen  ON event(status, last_seen_at);
 CREATE INDEX ix_event_status_importance ON event(status, importance);
@@ -571,12 +604,13 @@ CREATE INDEX ix_event_status_importance ON event(status, importance);
 | Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
 |---|---|---|---|---|---|---|---|---|
 | `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 4 |
-| `article_id` | `INTEGER` | `Integer` | n. p. | — | FK `article(id)` **`CASCADE`** | | III §11.9 · §11.0 | 4 |
-| `model` | `TEXT` | `String` | n. p. | — | voir unicité | modèle qui a produit le vecteur | III §11.9 · §12.4 | 4 |
+| `article_id` | `INTEGER` | `Integer` | non | — | FK `article(id)` **`CASCADE`** | | III §11.9 · §11.0 | 4 |
+| `model` | `TEXT` | `String` | non | — | voir unicité | nom du modèle fastembed + `@` + révision courte, ex. `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2@faf4aa42` ; un changement de révision produit de nouvelles lignes | III §11.9 · §12.4 | 4 |
 | `dim` | `INTEGER` | `Integer` | oui | — | | dimension du vecteur (384) | III §11.9 | 4 |
 | `vector` | `BLOB` | `LargeBinary` | oui | — | | `float32` normalisé (§4) ; `NULL` = échec définitif | III §11.9 · §12.3 | 4 |
 | `error` | `TEXT` | `Text` | oui | — | | renseigné quand `vector` est `NULL` | III §11.9 · V-A §24.4 | 4 |
-| `created_at` | `TEXT` | `UTCDateTime` | n. p. | — | | | III §11.9 | 4 |
+| `created_at` | `TEXT` | `UTCDateTime` | non | — | | | III §11.9 | 4 |
+| `updated_at` | `TEXT` | `UTCDateTime` | non | — | | dernière modification de la ligne | III §11.0 | 4 |
 
 - **Unicité** : `UNIQUE(article_id, model)` (III §11.9), Sprint 4. Rejouer un embedding écrase la ligne (II §9.1).
 - Une ligne à `vector` `NULL` (après `embeddings.max_failures` échecs) compte comme **traitée** pour `processed_at` et
@@ -585,12 +619,13 @@ CREATE INDEX ix_event_status_importance ON event(status, importance);
 ```sql
 CREATE TABLE embedding (
   id         INTEGER PRIMARY KEY,
-  article_id INTEGER REFERENCES article(id) ON DELETE CASCADE,
-  model      TEXT,
+  article_id INTEGER NOT NULL REFERENCES article(id) ON DELETE CASCADE,
+  model      TEXT NOT NULL,
   dim        INTEGER,
-  vector     BLOB,       -- float32 normalisé, NULL = échec définitif
+  vector     BLOB,
   error      TEXT,
-  created_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
   UNIQUE (article_id, model)
 );
 ```
@@ -604,18 +639,19 @@ complète au Sprint 2, index compris.
 | Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
 |---|---|---|---|---|---|---|---|---|
 | `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 2 |
-| `job_type` | `TEXT` | `String` | n. p. | — | validé par le code (registre) | V1 : `enrich_article · resolve_event · discover_topics` ; inconnu → `failed` | III §11.10 · V-A §23.1, §23.2 | 2 |
-| `entity_type` | `TEXT` | `String` | n. p. | — | validé par le code | `article · event · emerging_candidate` | III §11.10 | 2 |
-| `entity_id` | `INTEGER` | `Integer` | n. p. | — | **sans FK** | cible du job | III §11.10 | 2 |
-| `priority` | `INTEGER` | `Integer` | n. p. | — | | 60 / 50 / 10 selon le type ; 100 pour un job de l'app | III §11.10 · V-A §23.2 | 2 |
-| `status` | `TEXT` | `String` | n. p. | — | `CHECK IN ('pending','processing','completed','failed','retry','dead_letter','cancelled','skipped')` | | III §11.10 | 2 |
+| `job_type` | `TEXT` | `String` | non | — | validé par le code (registre) | V1 : `enrich_article · resolve_event · discover_topics` ; inconnu → `failed` | III §11.10 · V-A §23.1, §23.2 | 2 |
+| `entity_type` | `TEXT` | `String` | non | — | validé par le code | `article · event · emerging_candidate` | III §11.10 | 2 |
+| `entity_id` | `INTEGER` | `Integer` | non | — | **sans FK** | cible du job | III §11.10 | 2 |
+| `priority` | `INTEGER` | `Integer` | non | — | | 60 / 50 / 10 selon le type ; 100 pour un job de l'app | III §11.10 · V-A §23.2 | 2 |
+| `status` | `TEXT` | `String` | non | — | `CHECK IN ('pending','processing','completed','failed','retry','dead_letter','cancelled','skipped')` | | III §11.10 | 2 |
 | `skip_reason` | `TEXT` | `String` | oui | — | validé par le code | `expired · article_not_ready · event_member · event_not_active · event_single_source · candidate_decided` | III §11.10 · V-A §23.3 | 2 |
-| `attempts` · `max_attempts` | `INTEGER` | `Integer` | n. p. | — | | `max_attempts = 3` | III §11.10 · V-A §23.5 | 2 |
-| `next_attempt_at` | `TEXT` | `UTCDateTime` | **non** | « maintenant » (§7, I-04) | index de claim | à la création par le worker : maintenant + délai du type | III §11.10 · V-A §23.1 | 2 |
-| `last_error` | `TEXT` | `Text` | n. p. | — | | sans secret | III §11.10 · VIII T-LLM-09 | 2 |
-| `created_by` | `TEXT` | `String` | n. p. | — | `CHECK IN ('worker','app')` | | III §11.10 · V-A §23.6 | 2 |
+| `attempts` · `max_attempts` | `INTEGER` | `Integer` | non | — | | `max_attempts = 3` | III §11.10 · V-A §23.5 | 2 |
+| `next_attempt_at` | `TEXT` | `UTCDateTime` | **non** | — | index de claim | **fourni par l'application** (la `Clock`), sans défaut SQL : maintenant + délai du type à la création par le worker, maintenant pour un job de l'app | III §11.10 · V-A §23.1 | 2 |
+| `last_error` | `TEXT` | `Text` | oui | — | | sans secret — `NULL` tant qu'aucune tentative n'a échoué. | III §11.10 · VIII T-LLM-09 | 2 |
+| `created_by` | `TEXT` | `String` | non | — | `CHECK IN ('worker','app')` | | III §11.10 · V-A §23.6 | 2 |
 | `started_at` · `completed_at` | `TEXT` | `UTCDateTime` | oui | — | | `completed_at` posé aussi pour `skipped` | III §11.10 · V-A §23.3 | 2 |
-| `created_at` | `TEXT` | `UTCDateTime` | n. p. | — | | TTL (`now − created_at > ttl`) et ordre de claim | III §11.0 · V-A §23.3, §23.4 | 2 |
+| `created_at` | `TEXT` | `UTCDateTime` | non | — | | TTL (`now − created_at > ttl`) et ordre de claim | III §11.0 · V-A §23.3, §23.4 | 2 |
+| `updated_at` | `TEXT` | `UTCDateTime` | non | — | | dernière modification de la ligne | III §11.0 | 2 |
 
 **Statuts terminaux** : `completed` · `failed` · `dead_letter` · `cancelled` · `skipped`. L'app ne fait que deux
 transitions, `dead_letter → pending` et `dead_letter → cancelled`, par un `UPDATE … WHERE status = 'dead_letter'`
@@ -636,21 +672,21 @@ transitions, `dead_letter → pending` et `dead_letter → cancelled`, par un `U
 ```sql
 CREATE TABLE aijob (
   id              INTEGER PRIMARY KEY,
-  job_type        TEXT,
-  entity_type     TEXT,
-  entity_id       INTEGER,            -- sans FK
-  priority        INTEGER,
-  status          TEXT CHECK (status IN ('pending','processing','completed','failed',
-                                         'retry','dead_letter','cancelled','skipped')),
+  job_type        TEXT NOT NULL,
+  entity_type     TEXT NOT NULL,
+  entity_id       INTEGER NOT NULL,
+  priority        INTEGER NOT NULL,
+  status          TEXT NOT NULL CHECK (status IN ('pending','processing','completed','failed','retry','dead_letter','cancelled','skipped')),
   skip_reason     TEXT,
-  attempts        INTEGER,
-  max_attempts    INTEGER,
-  next_attempt_at TEXT NOT NULL,      -- défaut « maintenant » : voir I-04
+  attempts        INTEGER NOT NULL,
+  max_attempts    INTEGER NOT NULL,
+  next_attempt_at TEXT NOT NULL,
   last_error      TEXT,
-  created_by      TEXT CHECK (created_by IN ('worker','app')),
+  created_by      TEXT NOT NULL CHECK (created_by IN ('worker','app')),
   started_at      TEXT,
   completed_at    TEXT,
-  created_at      TEXT
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
 );
 CREATE UNIQUE INDEX ux_aijob_active ON aijob(job_type, entity_type, entity_id)
   WHERE status IN ('pending','processing','retry');
@@ -664,16 +700,18 @@ Upsert horaire par le Trend Engine, sur liaisons `keyword` uniquement (V-B §29)
 | Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
 |---|---|---|---|---|---|---|---|---|
 | `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 8 |
-| `topic_id` | `INTEGER` | `Integer` | n. p. | — | FK `topic(id)` `RESTRICT` | | III §11.8 | 8 |
-| `period` | `TEXT` | `String` | n. p. | — | `CHECK IN ('24h','7d','30d')` | | III §11.8 | 8 |
-| `computed_at` | `TEXT` | `UTCDateTime` | n. p. | — | | | III §11.8 | 8 |
-| `window_start` · `window_end` | `TEXT` | `UTCDateTime` | n. p. | — | | fenêtre du calcul | III §11.8 · V-B §29.4 | 8 |
-| `mentions` | `INTEGER` | `Integer` | n. p. | — | | articles distincts | III §11.8 · V-B §29.2 | 8 |
-| `unique_sources` · `unique_authors` · `unique_companies` | `INTEGER` | `Integer` | n. p. | — | | | III §11.8 · V-B §29.2 | 8 |
+| `topic_id` | `INTEGER` | `Integer` | non | — | FK `topic(id)` `RESTRICT` | | III §11.8 | 8 |
+| `period` | `TEXT` | `String` | non | — | `CHECK IN ('24h','7d','30d')` | | III §11.8 | 8 |
+| `computed_at` | `TEXT` | `UTCDateTime` | non | — | | | III §11.8 | 8 |
+| `window_start` · `window_end` | `TEXT` | `UTCDateTime` | non | — | | fenêtre du calcul | III §11.8 · V-B §29.4 | 8 |
+| `mentions` | `INTEGER` | `Integer` | non | — | | articles distincts | III §11.8 · V-B §29.2 | 8 |
+| `unique_sources` · `unique_authors` · `unique_companies` | `INTEGER` | `Integer` | non | — | | | III §11.8 · V-B §29.2 | 8 |
 | `growth_rate` | `REAL` | `Float` | oui | — | | `NULL` en cold start | III §11.8 · V-B §29.5, décision 17 | 8 |
-| `velocity` | `REAL` | `Float` | n. p. | — | | | III §11.8 · V-B §29.5 | 8 |
+| `velocity` | `REAL` | `Float` | non | — | | | III §11.8 · V-B §29.5 | 8 |
 | `novelty` · `momentum` | `REAL` | `Float` | oui | — | | `NULL` en cold start | III §11.8 · V-B §29.5, décision 17 | 8 |
 | `category` | `TEXT` | `String` | **oui** | — | `CHECK IN ('established','trending','rising','declining')` | `NULL` = support insuffisant | III §11.8 · V-B §29.6 | 8 |
+| `created_at` | `TEXT` | `UTCDateTime` | non | — | | insertion de la ligne | III §11.0 | 8 |
+| `updated_at` | `TEXT` | `UTCDateTime` | non | — | | dernière modification de la ligne | III §11.0 | 8 |
 
 **Contraintes et index** (Sprint 8) : `UNIQUE(topic_id, period, window_end)` (upsert horaire) · index
 `(topic_id, period, computed_at)` (III §11.8, V-B §29.4).
@@ -681,20 +719,22 @@ Upsert horaire par le Trend Engine, sur liaisons `keyword` uniquement (V-B §29)
 ```sql
 CREATE TABLE signal (
   id               INTEGER PRIMARY KEY,
-  topic_id         INTEGER REFERENCES topic(id) ON DELETE RESTRICT,
-  period           TEXT CHECK (period IN ('24h','7d','30d')),
-  computed_at      TEXT,
-  window_start     TEXT,
-  window_end       TEXT,
-  mentions         INTEGER,
-  unique_sources   INTEGER,
-  unique_authors   INTEGER,
-  unique_companies INTEGER,
+  topic_id         INTEGER NOT NULL REFERENCES topic(id) ON DELETE RESTRICT,
+  period           TEXT NOT NULL CHECK (period IN ('24h','7d','30d')),
+  computed_at      TEXT NOT NULL,
+  window_start     TEXT NOT NULL,
+  window_end       TEXT NOT NULL,
+  mentions         INTEGER NOT NULL,
+  unique_sources   INTEGER NOT NULL,
+  unique_authors   INTEGER NOT NULL,
+  unique_companies INTEGER NOT NULL,
   growth_rate      REAL,
-  velocity         REAL,
+  velocity         REAL NOT NULL,
   novelty          REAL,
   momentum         REAL,
   category         TEXT CHECK (category IN ('established','trending','rising','declining')),
+  created_at       TEXT NOT NULL,
+  updated_at       TEXT NOT NULL,
   UNIQUE (topic_id, period, window_end)
 );
 CREATE INDEX ix_signal_topic_period_computed ON signal(topic_id, period, computed_at);
@@ -708,44 +748,48 @@ V-A §27). Le statut du candidat (`converted`, `active`…) est **dérivé à la
 | Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
 |---|---|---|---|---|---|---|---|---|
 | `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 8 |
-| `key` | `TEXT` | `String` | n. p. | — | **UNIQUE** | terme normalisé | III §11.13 | 8 |
-| `kind` | `TEXT` | `String` | n. p. | — | `CHECK IN ('ngram','repository')` | | III §11.13 · V-B §30.2 | 8 |
-| `label` | `TEXT` | `String` | n. p. | — | | | III §11.13 | 8 |
-| `first_detected_at` | `TEXT` | `UTCDateTime` | n. p. | — | | | III §11.13 | 8 |
-| `last_evidence_at` | `TEXT` | `UTCDateTime` | n. p. | — | | dernière mise à jour de `evidence` | III §11.13 · V-B §30.4 | 8 |
-| `evidence` | `TEXT` (JSON) | `JSON` | n. p. | — | Pydantic | `mentions_7d · mentions_prev7d · growth · sources · authors · channels · stories · first_seen_at · article_ids` (≤ 20) | III §11.13 · V-B §30.4 | 8 |
-| `ref_mentions` · `ref_channel_count` | `INTEGER` | `Integer` | n. p. | — | | référence de l'évolution significative | III §11.13 · V-B §30.5 | 8 |
-| `last_significant_at` | `TEXT` | `UTCDateTime` | n. p. | — | | dernière évolution significative | III §11.13 · V-B §30.5 | 8 |
+| `key` | `TEXT` | `String` | non | — | **UNIQUE** | terme normalisé | III §11.13 | 8 |
+| `kind` | `TEXT` | `String` | non | — | `CHECK IN ('ngram','repository')` | | III §11.13 · V-B §30.2 | 8 |
+| `label` | `TEXT` | `String` | non | — | | | III §11.13 | 8 |
+| `first_detected_at` | `TEXT` | `UTCDateTime` | non | — | | | III §11.13 | 8 |
+| `last_evidence_at` | `TEXT` | `UTCDateTime` | non | — | | dernière mise à jour de `evidence` | III §11.13 · V-B §30.4 | 8 |
+| `evidence` | `TEXT` (JSON) | `JSON` | non | — | Pydantic | `mentions_7d · mentions_prev7d · growth · sources · authors · channels · stories · first_seen_at · article_ids` (≤ 20) | III §11.13 · V-B §30.4 | 8 |
+| `ref_mentions` · `ref_channel_count` | `INTEGER` | `Integer` | non | — | | référence de l'évolution significative | III §11.13 · V-B §30.5 | 8 |
+| `last_significant_at` | `TEXT` | `UTCDateTime` | non | — | | dernière évolution significative | III §11.13 · V-B §30.5 | 8 |
 | `resurfaced_at` | `TEXT` | `UTCDateTime` | oui | — | | réapparition d'un candidat ignoré | III §11.13 · V-B §30.7 | 8 |
 | `backfilled_at` | `TEXT` | `UTCDateTime` | **oui** | — | | fin du backfill d'un topic créé ; `NULL` avec `topic_id` renseigné = backfill à reprendre | III §11.13 · V-B §30.8 | 8 |
 | `topic_id` | `INTEGER` | `Integer` | **oui** | — | FK `topic(id)` `RESTRICT` | topic créé sur `create_topic` | III §11.13 · V-B §30.8 | 8 |
 | `llm_label` · `llm_description` | `TEXT` | `Text` | oui | — | | résultat de `discover_topics` | III §11.13 · V-A §27 | 8 |
 | `covered_by_topic_id` | `INTEGER` | `Integer` | **oui** | — | FK `topic(id)` `RESTRICT` | suggestion, jamais d'écartement automatique | III §11.13 · V-A §27 | 8 |
-| `suggested_keywords` | `TEXT` (JSON) | `JSON` | n. p. | — | Pydantic | mots-clés suggérés pour « Create topic » | III §11.13 · V-B §30.8 | 8 |
-| `assessed_at` | `TEXT` | `UTCDateTime` | n. p. | — | | dernier `discover_topics` | III §11.13 | 8 |
+| `suggested_keywords` | `TEXT` (JSON) | `JSON` | oui | — | Pydantic | mots-clés suggérés pour « Create topic » — `NULL` tant que `discover_topics` n'a pas évalué le candidat. | III §11.13 · V-B §30.8 | 8 |
+| `assessed_at` | `TEXT` | `UTCDateTime` | oui | — | | dernier `discover_topics` — `NULL` tant que `discover_topics` n'a pas évalué le candidat. | III §11.13 | 8 |
+| `created_at` | `TEXT` | `UTCDateTime` | non | — | | insertion de la ligne | III §11.0 | 8 |
+| `updated_at` | `TEXT` | `UTCDateTime` | non | — | | dernière modification de la ligne | III §11.0 | 8 |
 
 **Unicité** : `UNIQUE(key)` (III §11.13), Sprint 8.
 
 ```sql
 CREATE TABLE emerging_candidate (
   id                  INTEGER PRIMARY KEY,
-  key                 TEXT UNIQUE,
-  kind                TEXT CHECK (kind IN ('ngram','repository')),
-  label               TEXT,
-  first_detected_at   TEXT,
-  last_evidence_at    TEXT,
-  evidence            TEXT,      -- JSON
-  ref_mentions        INTEGER,
-  ref_channel_count   INTEGER,
-  last_significant_at TEXT,
+  key                 TEXT NOT NULL UNIQUE,
+  kind                TEXT NOT NULL CHECK (kind IN ('ngram','repository')),
+  label               TEXT NOT NULL,
+  first_detected_at   TEXT NOT NULL,
+  last_evidence_at    TEXT NOT NULL,
+  evidence            TEXT NOT NULL,  -- JSON
+  ref_mentions        INTEGER NOT NULL,
+  ref_channel_count   INTEGER NOT NULL,
+  last_significant_at TEXT NOT NULL,
   resurfaced_at       TEXT,
   backfilled_at       TEXT,
   topic_id            INTEGER REFERENCES topic(id) ON DELETE RESTRICT,
   llm_label           TEXT,
   llm_description     TEXT,
   covered_by_topic_id INTEGER REFERENCES topic(id) ON DELETE RESTRICT,
-  suggested_keywords  TEXT,      -- JSON
-  assessed_at         TEXT
+  suggested_keywords  TEXT,  -- JSON
+  assessed_at         TEXT,
+  created_at          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL
 );
 ```
 
@@ -758,16 +802,20 @@ après `create_topic`, définitif ; pas de suppression en V1 (III §11.12, V-B �
 | Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
 |---|---|---|---|---|---|---|---|---|
 | `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 8 |
-| `candidate_id` | `INTEGER` | `Integer` | n. p. | — | FK `emerging_candidate(id)` `RESTRICT` ; **UNIQUE** | | III §11.12 | 8 |
-| `decision` | `TEXT` | `String` | n. p. | — | `CHECK IN ('follow','ignore','mute','create_topic')` | | III §11.12 · V-B §30.7 | 8 |
-| `decided_at` | `TEXT` | `UTCDateTime` | n. p. | — | | comparé à `last_significant_at` (alerte) et `resurfaced_at` (réapparition) | III §11.12 · V-B §30.5, §30.7 | 8 |
+| `candidate_id` | `INTEGER` | `Integer` | non | — | FK `emerging_candidate(id)` `RESTRICT` ; **UNIQUE** | | III §11.12 | 8 |
+| `decision` | `TEXT` | `String` | non | — | `CHECK IN ('follow','ignore','mute','create_topic')` | | III §11.12 · V-B §30.7 | 8 |
+| `decided_at` | `TEXT` | `UTCDateTime` | non | — | | comparé à `last_significant_at` (alerte) et `resurfaced_at` (réapparition) | III §11.12 · V-B §30.5, §30.7 | 8 |
+| `created_at` | `TEXT` | `UTCDateTime` | non | — | | insertion de la ligne | III §11.0 | 8 |
+| `updated_at` | `TEXT` | `UTCDateTime` | non | — | | dernière modification de la ligne | III §11.0 | 8 |
 
 ```sql
 CREATE TABLE emerging_decision (
   id           INTEGER PRIMARY KEY,
-  candidate_id INTEGER UNIQUE REFERENCES emerging_candidate(id) ON DELETE RESTRICT,
-  decision     TEXT CHECK (decision IN ('follow','ignore','mute','create_topic')),
-  decided_at   TEXT
+  candidate_id INTEGER NOT NULL UNIQUE REFERENCES emerging_candidate(id) ON DELETE RESTRICT,
+  decision     TEXT NOT NULL CHECK (decision IN ('follow','ignore','mute','create_topic')),
+  decided_at   TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
 );
 ```
 
@@ -779,18 +827,22 @@ ligne ramène au neutre. Lu par l'app (affichage) et le worker (alertes) (VI §3
 | Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
 |---|---|---|---|---|---|---|---|---|
 | `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 9 |
-| `subject_type` | `TEXT` | `String` | n. p. | — | `CHECK IN ('topic','source')` | | III §11.12 · VI §34.1 | 9 |
-| `subject_id` | `INTEGER` | `Integer` | n. p. | — | sans FK (cible selon `subject_type`) | | III §11.12 | 9 |
-| `action` | `TEXT` | `String` | n. p. | — | `CHECK IN ('follow','mute')` | | III §11.12 · VI §34.1 | 9 |
+| `subject_type` | `TEXT` | `String` | non | — | `CHECK IN ('topic','source')` | | III §11.12 · VI §34.1 | 9 |
+| `subject_id` | `INTEGER` | `Integer` | non | — | sans FK (cible selon `subject_type`) | | III §11.12 | 9 |
+| `action` | `TEXT` | `String` | non | — | `CHECK IN ('follow','mute')` | | III §11.12 · VI §34.1 | 9 |
+| `created_at` | `TEXT` | `UTCDateTime` | non | — | | insertion de la ligne | III §11.0 | 9 |
+| `updated_at` | `TEXT` | `UTCDateTime` | non | — | | dernière modification de la ligne | III §11.0 | 9 |
 
 **Unicité** : `UNIQUE(subject_type, subject_id)` (III §11.12), Sprint 9.
 
 ```sql
 CREATE TABLE user_preference (
   id           INTEGER PRIMARY KEY,
-  subject_type TEXT CHECK (subject_type IN ('topic','source')),
-  subject_id   INTEGER,
-  action       TEXT CHECK (action IN ('follow','mute')),
+  subject_type TEXT NOT NULL CHECK (subject_type IN ('topic','source')),
+  subject_id   INTEGER NOT NULL,
+  action       TEXT NOT NULL CHECK (action IN ('follow','mute')),
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL,
   UNIQUE (subject_type, subject_id)
 );
 ```
@@ -805,8 +857,8 @@ T-CFG-08).
 | Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
 |---|---|---|---|---|---|---|---|---|
 | `key` | `TEXT` | `String` | non | — | **PK** | clé du registre | III §11.12 · VI §34.3 | 9 |
-| `value` | `TEXT` (JSON) | `JSON` | n. p. | — | Pydantic (schéma de la clé) | | III §11.12 | 9 |
-| `updated_at` | `TEXT` | `UTCDateTime` | n. p. | — | | | III §11.12 | 9 |
+| `value` | `TEXT` (JSON) | `JSON` | non | — | Pydantic (schéma de la clé) | | III §11.12 | 9 |
+| `updated_at` | `TEXT` | `UTCDateTime` | non | — | | | III §11.12 | 9 |
 
 **Registre en code** (VI §34.3 fait foi ; rappel des clés) :
 
@@ -832,8 +884,8 @@ vivent dans `pipeline.yaml`, pas ici. Aucun secret n'est stocké dans `Setting` 
 ```sql
 CREATE TABLE setting (
   key        TEXT PRIMARY KEY,
-  value      TEXT,       -- JSON validé par le registre
-  updated_at TEXT
+  value      TEXT NOT NULL,  -- JSON
+  updated_at TEXT NOT NULL
 );
 ```
 
@@ -845,18 +897,22 @@ lu » supprime la ligne ; un `ReadState` sur un Event `merged` est ignoré (VI �
 | Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
 |---|---|---|---|---|---|---|---|---|
 | `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 9 |
-| `subject_type` | `TEXT` | `String` | n. p. | — | `CHECK IN ('event','article')` | | III §11.12 | 9 |
-| `subject_id` | `INTEGER` | `Integer` | n. p. | — | sans FK (cible selon `subject_type`) | | III §11.12 | 9 |
-| `read_at` | `TEXT` | `UTCDateTime` | n. p. | — | | comparé à `activity_at` de la story | III §11.12 · VI §31.5 | 9 |
+| `subject_type` | `TEXT` | `String` | non | — | `CHECK IN ('event','article')` | | III §11.12 | 9 |
+| `subject_id` | `INTEGER` | `Integer` | non | — | sans FK (cible selon `subject_type`) | | III §11.12 | 9 |
+| `read_at` | `TEXT` | `UTCDateTime` | non | — | | comparé à `activity_at` de la story | III §11.12 · VI §31.5 | 9 |
+| `created_at` | `TEXT` | `UTCDateTime` | non | — | | insertion de la ligne | III §11.0 | 9 |
+| `updated_at` | `TEXT` | `UTCDateTime` | non | — | | dernière modification de la ligne | III §11.0 | 9 |
 
 **Unicité** : `UNIQUE(subject_type, subject_id)`, qui sert aussi d'index de lecture (III §11.12), Sprint 9.
 
 ```sql
 CREATE TABLE read_state (
   id           INTEGER PRIMARY KEY,
-  subject_type TEXT CHECK (subject_type IN ('event','article')),
-  subject_id   INTEGER,
-  read_at      TEXT,
+  subject_type TEXT NOT NULL CHECK (subject_type IN ('event','article')),
+  subject_id   INTEGER NOT NULL,
+  read_at      TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL,
   UNIQUE (subject_type, subject_id)
 );
 ```
@@ -869,13 +925,15 @@ transaction, T2 `sent` ou `failed`), garantie « au plus une fois », sans repri
 | Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
 |---|---|---|---|---|---|---|---|---|
 | `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 10 |
-| `alert_type` | `TEXT` | `String` | n. p. | — | `CHECK IN ('important_event','emerging_topic','daily_digest','weekly_digest','system')` | `system` : alertes d'exploitation (Sprint 11) | III §11.13 · VII §39.6 | 10 |
-| `subject_type` | `TEXT` | `String` | n. p. | — | | `'system'` pour une alerte `system` | III §11.13 | 10 |
-| `subject_id` | `INTEGER` | `Integer` | oui (type `system`) | — | | `NULL` pour une alerte `system` ; condition portée par `dedup_key` | III §11.13 · VII §39.6 | 10 |
-| `channel` | `TEXT` | `String` | n. p. | — | `CHECK IN ('email','telegram')` | | III §11.13 | 10 |
-| `status` | `TEXT` | `String` | n. p. | — | `CHECK IN ('sending','sent','failed','suppressed')` | `suppressed` : plafond quotidien atteint, jamais émise ; `sending` → `failed` au démarrage (`error = 'interrupted'`) | III §11.13 · VI §33.5, §33.6 | 10 |
-| `error` | `TEXT` | `Text` | n. p. | — | | après nettoyage des secrets par valeur | III §11.13 · VII §42.4 | 10 |
-| `dedup_key` | `TEXT` | `String` | n. p. | — | **UNIQUE** | inclut le canal (formats en VI §33.4) | III §11.13 · VI §33.4 | 10 |
+| `alert_type` | `TEXT` | `String` | non | — | `CHECK IN ('important_event','emerging_topic','daily_digest','weekly_digest','system')` | `system` : alertes d'exploitation (Sprint 11) | III §11.13 · VII §39.6 | 10 |
+| `subject_type` | `TEXT` | `String` | non | — | `CHECK IN ('event','emerging_candidate','digest','system')` | `event` (`important_event`), `emerging_candidate` (`emerging_topic`), `digest` (digests), `system` | III §11.13 · VI §33.3 | 10 |
+| `subject_id` | `INTEGER` | `Integer` | oui | — | | `NULL` pour `digest` et `system` : la période ou la condition est portée par `dedup_key` | III §11.13 · VI §33.4 · VII §39.6 | 10 |
+| `channel` | `TEXT` | `String` | non | — | `CHECK IN ('email','telegram')` | | III §11.13 | 10 |
+| `status` | `TEXT` | `String` | non | — | `CHECK IN ('sending','sent','failed','suppressed')` | `suppressed` : plafond quotidien atteint, jamais émise ; `sending` → `failed` au démarrage (`error = 'interrupted'`) | III §11.13 · VI §33.5, §33.6 | 10 |
+| `error` | `TEXT` | `Text` | oui | — | | après nettoyage des secrets par valeur — `NULL` si l'envoi n'a pas échoué. | III §11.13 · VII §42.4 | 10 |
+| `dedup_key` | `TEXT` | `String` | non | — | **UNIQUE** | inclut le canal (formats en VI §33.4) | III §11.13 · VI §33.4 | 10 |
+| `created_at` | `TEXT` | `UTCDateTime` | non | — | | insertion de la ligne | III §11.0 | 10 |
+| `updated_at` | `TEXT` | `UTCDateTime` | non | — | | dernière modification de la ligne | III §11.0 | 10 |
 
 **Contraintes et index** (Sprint 10) : `UNIQUE(dedup_key)` (T-DB-10) · index `(alert_type, subject_type, subject_id)`
 (III §11.13).
@@ -891,14 +949,15 @@ transaction, T2 `sent` ou `failed`), garantie « au plus une fois », sans repri
 ```sql
 CREATE TABLE alert_log (
   id           INTEGER PRIMARY KEY,
-  alert_type   TEXT CHECK (alert_type IN ('important_event','emerging_topic',
-                                          'daily_digest','weekly_digest','system')),
-  subject_type TEXT,
+  alert_type   TEXT NOT NULL CHECK (alert_type IN ('important_event','emerging_topic','daily_digest','weekly_digest','system')),
+  subject_type TEXT NOT NULL CHECK (subject_type IN ('event','emerging_candidate','digest','system')),
   subject_id   INTEGER,
-  channel      TEXT CHECK (channel IN ('email','telegram')),
-  status       TEXT CHECK (status IN ('sending','sent','failed','suppressed')),
+  channel      TEXT NOT NULL CHECK (channel IN ('email','telegram')),
+  status       TEXT NOT NULL CHECK (status IN ('sending','sent','failed','suppressed')),
   error        TEXT,
-  dedup_key    TEXT UNIQUE
+  dedup_key    TEXT NOT NULL UNIQUE,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
 );
 CREATE INDEX ix_alert_log_subject ON alert_log(alert_type, subject_type, subject_id);
 ```
@@ -911,19 +970,19 @@ VII §39.3). L'app les lit pour `/health`, `/api/health`, `/api/status` et le lu
 | Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
 |---|---|---|---|---|---|---|---|---|
 | `key` | `TEXT` | `String` | non | — | **PK** | | III §11.13 | 1 |
-| `value` | `TEXT` (JSON) | `JSON` | n. p. | — | Pydantic (schéma par clé) | | III §11.13 | 1 |
-| `updated_at` | `TEXT` | `UTCDateTime` | n. p. | — | | | III §11.13 | 1 |
+| `value` | `TEXT` (JSON) | `JSON` | non | — | Pydantic (schéma par clé) | | III §11.13 | 1 |
+| `updated_at` | `TEXT` | `UTCDateTime` | non | — | | | III §11.13 | 1 |
 
 **Clés et schéma de leur valeur** — une clé n'est pas une migration : elle apparaît au sprint qui l'écrit.
 
 | Clé | Valeur | Écrite | Réf. | Sprint |
 |---|---|---|---|---|
 | `worker_heartbeat` | `{at, started_at, version, pid}` | toutes les 30 s, avant le chargement des modèles | III §11.13 · VII §39.3, décision 14 | 1 |
-| `trends_since` | horodatage de la première insertion d'un article `ready` | une seule fois, par le runner | III §11.13 · IV §14.3 · V-B §29.3 | 2 |
-| `embeddings` | état du moteur : `up` / `down`, depuis (voir I-14) | à chaque changement d'état | III §11.13 · V-A §24.4 · VII §39.2 | 4 |
+| `trends_since` | `{at}` : première insertion d'un article `ready` | une seule fois, par le runner | III §11.13 · IV §14.3 · V-B §29.3 | 2 |
+| `embeddings` | `{state, since}` : état du moteur (`up` / `down`) et depuis quand | à chaque changement d'état | III §11.13 · V-A §24.4 · VII §39.2 | 4 |
 | `llm_gateway` | `{state, since, reason, open_until}` | à chaque transition du disjoncteur | III §11.13 · V-A §24.2 | 6 |
 | `llm_usage` | `{day, requests}` (jour UTC) | à chaque appel ayant reçu une réponse | III §11.13 · V-A §24.3 | 6 |
-| `trends_last_run` | dernier calcul du Trend Engine (schéma non fixé, I-14) | à chaque passe horaire | III §11.13 · V-B §29.1 · VII §39.2 | 8 |
+| `trends_last_run` | `{at, duration_s, status, error}` : dernier calcul du Trend Engine | à chaque passe horaire | III §11.13 · V-B §29.1 · VII §39.2 | 8 |
 | `alerting` | `{email: enabled\|disabled, telegram: enabled\|disabled, interrupted_at_boot: n}` | au démarrage | III §11.13 · VII §39.3 | 10 |
 | `ops_metrics` | instantané des métriques de VII §39.2, avec `computed_at` | toutes les 60 s | III §11.13 · VII §39.3 | 11 |
 | `ops_conditions` | conditions actives : `{name: {since, alerted_at}}` (épisodes persistés) | à chaque transition | III §11.13 · VII §39.3, §39.6 | 11 |
@@ -938,23 +997,23 @@ et backup (Sprint 11) (VIII §47.2).
 ```sql
 CREATE TABLE system_state (
   key        TEXT PRIMARY KEY,
-  value      TEXT,       -- JSON, schéma propre à chaque clé
-  updated_at TEXT
+  value      TEXT NOT NULL,  -- JSON
+  updated_at TEXT NOT NULL
 );
 ```
 
 ### 3.20 `article_fts` — index plein texte *(écrit par le worker, via triggers)*
 
 Table virtuelle **FTS5** sur `title` et `summary`, en mode *external content* adossé à `article`, tokenizer
-`unicode61 remove_diacritics 2`. Maintenue par **trois triggers** sur insertion, mise à jour et suppression
-d'`article` : la mise à jour d'un résumé par le LLM met l'index à jour automatiquement (III §11.14, T-DB-11). La
+`unicode61 remove_diacritics 2`. Maintenue par **trois triggers** sur insertion, mise à jour de `title` ou `summary` et
+suppression d'`article` : la mise à jour d'un résumé par le LLM met l'index à jour automatiquement (III §11.14, T-DB-11). La
 recherche accepte toute saisie, syntaxe FTS5 comprise (VI §31.4.1, VIII §47.2 Sprint 3).
 
 | Élément | Définition | Réf. | Sprint |
 |---|---|---|---|
 | table virtuelle | `article_fts` (`title`, `summary`), `content='article'`, `content_rowid='id'` | III §11.14 | 3 |
 | trigger d'insertion | `AFTER INSERT ON article` | III §11.14 | 3 |
-| trigger de mise à jour | `AFTER UPDATE ON article` | III §11.14 | 3 |
+| trigger de mise à jour | `AFTER UPDATE OF title, summary ON article` : seules les colonnes indexées déclenchent la mise à jour (I-18) | III §11.14 | 3 |
 | trigger de suppression | `AFTER DELETE ON article` (dont la suppression des `filtered` à 30 j) | III §11.14 · §13 | 3 |
 
 - **Sprint 3** : la migration crée la table et les triggers alors que des articles existent déjà (Sprint 2) ; elle
@@ -978,7 +1037,7 @@ CREATE TRIGGER article_fts_ad AFTER DELETE ON article BEGIN
   VALUES ('delete', old.id, old.title, old.summary);
 END;
 
-CREATE TRIGGER article_fts_au AFTER UPDATE ON article BEGIN
+CREATE TRIGGER article_fts_au AFTER UPDATE OF title, summary ON article BEGIN
   INSERT INTO article_fts(article_fts, rowid, title, summary)
   VALUES ('delete', old.id, old.title, old.summary);
   INSERT INTO article_fts(rowid, title, summary) VALUES (new.id, new.title, new.summary);
@@ -1071,7 +1130,8 @@ En résumé, pour le schéma :
   délai ; `Signal` horaires réduits à une valeur par jour.
 - **Conservé indéfiniment** : articles `ready` et `duplicate` (sans contenu), `Event`, `Topic`, `Entity`, liaisons,
   `Embedding`, préférences, réglages, candidats et décisions, `SystemState`.
-- Les dates de référence des suppressions ne sont pas toutes écrites : §7, I-17.
+- **Départ des délais** (III §13, I-17) : `aijob.completed_at` · `collector_run.finished_at` · `article.discovered_at`
+  (articles `filtered`) · `alert_log.created_at`.
 
 
 ---
