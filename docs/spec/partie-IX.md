@@ -226,8 +226,11 @@ Le §53 dit **quoi** ; l'ADR dit **pourquoi**, contre quoi, et à quel prix. Un 
 | ADR | Titre | Sprint | Appui |
 |---|---|---|---|
 | 0020 | Gateway LLM retenu | 6 | `docs/llm-gateway.md`, première mesure M6 |
+| 0021 | Accès cloisonné de Claude Code à Docker en développement | 0 (T0.9) | E22 du rapport de cadrage ; poste de développement (Q-01) ; avant le premier Compose du Sprint 1 |
 
 Si aucun gateway n'est retenu à ce stade, l'ADR 0020 le consigne (produit sans LLM, VIII décision 21).
+
+L'ADR 0021 figure ici, et non parmi les conditionnels : il n'attend aucun déclencheur, il est rédigé au Sprint 0 parce que le Sprint 1 en a besoin. Il ne figure pas non plus dans la liste « Produits au Sprint 0 », réservée aux ADR des décisions verrouillées (§53.2) : il ne couvre aucune `DV-nn`, c'est une décision structurante (§53.1).
 
 **Conditionnels** — rédigés au prochain numéro libre, seulement si le déclencheur survient :
 
