@@ -779,7 +779,7 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | T-SEC-05 | `/docs`, `/redoc` et `/openapi.json` absents avec `APP_ENV=production` (défaut) ; présents en `development` | I | VI → VIII · VII §37.4 |
 | T-SEC-06 | Caddy : `Authorization` absent des logs ; `/health` non journalisé ; en-têtes de sécurité présents (CSP complète, `X-Frame-Options`, `Referrer-Policy`, `nosniff`, HSTS, pas de `Server`) ; corps > 1 Mo refusé ; `index.html` en `no-cache`, assets `immutable` | E | VII → VIII |
 | T-SEC-07 | Réseau : `app` sans sortie Internet ; `worker` ne joint pas `app:8000` ; `migrate` sans réseau | E | VII → VIII |
-| T-SEC-08 | Politique Compose : seul `caddy` publie des ports ; aucun montage du socket Docker ; `app` sans secret et variables distribuées par service (VII §36.7) ; utilisateur non-root, `cap_drop: ALL`, `no-new-privileges`, `read_only` sur `app` et `worker` | U | VII §36, §43.2 |
+| T-SEC-08 | Politique Compose : seul `caddy` publie des ports ; aucun montage du socket Docker ; `app` sans secret et variables distribuées par service (VII §36.7) ; utilisateur non-root, `cap_drop: ALL`, `no-new-privileges`, `read_only` sur `app`, `worker` et `caddy` ; aucun `cap_add`, `caddy` compris (non-root, uid 10001) | U | VII §36, §43.2 |
 | T-SEC-09 | Racine en lecture seule fonctionnelle : onnxruntime, lingua, restic (cache dans `/tmp`), préparation dans `/data/backup/` | E | VII §36.5 · décision 4 |
 | T-SEC-10 | Modèle d'embeddings intégré : le worker démarre et embedde sans aucun accès à un hub de modèles | E | VII décision 9 |
 | T-SEC-11 | Aucun secret renvoyé par l'API ni stocké dans `Setting` | I | VI §32.3 |
