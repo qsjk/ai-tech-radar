@@ -83,7 +83,7 @@ L'arbre contractuel est celui de **VIII §46.1** pour le code et de **IX §55.1*
 | `migrations/` | Alembic, `render_as_batch`, `env.py` de `database.md` §5 | III §10.5 |
 | `config/` | `sources.yaml`, `topics.yaml`, `entities.yaml`, `pipeline.yaml` (§3.2) ; au Sprint 1, un jeu de démonstration minimal (Q-04) | IV §16 |
 | `docker/` | `backend.Dockerfile`, `caddy.Dockerfile`, `Caddyfile` (§4) | VII §36.5, §37.3 |
-| `scripts/` | `deploy.sh`, `restore.sh`, `check-test-catalog.py` (§5.3), `record-llm-fixtures.py`, `synthetic-dataset.py`, `load.py` ; **`scripts/radar-dev`, ajouté par T0.9 (#60)**, non conçu ici | VIII §46.1 |
+| `scripts/` | `deploy.sh`, `restore.sh`, `check-test-catalog.py` (§5.3), `record-llm-fixtures.py`, `synthetic-dataset.py`, `load.py` ; **`scripts/radar-dev`** : point d'entrée unique de Docker en développement, sous-commandes fixes (VIII §46.1, E22, ADR-0021), livré au Sprint 1 (#62) | VIII §46.1 |
 | `tests/` | `unit/<domaine>/`, `integration/<domaine>/`, `e2e/`, `fixtures/`, `fakes/` | VIII §50.2 |
 | `docs/` | spec, ADR, sprints, `architecture.md`, `database.md`, puis les documents de IX §55.4 au fil des sprints | IX §55.1 |
 
@@ -621,6 +621,10 @@ Décision (2026-09-23) : option A retenue : uid et gid 10001 fixes ; `/data` cr�
 
 Décision (2026-09-23) : reste ouvert ; il est tranché par l'ADR-0021 (T0.9, #60). L'écart A-04 lui est rattaché.
 
+Renvoi : [ADR-0021](adr/0021-acces-cloisonne-a-docker-en-developpement.md), statut `Proposé` — option A, Docker rootless
+sur le poste de développement, avec la parade (a) pour les ports 80 et 443 (`net.ipv4.ip_unprivileged_port_start=80`
+sur le poste). **Décision en attente de l'acceptation de l'ADR-0021** ; la mise en place du poste est l'issue #61.
+
 #### P-04 — Fichier `config/` obligatoire absent
 
 - **Constat** : IV §16.5 dit que `pipeline.yaml` est optionnel et que toute **erreur** fait refuser le démarrage du
@@ -755,8 +759,8 @@ Relevés en rédigeant ce document, puis traités par les décisions du 2026-09-
 | A-01 | `caddy` sans `no-new-privileges` ni utilisateur non-root dans l'esquisse Compose, alors que les conteneurs doivent être non-root avec `no-new-privileges` | VII §36.5 · VII §43.2 · T-SEC-08 | **traité** par P-10 : §4.1, §4.3 ; VII §36.5, §43.2, décision 5 |
 | A-02 | `alembic` lit `sqlalchemy.url` alors que Compose fournit `RADAR_DB_PATH` et que `.env.example` n'a aucune variable pour la base | `database.md` §5 · VII §36.5, §36.7 | **traité** par P-01 : `database.md` §2.3, §5, §7 (I-16) ; III §10.5 |
 | A-03 | Absence d'un fichier `config/` obligatoire non traitée ; comportement de l'app sur un `pipeline.yaml` invalide non écrit | IV §16.1, §16.5 · CF-22 | **traité** par P-04 et P-05 : IV §16.5 ; §3.6 |
-| A-04 | `DASHBOARD_URL` : la validation (« schéma `https` ou `http://localhost`, sans chemin ni slash final ») ne dit pas si un port est admis, cas du développement rootless | VII §36.7 · T-CFG-07 | **reporté** à T0.9 (#60), avec P-03 (ADR-0021) |
+| A-04 | `DASHBOARD_URL` : la validation (« schéma `https` ou `http://localhost`, sans chemin ni slash final ») ne dit pas si un port est admis, cas du développement rootless | VII §36.7 · T-CFG-07 | **traité** par l'ADR-0021 (`Proposé`) : aucun port admis, parade (a) recommandée ; VII §36.7 porte la règle, marquée comme dépendant de l'ADR-0021 ; **en attente de son acceptation** |
 | A-05 | `ACME_EMAIL` fait partie de « toutes les autres » variables reçues par le worker, qui n'en a pas l'usage | VII §36.7 (distribution par service) | **traité** : VII §36.7 (`ACME_EMAIL` réservé à `caddy`) ; §4.1 |
 | A-06 | `gateway` sans durcissement dans l'esquisse (`cap_drop`, `no-new-privileges`, `read_only`), alors que VII §43.2 vise les conteneurs sans distinction | VII §36.5 · VII §43.2 | **reporté** au Sprint 6, avec le choix du gateway |
-| A-07 | `scripts/radar-dev` (T0.9) absent de l'arborescence contractuelle | VIII §46.1 | **reporté** à T0.9 (#60) |
+| A-07 | `scripts/radar-dev` (T0.9) absent de l'arborescence contractuelle | VIII §46.1 | **traité** : `scripts/radar-dev` ajouté à VIII §46.1 (T0.9, #60) |
 | A-08 | Le durcissement de `caddy` décidé par P-10 (non-root, `read_only`, aucune capacité) n'est couvert par aucun identifiant de test : T-SEC-08 ne cite `read_only` que pour `app` et `worker`, et la vérification du Sprint 1 n'a pas d'identifiant | VIII §50.5 (T-SEC-08) · P-10 | **ouvert** : à trancher (extension de T-SEC-08 ou nouvel identifiant), au plus tard en T0.8 |
