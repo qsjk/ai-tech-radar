@@ -116,12 +116,13 @@ RETURNING *;
 - **Échec du job** (§26.1) : la tentative est consommée. Backoff `30 s · 2 min · 10 min` ; `max_attempts = 3` ; au-delà → `dead_letter` (acquis).
 - **Échec d'infrastructure** : la tentative est **rendue** (`attempts = attempts − 1`), le job repasse en `retry` avec `next_attempt_at` = réouverture prévue du disjoncteur.
 - **Échec non rejouable** (requête refusée par le gateway, §26.1) → `failed`.
+- `completed_at` est renseigné à toute transition vers `completed`, `failed`, `cancelled` ou `skipped`, et reste `NULL` pour `dead_letter` (Partie III §11.10).
 
 ### 23.6 Actions de l'app sur les jobs
 
 - **Création** : uniquement les types marqués `creatable_by_app` (§23.2), avec `created_by='app'`.
 - **Relance d'un `dead_letter`** : `UPDATE` de `dead_letter` vers `pending`, avec `attempts = 0` et `next_attempt_at = now`.
-- **Abandon d'un `dead_letter`** : `UPDATE` de `dead_letter` vers `cancelled`.
+- **Abandon d'un `dead_letter`** : `UPDATE` de `dead_letter` vers `cancelled`, qui renseigne `completed_at` (règle de la Partie III §11.10).
 - Ces deux transitions sont la **seule exception** à la règle « statuts écrits par le worker » (Partie II §8.3). Elles sont exécutées dans une transaction conditionnelle (`WHERE status='dead_letter'`), donc sans course avec le worker, qui ne touche jamais un `dead_letter`.
 
 ## 24. Worker & scheduler
