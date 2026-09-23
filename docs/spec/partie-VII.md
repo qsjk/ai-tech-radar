@@ -65,6 +65,7 @@ Consolidation des choix déjà faits, plus ce que cette partie ajoute (**en gras
 | Couche | Choix |
 |---|---|
 | Langage | Python 3.12+ |
+| Image de base | image officielle `python:3.12-slim` (Debian), **tag complet et digest épinglés** ; valeur de référence vérifiée au Sprint 0 : `python:3.12.14-slim-trixie@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9` (`docs/sprints/sprint-00-cadrage.md` §3) |
 | API | FastAPI · uvicorn (**un seul processus**) · Pydantic v2 |
 | Base | SQLite ≥ 3.35 (FTS5, JSON1) · SQLAlchemy 2.x async · aiosqlite · Alembic (`render_as_batch`) |
 | Worker | asyncio · APScheduler **3.x** (`AsyncIOScheduler`) |
@@ -238,7 +239,7 @@ volumes:
 ```dotenv
 # ── Obligatoire ─────────────────────────────────────────────────────────────
 # Contact inclus dans le User-Agent. Absent → le worker refuse de démarrer.
-HTTP_CONTACT=mailto:moi@example.com
+HTTP_CONTACT=https://github.com/qsjk/ai-tech-radar
 # URL publique du dashboard, sans slash final : adresse du site Caddy,
 # origine attendue par l'anti-CSRF, liens des alertes.
 DASHBOARD_URL=https://radar.example.com
@@ -405,6 +406,7 @@ Caddy est **le seul point d'entrée** : TLS, service du build statique, reverse 
 
 - **Portée du basic_auth** : `/` (SPA et ses assets) et `/api/*`, y compris `/api/health`. **Seul `/health` est exempté.**
 - **CSP `default-src 'self'`** : le frontend n'injecte ni script ni balise `<style>` en ligne. Une bibliothèque qui en injecterait (CSS-in-JS à l'exécution) est interdite, sauf ADR élargissant `style-src`. Les attributs `style` posés par React passent par le CSSOM et ne sont pas bloqués.
+- **Stylage du frontend : CSS Modules** (fournis par Vite, compilés au build), compatibles avec cette CSP.
 - **Pas de CORS** : même origine (VI §32.2).
 - **Cache** : `index.html` jamais mis en cache, assets hachés immuables — un déploiement n'affiche jamais une SPA périmée.
 
@@ -806,7 +808,7 @@ Trois niveaux, cumulatifs :
 - Pas de CORS ; `/docs`, `/redoc`, `/openapi.json` désactivés ; en-têtes de sécurité du §37.3 ; corps de requête limité à 1 Mo.
 - **Sorties LLM** rendues en texte brut, `dangerouslySetInnerHTML` interdit (VI).
 - Aucun secret renvoyé par l'API ni stocké dans `Setting` (VI §32.3).
-- **Anti-SSRF** (Partie IV §21.1) : les URLs à récupérer proviennent de flux tiers. Le `HttpClient` refuse toute destination dont l'adresse résolue est privée, de bouclage, lien-local (dont `169.254.169.254`, métadonnées cloud), unique-local IPv6 ou non routable, **vérifiée après résolution DNS et à chaque redirection**. Défaut : appliqué à toutes les requêtes ; exceptions explicites seulement pour `LLM_BASE_URL` et le dépôt restic, qui peuvent être internes.
+- **Anti-SSRF** (Partie IV §21.1) : les URLs à récupérer proviennent de flux tiers. Le `HttpClient` refuse toute destination dont l'adresse résolue est privée, de bouclage, lien-local (dont `169.254.169.254`, métadonnées cloud), unique-local IPv6 ou non routable, **vérifiée après résolution DNS et à chaque redirection**. Appliqué à toutes les requêtes du `HttpClient`, **sans exception**. Le `LLMClient` a son propre client HTTP, qui n'appelle que `LLM_BASE_URL` (éventuellement interne) et ne suit aucune redirection vers un autre hôte (Partie V-A §25.2) ; restic, binaire externe, ne passe pas par le `HttpClient` (§38.2).
 
 ### 43.4 Secrets
 
@@ -890,7 +892,7 @@ Chaque mesure est consignée dans `docs/measurements.md` (date, VPS, profil, ré
 | M3 | Taille du fichier **`-wal`** en collecte soutenue, **pendant un `VACUUM INTO`** et pendant le job analytique | échantillonnage `ops.tick` | reste sous `ops.wal_max_bytes` | recale le seuil `wal_large` |
 | M4 | Durée de la **plus longue transaction** du worker | métrique dédiée | ≤ 500 ms | valide le découpage en lots (II §8.6) |
 | M5 | Durée du **job analytique** au volume nominal | chronométrage, profil cible | ≤ 5 min | valide le calcul horaire (V-B §29.4) |
-| M6 | **Gateway LLM** : checklist V0.3 §25 (RAM/CPU si auto-hébergé, requêtes multiples, quota épuisé, timeout, provider indisponible) **+ comportement 429 / `Retry-After` + disponibilité de `GET /models`** | contre le gateway retenu | 429 conforme aux attentes du disjoncteur (V-A §24.2) ; `health()` fiable | valide le gateway ; sinon `health()` adapté, tracé en ADR |
+| M6 | **Gateway LLM** — check-list de référence : RAM/CPU si auto-hébergé, requêtes multiples, quota épuisé, timeout, provider indisponible, **comportement 429 / `Retry-After`**, **disponibilité de `GET /models`**. Gateways candidats : OmniRoute, Free Model Router, FreeLLMAPI ; si trop lourd, déployable séparément | contre le gateway retenu | 429 conforme aux attentes du disjoncteur (V-A §24.2) ; `health()` fiable | valide le gateway ; sinon `health()` adapté, tracé en ADR |
 | M7 | **Backup et restauration** : durée, taille, exercice complet sur machine neuve | §38.4 | backup ≤ 10 min ; restauration ≤ 30 min | valide le RTO |
 | M8 | **Taille des images** et empreinte disque totale | `docker system df` | image courante + précédente + base + marge backup < 50 % du disque | valide le budget disque |
 | M9 | **Latence de l'API** (Overview, Feed, recherche, `/health`) | charge légère sur profil cible | p95 ≤ 300 ms ; `/health` ≤ 50 ms | valide la pagination et les index |
