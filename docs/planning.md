@@ -140,7 +140,7 @@ Les entrées et sorties **communes** (§0) s'appliquent à chaque sprint ; les f
 | **Sortie** | check-list IX §57.7 entièrement cochée : PR T0.1 fusionnée · documents présents · ADR 0001–0019 `Accepté` · plus aucune question ouverte · vérifications concluantes ou couvertes par ADR · diff limité à `docs/`, `SPEC.md`, `CLAUDE.md` · validation 👤 |
 | **Dépendances** | T0.1 fusionnée **avant** T0.2–T0.8 (IX décision 11) |
 | **Effort** | 5–7 : relecture T0.1 (2) · arbitrages (1–2) · ADR (1–2) · plan S1 (1) |
-| **Risques** | diff T0.1 illisible (→ un commit par partie cible) · Partie VII non réconciliée avec VIII et IX (→ arbitrage E11 du rapport de cadrage) · vérification bloquante en échec (→ **stop**, replanification, voir G1) |
+| **Risques** | diff T0.1 illisible (→ un commit par partie cible) · ~~Partie VII non réconciliée avec VIII et IX~~ : levé par T0.2b (#67), Partie VII réconciliée (E11) · vérification bloquante en échec (→ **stop**, replanification, voir G1) |
 | **👤** | relire et fusionner la PR T0.1 · trancher le rapport de cadrage · accepter les ADR · valider `sprint-01.md` · revue d'acceptation |
 
 ### S1 — Foundation
