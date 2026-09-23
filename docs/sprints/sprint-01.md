@@ -234,17 +234,17 @@ T-OPS-01         T1.7
 T-OPS-02         T1.7
 T-OPS-03         T1.7
 T-OPS-07         T1.6
-T-OPS-08 [heartbeat]                     T1.6   (autres volets : voir « Écarts relevés »)
+T-OPS-08 [heartbeat]                     T1.6   (autres volets : voir « Volets reportés »)
 T-OPS-09         T1.6
-T-OPS-10 [verifications, heartbeat]      T1.6   (autres volets : voir « Écarts relevés »)
-T-OPS-11 [arret]                         T1.6   (volet jobs : voir « Écarts relevés »)
-T-SEC-01 [logs]                          T1.2   (volet clients : voir « Écarts relevés »)
+T-OPS-10 [verifications, heartbeat]      T1.6   (autres volets : voir « Volets reportés »)
+T-OPS-11 [arret]                         T1.6   (volet jobs : voir « Volets reportés »)
+T-SEC-01 [logs]                          T1.2   (volet clients : voir « Volets reportés »)
 T-SEC-02         T1.2
 T-SEC-03         T1.10
 T-SEC-05         T1.7
 T-SEC-06         T1.10
 T-SEC-08         T1.8
-T-SEC-09 [base]                          T1.10  (sans restic, VIII §47.2 ; lingua et onnxruntime : voir « Écarts relevés »)
+T-SEC-09 [base]                          T1.10  (sans restic, VIII §47.2 ; lingua et onnxruntime : voir « Volets reportés »)
 T-RES-10         T1.10
 ```
 
@@ -281,24 +281,24 @@ Milestone **S1**, label `type:tâche`, une issue par tâche. Aucune n'est créé
 
 Issue 👤 déjà ouverte : **#61** (poste en Docker rootless), prérequis de T1.8 et T1.9.
 
-## Écarts relevés
+## Volets reportés
 
-Identifiants que VIII §47.2 place au Sprint 1 alors qu'une partie de leur objet arrive plus tard. Ce plan ne vise au
-Sprint 1 que le volet qui existe ; le reste n'a pas de sprint explicite dans VIII §47.2, hors joker du Sprint 11
-(« T-OPS-* · T-SEC-* »). À trancher par le propriétaire (placement des volets restants), comme pour E3 :
+Règle : **VIII §50.3** — un identifiant dont l'objet n'existe qu'en partie au sprint indiqué par §47.2 est couvert par
+volets ; le Sprint 1 couvre le volet existant, chaque volet restant est déclaré dans le plan du sprint qui livre son
+objet, et tous les identifiants sont complets au Sprint 11 (§52 A2).
 
-- **T-OPS-08** : la boucle AI (Sprint 5), la file d'embeddings (Sprint 4), le scheduler (Sprint 2) et la condition
-  `job_failing` (Sprint 11) n'existent pas au Sprint 1.
-- **T-OPS-10** : requalification des `processing` (`AIJob`, Sprint 2 et 5) et des `sending` (`AlertLog`, Sprint 10),
-  modèles et matrice (Sprint 4), scheduler (Sprint 2).
-- **T-OPS-11** : aucun job ni run à attendre avant les Sprints 2 et 5.
-- **T-SEC-01** : les clients GitHub, LLM, Telegram, SMTP et restic arrivent aux Sprints 2, 6, 10 et 11.
-- **T-SEC-09** : « sans restic » au Sprint 1, mais lingua (Sprint 2) et onnxruntime (Sprint 4) ne sont pas encore dans
-  l'image ; `architecture.md` §4.5 prévoit une vérification à leur arrivée, que VIII §47.2 ne liste pas aux Sprints 2
-  et 4.
-- **T-OPS-09** : sans modèle avant le Sprint 4, « le heartbeat démarre avant le chargement des modèles » se vérifie
-  au Sprint 1 sur la seule séquence existante.
-- **Planning, fiche S1** : sa ligne « Tests » ne cite ni T-DB-13, ni T-CFG-10, ni T-CFG-11.
+Volets restants, avec le sprint pressenti, **à titre indicatif** (chaque plan de sprint les déclare) :
+
+| Identifiant | Volet restant | Objet | Sprint pressenti |
+|---|---|---|---|
+| T-CFG-02 | collectors | type inconnu, `poll_interval`, `config` refusée par le collector | 2 (déjà listé par VIII §47.2) |
+| T-DB-13 | rebuild | reconstruction d'`article`, triggers d'`article_fts` | 3 (déjà listé par VIII §47.2) |
+| T-OPS-08 | scheduler · embeddings · boucle-ai · job-failing | scheduler · file d'embeddings · boucle AI · condition `job_failing` | 2 · 4 · 5 · 11 |
+| T-OPS-09 | modeles | heartbeat avant le chargement des modèles | 4 |
+| T-OPS-10 | scheduler · modeles-matrice · requalification-jobs · requalification-alertes | scheduler · modèles et matrice · `processing` d'`AIJob` · `sending` d'`AlertLog` | 2 · 4 · 5 · 10 |
+| T-OPS-11 | runs · jobs | runs de collecte · jobs en cours | 2 · 5 |
+| T-SEC-01 | github · llm · alertes · restic | clients GitHub · LLM · Telegram et SMTP · restic | 2 · 6 · 10 · 11 |
+| T-SEC-09 | lingua · onnxruntime · restic | bibliothèques sur racine en lecture seule | 2 · 4 · 11 |
 
 ## Bilan
 
