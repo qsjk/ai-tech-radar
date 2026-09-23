@@ -747,6 +747,200 @@ CREATE TABLE emerging_candidate (
 );
 ```
 
+### 3.14 `EmergingDecision` — *écrit par l'app*
+
+Décision de l'utilisateur sur un candidat. Table distincte de `EmergingCandidate` pour respecter la règle d'un seul
+écrivain par table (III §11.13). **Upsert** sur `candidate_id` (mise à jour de `decision` et `decided_at`), sauf
+après `create_topic`, définitif ; pas de suppression en V1 (III §11.12, V-B §30.7).
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 8 |
+| `candidate_id` | `INTEGER` | `Integer` | n. p. | — | FK `emerging_candidate(id)` `RESTRICT` ; **UNIQUE** | | III §11.12 | 8 |
+| `decision` | `TEXT` | `String` | n. p. | — | `CHECK IN ('follow','ignore','mute','create_topic')` | | III §11.12 · V-B §30.7 | 8 |
+| `decided_at` | `TEXT` | `UTCDateTime` | n. p. | — | | comparé à `last_significant_at` (alerte) et `resurfaced_at` (réapparition) | III §11.12 · V-B §30.5, §30.7 | 8 |
+
+```sql
+CREATE TABLE emerging_decision (
+  id           INTEGER PRIMARY KEY,
+  candidate_id INTEGER UNIQUE REFERENCES emerging_candidate(id) ON DELETE RESTRICT,
+  decision     TEXT CHECK (decision IN ('follow','ignore','mute','create_topic')),
+  decided_at   TEXT
+);
+```
+
+### 3.15 `UserPreference` — *écrit par l'app*
+
+Suivi et sourdine d'un topic ou d'une source, **exclusifs** : poser l'un remplace l'autre (upsert), supprimer la
+ligne ramène au neutre. Lu par l'app (affichage) et le worker (alertes) (VI §34.1–§34.2).
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 9 |
+| `subject_type` | `TEXT` | `String` | n. p. | — | `CHECK IN ('topic','source')` | | III §11.12 · VI §34.1 | 9 |
+| `subject_id` | `INTEGER` | `Integer` | n. p. | — | sans FK (cible selon `subject_type`) | | III §11.12 | 9 |
+| `action` | `TEXT` | `String` | n. p. | — | `CHECK IN ('follow','mute')` | | III §11.12 · VI §34.1 | 9 |
+
+**Unicité** : `UNIQUE(subject_type, subject_id)` (III §11.12), Sprint 9.
+
+```sql
+CREATE TABLE user_preference (
+  id           INTEGER PRIMARY KEY,
+  subject_type TEXT CHECK (subject_type IN ('topic','source')),
+  subject_id   INTEGER,
+  action       TEXT CHECK (action IN ('follow','mute')),
+  UNIQUE (subject_type, subject_id)
+);
+```
+
+### 3.16 `Setting` — *écrit par l'app*
+
+Réglages globaux modifiables dans le dashboard. **Registre en code** : pour chaque clé, un schéma Pydantic et un
+défaut. Une clé absente de la table vaut son défaut ; une valeur stockée invalide est ignorée au profit du défaut,
+avec un log `warning` ; l'API valide à l'écriture (422). Le worker relit les réglages à chaque tick (VI §34.3,
+T-CFG-08).
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `key` | `TEXT` | `String` | non | — | **PK** | clé du registre | III §11.12 · VI §34.3 | 9 |
+| `value` | `TEXT` (JSON) | `JSON` | n. p. | — | Pydantic (schéma de la clé) | | III §11.12 | 9 |
+| `updated_at` | `TEXT` | `UTCDateTime` | n. p. | — | | | III §11.12 | 9 |
+
+**Registre en code** (VI §34.3 fait foi ; rappel des clés) :
+
+| Clé | Type | Défaut | Utilisée à partir du |
+|---|---|---|---|
+| `timezone` | nom IANA | `Europe/Paris` | Sprint 9 (affichage), 10 (heures calmes, digests) |
+| `display.importance_threshold` | entier 0–100 | 0 | Sprint 9 |
+| `alerts.mode` | `immediate` \| `digest_only` | `immediate` | Sprint 10 |
+| `alerts.importance_threshold` | entier 0–100 | 50 | Sprint 10 |
+| `alerts.followed_threshold` | entier 0–100 | 25 | Sprint 10 |
+| `alerts.max_age` | heures | 48 | Sprint 10 |
+| `alerts.title_wait` | minutes | 30 | Sprint 10 |
+| `alerts.quiet_hours` | `{start, end}` \| `null` | `null` | Sprint 10 |
+| `alerts.max_per_day` | entier | 20 | Sprint 10 |
+| `alerts.routing` | type → liste de canaux | VI §33.9 | Sprint 10 |
+| `digest.daily` | `{enabled, time}` | `{true, "08:00"}` | Sprint 10 |
+| `digest.weekly` | `{enabled, day, time}` | `{true, "monday", "08:00"}` | Sprint 10 |
+| `digest.max_items` | entier | 10 | Sprint 10 |
+
+Ajouter une clé ne demande pas de migration : c'est une entrée du registre. `alerts.tick` et `alerts.send_timeout`
+vivent dans `pipeline.yaml`, pas ici. Aucun secret n'est stocké dans `Setting` (VI §32.3).
+
+```sql
+CREATE TABLE setting (
+  key        TEXT PRIMARY KEY,
+  value      TEXT,       -- JSON validé par le registre
+  updated_at TEXT
+);
+```
+
+### 3.17 `ReadState` — *écrit par l'app*
+
+État « lu » au niveau de l'Event, ou de l'article s'il n'appartient à aucun Event (III décision 11). « Marquer non
+lu » supprime la ligne ; un `ReadState` sur un Event `merged` est ignoré (VI §31.5).
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 9 |
+| `subject_type` | `TEXT` | `String` | n. p. | — | `CHECK IN ('event','article')` | | III §11.12 | 9 |
+| `subject_id` | `INTEGER` | `Integer` | n. p. | — | sans FK (cible selon `subject_type`) | | III §11.12 | 9 |
+| `read_at` | `TEXT` | `UTCDateTime` | n. p. | — | | comparé à `activity_at` de la story | III §11.12 · VI §31.5 | 9 |
+
+**Unicité** : `UNIQUE(subject_type, subject_id)`, qui sert aussi d'index de lecture (III §11.12), Sprint 9.
+
+```sql
+CREATE TABLE read_state (
+  id           INTEGER PRIMARY KEY,
+  subject_type TEXT CHECK (subject_type IN ('event','article')),
+  subject_id   INTEGER,
+  read_at      TEXT,
+  UNIQUE (subject_type, subject_id)
+);
+```
+
+### 3.18 `AlertLog` — *écrit par le worker*
+
+Journal des alertes, qui sert aussi à leur **déduplication** : le log précède l'envoi (T1 `sending`, envoi hors
+transaction, T2 `sent` ou `failed`), garantie « au plus une fois », sans reprise en V1 (VI §33.5).
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 10 |
+| `alert_type` | `TEXT` | `String` | n. p. | — | `CHECK IN ('important_event','emerging_topic','daily_digest','weekly_digest','system')` | `system` : alertes d'exploitation (Sprint 11) | III §11.13 · VII §39.6 | 10 |
+| `subject_type` | `TEXT` | `String` | n. p. | — | | `'system'` pour une alerte `system` | III §11.13 | 10 |
+| `subject_id` | `INTEGER` | `Integer` | oui (type `system`) | — | | `NULL` pour une alerte `system` ; condition portée par `dedup_key` | III §11.13 · VII §39.6 | 10 |
+| `channel` | `TEXT` | `String` | n. p. | — | `CHECK IN ('email','telegram')` | | III §11.13 | 10 |
+| `status` | `TEXT` | `String` | n. p. | — | `CHECK IN ('sending','sent','failed','suppressed')` | `suppressed` : plafond quotidien atteint, jamais émise ; `sending` → `failed` au démarrage (`error = 'interrupted'`) | III §11.13 · VI §33.5, §33.6 | 10 |
+| `error` | `TEXT` | `Text` | n. p. | — | | après nettoyage des secrets par valeur | III §11.13 · VII §42.4 | 10 |
+| `dedup_key` | `TEXT` | `String` | n. p. | — | **UNIQUE** | inclut le canal (formats en VI §33.4) | III §11.13 · VI §33.4 | 10 |
+
+**Contraintes et index** (Sprint 10) : `UNIQUE(dedup_key)` (T-DB-10) · index `(alert_type, subject_type, subject_id)`
+(III §11.13).
+
+| Type | `dedup_key` (VI §33.4) |
+|---|---|
+| `important_event` | `important_event:{event_id}:{channel}` |
+| `emerging_topic` | `emerging:{candidate_id}:{last_significant_at}:{channel}` |
+| `daily_digest` | `daily:{date locale AAAA-MM-JJ}:{channel}` |
+| `weekly_digest` | `weekly:{année ISO}-W{semaine ISO}:{channel}` |
+| `system` | `system:{condition}:{since}:{channel}` |
+
+```sql
+CREATE TABLE alert_log (
+  id           INTEGER PRIMARY KEY,
+  alert_type   TEXT CHECK (alert_type IN ('important_event','emerging_topic',
+                                          'daily_digest','weekly_digest','system')),
+  subject_type TEXT,
+  subject_id   INTEGER,
+  channel      TEXT CHECK (channel IN ('email','telegram')),
+  status       TEXT CHECK (status IN ('sending','sent','failed','suppressed')),
+  error        TEXT,
+  dedup_key    TEXT UNIQUE
+);
+CREATE INDEX ix_alert_log_subject ON alert_log(alert_type, subject_type, subject_id);
+```
+
+### 3.19 `SystemState` — *écrit par le worker*
+
+Table clé/valeur ; **chaque clé a un seul écrivain**, et toutes sont écrites par le worker (III §11.13,
+VII §39.3). L'app les lit pour `/health`, `/api/health`, `/api/status` et le lu / non lu (II §8.3).
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `key` | `TEXT` | `String` | non | — | **PK** | | III §11.13 | 1 |
+| `value` | `TEXT` (JSON) | `JSON` | n. p. | — | Pydantic (schéma par clé) | | III §11.13 | 1 |
+| `updated_at` | `TEXT` | `UTCDateTime` | n. p. | — | | | III §11.13 | 1 |
+
+**Clés et schéma de leur valeur** — une clé n'est pas une migration : elle apparaît au sprint qui l'écrit.
+
+| Clé | Valeur | Écrite | Réf. | Sprint |
+|---|---|---|---|---|
+| `worker_heartbeat` | `{at, started_at, version, pid}` | toutes les 30 s, avant le chargement des modèles | III §11.13 · VII §39.3, décision 14 | 1 |
+| `trends_since` | horodatage de la première insertion d'un article `ready` | une seule fois, par le runner | III §11.13 · IV §14.3 · V-B §29.3 | 2 |
+| `embeddings` | état du moteur : `up` / `down`, depuis (voir I-14) | à chaque changement d'état | III §11.13 · V-A §24.4 · VII §39.2 | 4 |
+| `llm_gateway` | `{state, since, reason, open_until}` | à chaque transition du disjoncteur | III §11.13 · V-A §24.2 | 6 |
+| `llm_usage` | `{day, requests}` (jour UTC) | à chaque appel ayant reçu une réponse | III §11.13 · V-A §24.3 | 6 |
+| `trends_last_run` | dernier calcul du Trend Engine (schéma non fixé, I-14) | à chaque passe horaire | III §11.13 · V-B §29.1 · VII §39.2 | 8 |
+| `alerting` | `{email: enabled\|disabled, telegram: enabled\|disabled, interrupted_at_boot: n}` | au démarrage | III §11.13 · VII §39.3 | 10 |
+| `ops_metrics` | instantané des métriques de VII §39.2, avec `computed_at` | toutes les 60 s | III §11.13 · VII §39.3 | 11 |
+| `ops_conditions` | conditions actives : `{name: {since, alerted_at}}` (épisodes persistés) | à chaque transition | III §11.13 · VII §39.3, §39.6 | 11 |
+| `last_backup` | `{at, snapshot_id, size_bytes, duration_s}` | backup réussi | III §11.13 · VII §38.2 | 11 |
+| `backup_last_attempt` | `{at, status, error}` | chaque tentative de backup | III §11.13 · VII §38.2 | 11 |
+| `last_restore_test` | `{at, status, snapshot_id, error}` | chaque test de restauration | III §11.13 · VII §38.4 | 11 |
+
+Sprints des clés : heartbeat au Sprint 1, `trends_since` avec le runner (Sprint 2), `embeddings` avec la file dérivée
+(Sprint 4), disjoncteur et budget LLM (Sprint 6), Trend Engine (Sprint 8), canaux d'alerte (Sprint 10), monitoring
+et backup (Sprint 11) (VIII §47.2).
+
+```sql
+CREATE TABLE system_state (
+  key        TEXT PRIMARY KEY,
+  value      TEXT,       -- JSON, schéma propre à chaque clé
+  updated_at TEXT
+);
+```
+
 <!-- TABLES -->
 
 ---
@@ -865,5 +1059,31 @@ cite ses passages. Les identifiants `I-nn` sont stables.
   `model` (nom fastembed, dépôt Hugging Face réellement téléchargé, révision), alors que T0.3 a constaté que le nom
   fastembed (`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`) et le dépôt téléchargé
   (`qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q`) diffèrent (rapport de cadrage §3, V-01).
+
+#### I-12 — `AlertLog.subject_type` et `subject_id` hors alertes `system`
+
+- **III §11.13** : `subject_type` · `subject_id`, sans liste de valeurs ni `CHECK` ; seule la valeur du type
+  `system` est fixée (`subject_type = 'system'`, `subject_id` `NULL`, III §11.13, VII §39.6).
+- **VI §33.3** : sujets = Event (`important_event`), candidat (`emerging_topic`), jour (`daily_digest`), semaine
+  (`weekly_digest`). Les valeurs de `subject_type` et le contenu de `subject_id` pour un digest (jour, semaine) ne
+  sont pas écrits.
+
+#### I-13 — `AlertLog` sans horodatage
+
+- **III §11.13** : colonnes de `AlertLog` sans `created_at` ni date d'envoi.
+- Pourtant : **VI §33.10**, l'historique expose « type, sujet, canal, statut, erreur, **date** » ; **VI §33.6**, le
+  plafond compte les alertes « par jour local » ; **III §13**, `AlertLog` est conservé **1 an** ; **VII §39.2**,
+  alertes par statut « sur 24 h ». La convention III §11.0 (`created_at`) couvrirait le besoin, mais la table ne le
+  liste pas (voir aussi I-02).
+
+#### I-14 — Schémas de valeur de certaines clés `SystemState`
+
+- **`trends_last_run`** : « dernier calcul du Trend Engine » (III §11.13, V-B §29.1) ; **VII §39.2** y lit « la
+  dernière exécution » et la durée du job analytique est « en mémoire ; `SystemState.trends_last_run` ». Aucun schéma
+  de valeur n'est écrit.
+- **`embeddings`** : **V-A §24.4** dit seulement qu'il « passe à `down` » ; **VII §39.2** : « état du moteur (`up` /
+  `down`, depuis) » ; **VII §40.3** montre `{"state": "up", "since": …}` dans la réponse de `/api/health`. Pas de
+  schéma écrit pour la valeur stockée.
+- **`trends_since`** : « horodatage » (V-B §29.3), sans forme JSON précisée (chaîne ISO-8601 ou objet).
 
 <!-- INCOHERENCES -->
