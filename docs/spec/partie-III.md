@@ -58,7 +58,7 @@ PRAGMA journal_size_limit=67108864;  -- 64 Mo, valeur initiale
 
 L'auto-checkpoint WAL reste à sa valeur par défaut ; la taille du fichier `-wal` est surveillée (Partie II §8.6). `journal_size_limit` fait tronquer le `-wal` après checkpoint : sa taille reste ainsi une métrique lisible.
 
-**Seule exception : la connexion du service `migrate`** fonctionne avec `PRAGMA foreign_keys=OFF` pendant les migrations (§10.5). Les connexions de `app` et `worker` gardent toujours `foreign_keys=ON`.
+**Seule exception : la connexion du service `migrate`** fonctionne avec `PRAGMA foreign_keys=OFF` pendant les migrations, posé par l'écouteur `connect` de son propre moteur (§10.5). Les connexions de `app` et `worker` gardent toujours `foreign_keys=ON`.
 
 ### 10.3 Accès et transactions
 
@@ -82,8 +82,8 @@ La mise en œuvre suit la technique documentée par SQLAlchemy (désactivation d
 
 - Alembic avec **`render_as_batch=True`** (SQLite ne sait pas modifier une contrainte par `ALTER`).
 - Les migrations sont appliquées par un **service one-shot `migrate`** (`alembic upgrade head`) ; `app` et `worker` démarrent après sa réussite (`depends_on` + `service_completed_successfully`). Aucun des deux processus applicatifs ne migre lui-même.
-- **Clés étrangères pendant les migrations** : l'environnement Alembic (`env.py`) pose `PRAGMA foreign_keys=OFF` sur la connexion de `migrate` **avant l'ouverture de la transaction** (le PRAGMA est sans effet à l'intérieur d'une transaction). Sans cela, la reconstruction d'une table par le mode batch (copie, `DROP TABLE` de l'ancienne, renommage) exécuterait un `DELETE` implicite qui déclencherait les `ON DELETE CASCADE` des tables filles, ou échouerait sur les `RESTRICT`.
-- **Contrôle d'intégrité** : chaque migration se termine par `PRAGMA foreign_key_check` et **échoue** si une violation est trouvée.
+- **Clés étrangères pendant les migrations** : l'environnement Alembic (`env.py`) crée un moteur propre à `migrate`, dont l'écouteur `connect` pose `PRAGMA foreign_keys=OFF` **sur la connexion DBAPI** (curseur brut), donc avant toute transaction — même mécanisme que §10.2, avec `OFF` au lieu de `ON`. Exécuté sur la connexion SQLAlchemy, le PRAGMA déclencherait l'*autobegin* de SQLAlchemy 2 et, avec l'écouteur `begin` (`BEGIN IMMEDIATE`, §10.3), partirait dans une transaction, où SQLite l'ignore. Sans ce PRAGMA, la reconstruction d'une table par le mode batch (copie, `DROP TABLE` de l'ancienne, renommage) exécuterait un `DELETE` implicite qui déclencherait les `ON DELETE CASCADE` des tables filles, ou échouerait sur les `RESTRICT`.
+- **Contrôle d'intégrité** : `env.py` exécute `PRAGMA foreign_key_check` après `context.run_migrations()`, **dans la même transaction, avant le commit** ; une violation lève une exception, et la transaction est annulée en entier : aucune migration de l'exécution n'est appliquée.
 - **Index plein texte** : une migration qui reconstruit `Article` **recrée les triggers de `article_fts`** (§11.14), supprimés avec l'ancienne table.
 
 ### 10.6 Dates et heures
