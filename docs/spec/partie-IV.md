@@ -450,6 +450,8 @@ Aucun autre motif libre en V1 (pas de regex générique `mot/mot`, trop bruitée
 - **Contraintes croisées** : `clustering.embedding_wait + clustering.tick` doit rester strictement inférieur à `llm.delay.enrich_article` (Partie V-B §28.15).
 - Commande `python -m app.cli validate-config` : même validation, sans base. Jouée en CI.
 - `pipeline.yaml` est optionnel : absent → défauts. Présent, il est validé comme les autres.
+- **Fichier obligatoire absent** (`sources.yaml`, `topics.yaml` ou `entities.yaml`) : c'est une erreur. Le worker refuse de démarrer, et `validate-config` renvoie le code `2` (Partie IX §56.3).
+- **`pipeline.yaml` invalide côté app** : l'app, qui le lit en lecture seule avec les mêmes modèles (§16.1), **refuse de démarrer**, comme le worker, avec le même message (fichier, clé, champ).
 
 ### 16.6 `pipeline.yaml` — réglages et défauts
 
