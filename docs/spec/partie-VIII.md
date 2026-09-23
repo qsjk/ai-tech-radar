@@ -90,6 +90,8 @@ ai-tech-radar/
 ├── .env.example               # VII §36.7
 ├── .gitignore · .dockerignore # .env exclu des deux
 ├── .audit-exceptions.yaml     # exceptions d'audit datées (§49.4)
+├── .claude/                   # outillage de l'agent de développement (E22, ADR-0021) :
+│                              # permissions de projet (#62), skill radar-dev V1 (#63)
 ├── .github/workflows/
 │   ├── ci.yml                 # push, PR, main (§49.1)
 │   └── scheduled.yml          # nightly, audit hebdomadaire, rebuild mensuel
@@ -127,7 +129,8 @@ ai-tech-radar/
 │   ├── check-test-catalog.py  # traçabilité (§50.3)
 │   ├── record-llm-fixtures.py # manuel, jamais en CI (§50.4)
 │   ├── synthetic-dataset.py   # profils réaliste et cible (VII §45.3)
-│   └── load.py                # script de charge
+│   ├── load.py                # script de charge
+│   └── radar-dev              # environnement local de développement (E22, ADR-0021)
 ├── tests/                     # §50.2
 └── docs/                      # arbre détaillé : Partie IX §55.1
     ├── spec/                  # partie-I.md … partie-IV.md, partie-V-A.md, partie-V-B.md,
@@ -138,6 +141,12 @@ ai-tech-radar/
     ├── deployment.md · monitoring.md · backup-restore.md · measurements.md
     └── runbook.md · testing.md · go-live.md
 ```
+
+**`scripts/radar-dev`** (E22, ADR-0021) : seul point d'entrée de Docker sur le poste de développement.
+- **Sous-commandes fixes** : `up`, `down`, `reset`, `ps`, `logs <service>`, `test`, `e2e`, `health`.
+- **Aucun argument libre n'est transmis à `docker`** : le seul argument admis, un nom de service, est validé contre une liste fermée. Une sous-commande ou un argument hors liste renvoie le code `2` sans rien exécuter (contrat de la Partie IX §56.3).
+- Projet Compose de développement dédié, jamais `radar` ni `radar-load`.
+- Outil de développement seulement : ni la CI ni le VPS ne l'utilisent.
 
 ### 46.2 Règles
 
@@ -177,6 +186,7 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - **Configuration** : typée, secrets en `SecretStr` ; `validate-config` sur les quatre fichiers (schémas initiaux) ; refus de démarrer si `HTTP_CONTACT` ou `DASHBOARD_URL` est invalide.
 - **Logs** : structlog JSON, nettoyage des secrets aux trois niveaux.
 - **Exposition** : Caddy (TLS interne, basic_auth, `/health` public, en-têtes de sécurité, SPA vide servie) et Compose conforme VII §36.5.
+- **Environnement local de développement** : `scripts/radar-dev` V0 (§46.1 ; E22, ADR-0021, #62), après le socle Compose.
 - **Tests et CI** : les six étapes opérationnelles, doubles de test vides mais branchés, blocage réseau, traçabilité du catalogue.
 
 **Acceptation** :

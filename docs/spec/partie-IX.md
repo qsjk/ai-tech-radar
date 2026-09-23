@@ -226,8 +226,11 @@ Le §53 dit **quoi** ; l'ADR dit **pourquoi**, contre quoi, et à quel prix. Un 
 | ADR | Titre | Sprint | Appui |
 |---|---|---|---|
 | 0020 | Gateway LLM retenu | 6 | `docs/llm-gateway.md`, première mesure M6 |
+| 0021 | Accès cloisonné de Claude Code à Docker en développement | 0 (T0.9) | E22 du rapport de cadrage ; poste de développement (Q-01) ; avant le premier Compose du Sprint 1 |
 
 Si aucun gateway n'est retenu à ce stade, l'ADR 0020 le consigne (produit sans LLM, VIII décision 21).
+
+L'ADR 0021 figure ici, et non parmi les conditionnels : il n'attend aucun déclencheur, il est rédigé au Sprint 0 parce que le Sprint 1 en a besoin. Il ne figure pas non plus dans la liste « Produits au Sprint 0 », réservée aux ADR des décisions verrouillées (§53.2) : il ne couvre aucune `DV-nn`, c'est une décision structurante (§53.1).
 
 **Conditionnels** — rédigés au prochain numéro libre, seulement si le déclencheur survient :
 
@@ -302,7 +305,8 @@ Contenu :
 - **Interdits** : modifier une décision verrouillée (§53) ; passer un ADR en `Accepté` ; trancher un conflit de spec ; démarrer un sprint dont le plan n'est pas validé ; implémenter un sprint suivant ; appeler un vrai provider dans un test ; ajouter une brique du §53.3.
 - **Arrêts obligatoires** : fin de chaque sprint (bilan dans `sprint-NN.md`) ; ADR proposé ; conflit ou trou dans la spec.
 - **Définition de terminé** : renvoi à VIII §51.
-- **Commandes usuelles** de développement : lint, tests, lancement du Compose local, e2e.
+- **Docker uniquement via `scripts/radar-dev`** (VIII §46.1, E22, ADR-0021) : jamais d'appel direct à `docker` ou `docker compose`, jamais les projets Compose `radar` ni `radar-load`.
+- **Commandes usuelles** de développement : lint, tests ; Compose local et e2e par `radar-dev`.
 
 ### 55.4 Documents, contenu et moment de création
 
@@ -313,7 +317,7 @@ Contenu :
 | `sprints/` | rapport de cadrage, plans et bilans | 0 | chaque sprint |
 | `adr/` | ADR 0001–0019 | 0 | sur décision |
 | `runbook.md` | §56 | 1 (`validate-config`, `health`, commandes de base) | à chaque commande CLI ou procédure (VIII §51.1-9) |
-| `testing.md` | niveaux, doubles, blocage réseau, horloge, marqueurs `spec`, e2e en local, traitement d'un échec d'audit, `record-llm-fixtures` | 1 | à chaque double ou règle de test |
+| `testing.md` | niveaux, doubles, blocage réseau, horloge, marqueurs `spec`, e2e en local, **environnement local par `scripts/radar-dev`** (sous-commandes, projet Compose de développement, écarts du Docker rootless avec la CI, ADR-0021), traitement d'un échec d'audit, `record-llm-fixtures` | 1 | à chaque double ou règle de test |
 | `deployment.md` | développement (Compose local, `https://localhost`) ; production : installation initiale de l'hôte, choix de déploiement (fournisseur, architecture, dépôt restic, monitoring externe, gateway) | 1 (dev) · 11 (prod) | — |
 | `collectors.md` | types, configuration, ajout d'une source ou d'un collector (Partie I §2.4) | 2 | à chaque type |
 | `measurements.md` | format, protocole de charge dans le projet `radar-load`, résultats M1–M10, calibration | 4 | à chaque mesure |

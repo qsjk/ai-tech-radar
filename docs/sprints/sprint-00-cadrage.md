@@ -424,6 +424,18 @@ Décision du propriétaire (2026-09-23) : option A : stylage en CSS Modules — 
 
 Décision du propriétaire (2026-09-23) : option A : une PR dédiée avant T0.4, qui inclut T0.1c — appliquée par T0.2b (#66).
 
+#### E22 — Accès de Claude Code à Docker en développement
+
+- **Contexte** : T0.3 a montré que Claude Code a besoin de Docker sur le poste de développement, et ce besoin revient à chaque sprint (Compose local, tests, e2e). Pour T0.3, le compte de développement a été ajouté temporairement au groupe `docker`, ce qui équivaut à un accès root pour tout programme lancé sous ce compte. Le poste mélange en outre deux installations de Docker (section 3.A, Q-01). Rien dans la spec ne dit comment Claude Code accède à Docker en développement.
+- **Options** :
+  - A. Démarche progressive : **V0**, isolation réelle du poste et script `scripts/radar-dev` à sous-commandes fixes, seul point d'entrée autorisé ; **V1**, skill de projet décrivant l'usage de `radar-dev` ; **V2**, serveur MCP local qui n'appelle que `radar-dev`, conditionnel.
+  - B. Serveur MCP dès le Sprint 1 (outil de plus à écrire avant d'en connaître le besoin).
+  - C. Accès direct à `docker`, filtré par les permissions de Claude Code (filtre de commandes, sans cloisonnement).
+- **Recommandation** : A. Le mécanisme d'isolation du poste relève d'un ADR, l'**ADR-0021**.
+- **Bloque** : Sprint 1 (premier Compose local).
+
+Décision du propriétaire (2026-09-23) : option A : V0 au Sprint 1 (#62, avec la mise en place du poste #61), V1 au Sprint 2 (#63), V2 au Sprint 3, conditionnel à un go décidé sur les bilans des Sprints 1 et 2 (#64) ; le mécanisme d'isolation est l'objet de l'ADR-0021 (Proposé) — appliquée dans VIII §46.1, IX §54.3, §55.3, §55.4, VII §36.7 (sous réserve de l'ADR-0021) et `docs/planning.md` (T0.9, #60).
+
 ---
 
 ## 3. Résultats des vérifications (IX §57.4)
@@ -800,12 +812,12 @@ Probabilité et impact : faible · moyen · élevé.
 
 | # | Risque | Sprint | Probabilité | Impact | Parade proposée |
 |---|---|---|---|---|---|
-| R-01 | La Partie VII non réconciliée (E11) est lue telle quelle pendant l'implémentation : `.env.example` sans `HTTP_TEST_ALLOW_HOSTS`, racine en lecture seule reportée au Sprint 11, rollback et backup sans verrou | 1, 2, 11 | élevée tant que E11 n'est pas tranché | élevé | trancher E11 avant T0.4 ; en attendant, `CLAUDE.md` (T0.7) renvoie à CF-01 à CF-12 |
-| R-02 | Conflits de spec laissés ouverts (CF-15 à CF-25) et implémentés selon une seule des deux lectures | 1 à 11 | moyenne | moyen | appliquer les décisions dans une PR de spec dédiée (E21) avant T0.4 |
+| R-01 | La Partie VII non réconciliée (E11) est lue telle quelle pendant l'implémentation : `.env.example` sans `HTTP_TEST_ALLOW_HOSTS`, racine en lecture seule reportée au Sprint 11, rollback et backup sans verrou | 1, 2, 11 | **levé** le 2026-09-23 : E11 tranché, Partie VII réconciliée (T0.1c dans T0.2b, #67) | — | aucune : les 12 impacts CF-01 à CF-12 sont reportés dans la Partie VII |
+| R-02 | Conflits de spec laissés ouverts (CF-15 à CF-25) et implémentés selon une seule des deux lectures | 1 à 11 | **levé** le 2026-09-23 pour CF-15 à CF-25 : tranchés et appliqués par T0.2b (#67) ; risque résiduel faible sur les conflits découverts ensuite | moyen | tout nouveau conflit est signalé, pas tranché (VIII §51.3), puis appliqué dans une PR de spec |
 | R-03 | `BEGIN IMMEDIATE` difficile à obtenir avec SQLAlchemy async et aiosqlite (V-03) : échecs immédiats « database is locked » entre les deux processus | 1 | moyenne | élevé | V-03 en T0.3 ; T-DB-04 dès le Sprint 1 ; repli documenté par question au propriétaire |
 | R-04 | Racine en lecture seule incompatible avec un cache ou un fichier temporaire d'onnxruntime, de fastembed ou de lingua | 1, 4 | moyenne | moyen | chemins de cache explicites vers `/tmp` (tmpfs) ou l'image ; T-SEC-09 joué dès l'arrivée de chaque bibliothèque |
 | R-05 | Échec d'une vérification bloquante de §57.4 (V-04 à V-07) | 0 | faible | élevé | arrêt, ADR et replanification (planning G1) |
-| R-06 | Le mécanisme de traçabilité (E1) rend la CI rouge dès le Sprint 1, ou au contraire ne contrôle plus rien | 1 | élevée si E1 n'est pas tranché | moyen | trancher E1 ; tester `check-test-catalog.py` sur le catalogue réel dès le Sprint 1 |
+| R-06 | Le mécanisme de traçabilité (E1) rend la CI rouge dès le Sprint 1, ou au contraire ne contrôle plus rien | 1 | faible : E1 tranché (#67), précisé par P-15 (#71) — seuls les sprints clos bloquent | moyen | tester `check-test-catalog.py` sur le catalogue réel dès le Sprint 1 ; tenir à jour le statut de chaque `sprint-NN.md` (P-11) |
 | R-07 | Extraction des identifiants de test fragile : une retouche de mise en forme de **VIII §50.5** casse `check-test-catalog.py` | 1 à 11 | moyenne | faible | motif d'extraction simple (`T-[A-Z]+-\d{2}` en première colonne) et test du script lui-même |
 | R-08 | Durée de la CI : e2e Compose et build des images dans GitHub Actions dépassent la cible de 10 min (**VIII §49.3**) | 1, 4 | moyenne | faible | e2e seulement sur `main` et en nightly (**VIII décision 12**) ; caches uv, npm, couches Docker |
 | R-09 | Reddit bloque les IP de datacenter (**IV §15.4**) : canal perdu en pré-production | pré-prod | moyenne | moyen | traiter comme une panne de source ; mode API reporté en V2 ; le constater tôt sur le VPS |
