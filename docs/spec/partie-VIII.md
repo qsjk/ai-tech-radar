@@ -493,7 +493,7 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | T-DB-10 | `AlertLog.dedup_key` unique : une seconde insertion identique est refusée | I | III · VI §33.4 |
 | T-DB-11 | `article_fts` : triggers d'insertion, de mise à jour du résumé (écriture LLM comprise) et de suppression ; un `UPDATE` de `title` ou de `summary` met l'index à jour, un `UPDATE` de `status` ou d'`event_id` ne le modifie pas (`AFTER UPDATE OF title, summary`) ; recherche insensible aux diacritiques | I | III §11.14 · V-A |
 | T-DB-12 | Colonnes à valeurs fermées : une valeur hors `CHECK` est refusée (échantillon : `Article.status`, `AIJob.status`, `AlertLog.status`) | I | III §11 |
-| T-DB-13 | Clés étrangères pendant les migrations : la connexion de `migrate` lit `PRAGMA foreign_keys` = 0 ; une violation détectée par `PRAGMA foreign_key_check` fait échouer la migration et annule toute l'exécution ; la reconstruction batch d'`article` conserve `article_topic`, `article_entity` et `embedding`, et recrée les trois triggers d'`article_fts` | I | III §10.5 |
+| T-DB-13 | Clés étrangères pendant les migrations : la connexion de `migrate` lit `PRAGMA foreign_keys` = 0 ; une violation détectée par `PRAGMA foreign_key_check` fait échouer la migration et annule toute l'exécution : la révision Alembic et le schéma sont ceux d'avant l'exécution ; la reconstruction batch d'`article` conserve `article_topic`, `article_entity` et `embedding`, et recrée les trois triggers d'`article_fts` | I | III §10.5 |
 
 #### T-CFG — Configuration & démarrage *(IV §16, §22 · VI §34.3 · VII §36.7)*
 

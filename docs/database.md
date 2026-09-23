@@ -1087,18 +1087,22 @@ INSERT INTO article_fts(article_fts) VALUES ('rebuild');
 - **Réversibilité** : chaque migration fournit un `downgrade`, **ou se déclare irréversible dans son en-tête**
   (VII §36.9, T-DB-08). `scripts/deploy.sh` refuse un rollback à travers une migration ; la procédure IX §56.6-P2
   s'applique (*downgrade* avec l'image courante, ou restauration du snapshot pris au déploiement) (VIII §49.5).
-- **Clés étrangères désactivées pendant les migrations** (III §10.2, §10.5 ; I-16) : `env.py` crée un moteur propre
-  à `migrate`, dont l'écouteur `connect` pose `PRAGMA foreign_keys=OFF` **sur la connexion DBAPI** (curseur brut),
-  donc avant toute transaction. Exécuté sur la connexion SQLAlchemy, le PRAGMA déclencherait l'*autobegin* de
-  SQLAlchemy 2 et, avec l'écouteur `begin` (`BEGIN IMMEDIATE`, III §10.3), partirait dans une transaction, où SQLite
-  l'ignore. Sans ce PRAGMA, la reconstruction d'une table en mode batch
+- **Moteur de `migrate`** (III §10.5) : moteur **synchrone** propre à `migrate`, créé par `env.py` sur l'URL lue dans
+  la configuration. Même technique que §2.3 : l'écouteur `connect` pose `isolation_level = None` (pysqlite n'ouvre
+  plus de transaction implicite) et exécute les PRAGMA hors transaction ; l'écouteur `begin` émet `BEGIN IMMEDIATE`.
+  Seul `foreign_keys` diffère.
+- **Clés étrangères désactivées pendant les migrations** (III §10.2, §10.5 ; I-16) : `PRAGMA foreign_keys=OFF` est
+  posé dans l'écouteur `connect`, sur la connexion DBAPI, donc avant toute transaction : SQLite l'ignore à
+  l'intérieur d'une transaction. Sans ce PRAGMA, la reconstruction d'une table en mode batch
   (copie, `DROP TABLE` de l'ancienne, renommage) exécuterait un `DELETE` implicite qui déclencherait les
   `ON DELETE CASCADE` de `article_topic`, `article_entity` et `embedding`, ou échouerait sur les `RESTRICT`.
+- **Une seule transaction par exécution** : `transactional_ddl=True` et `transaction_per_migration=False`.
+  Alembic déclare SQLite sans DDL transactionnel : sans `transactional_ddl=True`, `context.begin_transaction()` ne fait rien et chaque migration est validée séparément. Et pysqlite, dans son mode par défaut, n'émet pas de `BEGIN` avant une instruction DDL, qui serait validée aussitôt : `isolation_level = None` et l'écouteur `begin` placent tout le DDL de l'exécution dans une seule transaction explicite.
 - **Contrôle d'intégrité** : `env.py` exécute `PRAGMA foreign_key_check` après `context.run_migrations()`, dans la
-  même transaction, avant le commit ; une violation lève une exception et annule tout : aucune migration de
-  l'exécution n'est appliquée (III §10.5).
-- **Test** : **T-DB-13** (VIII §50.5) vérifie `foreign_keys` = 0 sur la connexion de `migrate`, l'échec et l'annulation
-  sur violation (Sprint 1), puis la conservation des tables filles et la recréation des triggers d'`article_fts` lors
+  même transaction, avant le commit ; une violation lève une exception et annule tout : la révision Alembic et le
+  schéma restent ceux d'avant l'exécution (III §10.5).
+- **Test** : **T-DB-13** (VIII §50.5) vérifie `foreign_keys` = 0 sur la connexion de `migrate`, l'échec sur violation
+  avec révision et schéma inchangés (Sprint 1), puis la conservation des tables filles et la recréation des triggers d'`article_fts` lors
   d'une reconstruction d'`article` (complément au Sprint 3).
 - **Connexions applicatives** : `app` et `worker` gardent toujours `foreign_keys=ON` (§2.2).
 - **Index plein texte** : la table virtuelle `article_fts` et ses triggers ne sont pas produits par l'autogénération
@@ -1107,23 +1111,37 @@ INSERT INTO article_fts(article_fts) VALUES ('rebuild');
   (III §10.5, §11.14).
 
 ```python
-# env.py (indicatif) — moteur propre à migrate, distinct de celui de app et worker
-engine = create_engine("sqlite:////data/radar.db")
+# env.py (indicatif) — moteur synchrone propre à migrate, distinct de celui de app et worker
+from alembic import context
+from sqlalchemy import create_engine, event
+
+config = context.config
+engine = create_engine(config.get_main_option("sqlalchemy.url"))   # URL lue dans la configuration
 
 @event.listens_for(engine, "connect")
 def _on_connect(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()        # connexion DBAPI : aucune transaction ouverte
+    dbapi_connection.isolation_level = None   # pysqlite n'ouvre plus de transaction implicite
+    cursor = dbapi_connection.cursor()        # PRAGMA exécutés hors transaction
     for pragma in MIGRATE_PRAGMAS:            # PRAGMA du §2.2, avec foreign_keys=OFF au lieu de ON
         cursor.execute(pragma)
     cursor.close()
 
+@event.listens_for(engine, "begin")
+def _on_begin(conn):
+    conn.exec_driver_sql("BEGIN IMMEDIATE")   # même technique que III §10.3
+
 with engine.connect() as connection:
-    context.configure(connection=connection, target_metadata=target_metadata,
-                      render_as_batch=True)
-    with context.begin_transaction():         # une seule transaction pour toute l'exécution
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        render_as_batch=True,
+        transactional_ddl=True,               # Alembic déclare SQLite sans DDL transactionnel
+        transaction_per_migration=False,      # une seule transaction pour toute l'exécution
+    )
+    with context.begin_transaction():
         context.run_migrations()
         violations = connection.exec_driver_sql("PRAGMA foreign_key_check").fetchall()
-        if violations:                        # exception : rollback, aucune migration appliquée
+        if violations:                        # exception : rollback, révision et schéma inchangés
             raise RuntimeError(f"violations de clés étrangères : {violations}")
 ```
 
@@ -1327,7 +1345,7 @@ Décision (2026-09-23) : même règle que I-03 : chaque colonne de la liste est 
   échouerait sur les `RESTRICT`. La spec ne dit pas si la connexion du service `migrate` désactive les clés
   étrangères pendant une reconstruction.
 
-Décision (2026-09-23) : la connexion de `migrate` fonctionne avec `PRAGMA foreign_keys=OFF`, posé par l'écouteur `connect` du moteur de `migrate` sur la connexion DBAPI, avant toute transaction ; `env.py` exécute `PRAGMA foreign_key_check` après `run_migrations()`, dans la même transaction, et une violation annule tout (mécanisme précisé à la revue de #70, testé par T-DB-13) ; une migration qui reconstruit `article` recrée les triggers de `article_fts` ; `app` et `worker` gardent `foreign_keys=ON` — appliquée dans III §10.2, §10.5 et dans ce document (§2.2, §5).
+Décision (2026-09-23) : la connexion de `migrate` fonctionne avec `PRAGMA foreign_keys=OFF`, posé par l'écouteur `connect` du moteur synchrone de `migrate` sur la connexion DBAPI (`isolation_level = None`), avant toute transaction ; l'écouteur `begin` émet `BEGIN IMMEDIATE` ; `transactional_ddl=True` et `transaction_per_migration=False` font de l'exécution une seule transaction ; `env.py` exécute `PRAGMA foreign_key_check` après `run_migrations()`, dans cette transaction, et une violation annule tout, révision comprise (mécanisme précisé aux deux revues de #70, testé par T-DB-13) ; une migration qui reconstruit `article` recrée les triggers de `article_fts` ; `app` et `worker` gardent `foreign_keys=ON` — appliquée dans III §10.2, §10.5 et dans ce document (§2.2, §5).
 
 #### I-17 — Dates de référence des rétentions
 
