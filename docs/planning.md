@@ -154,7 +154,7 @@ Les entrées et sorties **communes** (§0) s'appliquent à chaque sprint ; les f
 | **Dépendances** | D1 → D2 → D3 → D4 (VIII §48) |
 | **Effort** | 6–9 |
 | **Risques** | courbe asyncio / SQLAlchemy async (`BEGIN IMMEDIATE`) · racine en lecture seule et non-root dès le départ · durée CI (e2e Compose dans Actions) · certificat Caddy local non reconnu par le navigateur · mypy strict |
-| **👤** | **poste de dev : Docker rootless, retrait du groupe `docker`** (#61), avant le premier Compose, une fois l'ADR-0021 accepté · ajouter les checks CI 1–5 obligatoires à la règle de `main` · démo sur Compose neuf |
+| **👤** | **poste de dev : Docker rootless, retrait du groupe `docker`** (#61), avant le premier Compose, une fois l'ADR-0021 accepté · checks CI obligatoires sur `main` dès que la CI minimale de T1.1 est verte, puis les checks 1–5 une fois la CI complétée (T1.11) · démo sur Compose neuf |
 
 ### S2 — Collecte & pipeline déterministe
 

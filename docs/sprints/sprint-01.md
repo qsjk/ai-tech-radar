@@ -38,16 +38,20 @@ T1.1 ─► T1.2 ─► T1.3 ─► T1.4 ─► T1.5 ─► T1.6 ─► T1.7 ─
 
 ## Tâches
 
-### T1.1 — Squelette du dépôt et blocage réseau des tests
+### T1.1 — Squelette du dépôt, blocage réseau des tests et CI minimale
 
-- **Objectif** : projet Python installable et outillage qualité, tests déjà coupés du réseau (D4).
+- **Objectif** : projet Python installable, outillage qualité, tests déjà coupés du réseau (D4), et une **CI minimale**
+  pour que chaque PR du sprint passe au moins lint, types et tests.
 - **Fichiers** : `pyproject.toml`, `uv.lock`, `app/__init__.py`, `tests/conftest.py`, configuration de ruff, mypy
-  (strict sur `app/`) et pytest, blocage des sockets (type `pytest-socket`, VIII §50.1), `.gitignore`, `.dockerignore`.
+  (strict sur `app/`) et pytest, blocage des sockets (type `pytest-socket`, VIII §50.1), `.gitignore`, `.dockerignore`,
+  **`.github/workflows/ci.yml` minimal** : étape 1 (`ruff check`, `ruff format --check`, `mypy`) et étape 4 (`pytest`,
+  réseau bloqué) de VIII §49.2, sur tout push et toute PR.
 - **Dépendances** : aucune.
 - **Identifiants** : aucun du catalogue (le blocage réseau est une règle de VIII §50.1, vérifiée par un test de
   l'outillage : une connexion externe échoue).
 - **Vérifiable** : `ruff check`, `ruff format --check`, `mypy` et `pytest` passent ; un test qui ouvre une connexion
-  externe échoue.
+  externe échoue ; le workflow `ci.yml` est vert sur la PR de T1.1. Le propriétaire peut alors rendre ces checks
+  obligatoires sur `main` (planning, fiche S1).
 
 ### T1.2 — Noyau : `Clock`, `UTCDateTime`, configuration typée, logs et nettoyage des secrets (D1)
 
@@ -163,18 +167,20 @@ T1.1 ─► T1.2 ─► T1.3 ─► T1.4 ─► T1.5 ─► T1.6 ─► T1.7 ─
 - **Vérifiable** : `radar-dev e2e` vert : `/health` sans authentification, `/` et `/api/*` en 401, en-têtes de Caddy,
   racine en lecture seule fonctionnelle, échec de `migrate` → `app` et `worker` ne démarrent pas.
 
-### T1.11 — CI en six étapes et traçabilité du catalogue
+### T1.11 — CI complétée jusqu'aux six étapes et traçabilité du catalogue
 
-- **Objectif** : `.github/workflows/ci.yml` et `scheduled.yml` (VIII §49, `architecture.md` §5.1), et
-  `scripts/check-test-catalog.py` (§5.3 : motif sur la première colonne, sprints clos bloquants, sprint en cours
-  signalé, volets).
-- **Fichiers** : workflows, `scripts/check-test-catalog.py` et ses tests, `.audit-exceptions.yaml`.
+- **Objectif** : compléter le `ci.yml` minimal de T1.1 jusqu'aux six étapes de VIII §49.2 (étape 1 complète, avec
+  eslint, `tsc`, `uv lock --check`, `npm ci`, analyse de secrets et traçabilité ; étapes 2, 3, 5 et 6), ajouter
+  `scheduled.yml` (VIII §49.1, `architecture.md` §5.1) et `scripts/check-test-catalog.py` (§5.3 : motif sur la
+  première colonne, sprints clos bloquants, sprint en cours signalé, volets).
+- **Fichiers** : `.github/workflows/ci.yml` (complété), `.github/workflows/scheduled.yml`,
+  `scripts/check-test-catalog.py` et ses tests, `.audit-exceptions.yaml`.
 - **Étape 5 au Sprint 1** : utilisateur non-root, aucun `.env` dans les couches ; **pas de vérification « modèle dans
   l'image »**, ajoutée au Sprint 4 (E5).
 - **Dépendances** : T1.10.
 - **Identifiants** : aucun du catalogue en propre ; la CI exécute tous ceux du sprint.
-- **Vérifiable** : les six étapes vertes sur `main`, e2e compris ; `check-test-catalog.py` lit ce plan et signale les
-  identifiants du sprint sans bloquer (P-15).
+- **Vérifiable** : les six étapes vertes sur `main`, e2e compris ; les étapes 1 à 5 tournent sur toute PR ;
+  `check-test-catalog.py` lit ce plan et signale les identifiants du sprint sans bloquer (P-15).
 
 ### T1.12 — Documentation d'exploitation du Sprint 1 et modèles GitHub
 
@@ -191,7 +197,7 @@ T1.1 ─► T1.2 ─► T1.3 ─► T1.4 ─► T1.5 ─► T1.6 ─► T1.7 ─
 
 | # | Tâche | Dépend de | Identifiants |
 |---|---|---|---|
-| T1.1 | Squelette et blocage réseau | — | — |
+| T1.1 | Squelette, blocage réseau et CI minimale (étapes 1 et 4) | — | — |
 | T1.2 | Noyau (`Clock`, `UTCDateTime`, configuration, logs) | T1.1 | T-DB-07, T-SEC-02, T-SEC-01 [logs], T-CFG-07 |
 | T1.3 | Accès base | T1.2 | T-DB-01, 03, 04, 05, 06 |
 | T1.4 | Migrations et `system_state` | T1.3 | T-DB-02, 08, T-DB-13 [pragma, check] |
@@ -201,7 +207,7 @@ T1.1 ─► T1.2 ─► T1.3 ─► T1.4 ─► T1.5 ─► T1.6 ─► T1.7 ─
 | T1.8 | Images et Compose | T1.7, #61 | T-SEC-08 |
 | T1.9 | `radar-dev` V0 (#62) | T1.8, #61 | T-CFG-11 |
 | T1.10 | e2e et doubles | T1.8, T1.9 | T-SEC-03, 06, T-SEC-09 [base], T-RES-10 |
-| T1.11 | CI et traçabilité | T1.10 | — |
+| T1.11 | CI complétée (six étapes) et traçabilité | T1.10 | — |
 | T1.12 | Documentation et modèles GitHub | T1.9, T1.11 | — |
 
 ## Identifiants visés
@@ -260,7 +266,7 @@ Milestone **S1**, label `type:tâche`, une issue par tâche. Aucune n'est créé
 
 | Titre | Tâche |
 |---|---|
-| S1 · T1.1 — Squelette du dépôt et blocage réseau des tests | T1.1 |
+| S1 · T1.1 — Squelette du dépôt, blocage réseau des tests et CI minimale | T1.1 |
 | S1 · T1.2 — Noyau : Clock, UTCDateTime, configuration typée, logs et nettoyage des secrets | T1.2 |
 | S1 · T1.3 — Accès base : moteurs, sessions, BEGIN IMMEDIATE, prérequis | T1.3 |
 | S1 · T1.4 — Migrations : Alembic, env.py, system_state, vérification de révision | T1.4 |
@@ -270,7 +276,7 @@ Milestone **S1**, label `type:tâche`, une issue par tâche. Aucune n'est créé
 | S1 · T1.8 — Images et Compose : backend, Caddy, SPA vide | T1.8 |
 | *(existe : #62)* S1 · radar-dev V0 | T1.9 |
 | S1 · T1.10 — Surcharge e2e, doubles branchés et tests e2e | T1.10 |
-| S1 · T1.11 — CI en six étapes et traçabilité du catalogue | T1.11 |
+| S1 · T1.11 — CI complétée jusqu'aux six étapes et traçabilité du catalogue | T1.11 |
 | S1 · T1.12 — Documentation d'exploitation et modèles GitHub | T1.12 |
 
 Issue 👤 déjà ouverte : **#61** (poste en Docker rootless), prérequis de T1.8 et T1.9.
