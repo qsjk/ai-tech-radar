@@ -1,6 +1,6 @@
 # Sprint 1 — Foundation
 
-Statut : planifié
+Statut : en cours
 
 > Plan rédigé le 2026-09-23 (T0.8, #11), à valider par le propriétaire avant toute implémentation (IX §57.8,
 > VIII §47.1). Contenu et acceptation : **VIII §47.2, Sprint 1** ; ce plan les découpe en tâches et ne les redéfinit pas.
