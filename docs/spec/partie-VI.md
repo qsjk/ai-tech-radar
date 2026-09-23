@@ -1,7 +1,7 @@
 # Partie VI — Interfaces
 
 > **Partie VI — Interfaces.** Version durcie issue de la revue §31–§34.
-> Dernière révision : 2026-09-22. Prend les Parties I, II, III, IV, V-A et V-B durcies comme acquis.
+> Dernière révision : 2026-09-23. Prend les Parties I, II, III, IV, V-A et V-B durcies comme acquis.
 
 > **Déjà tranché ailleurs, non repris ici** : l'app insère des `AIJob` de types prédéfinis (`enrich_article`, `resolve_event`) et n'en exécute jamais aucun ; elle répond immédiatement (Partie II §8.3, V-A §23.6) · coordination app ↔ worker par la base, sans IPC (Partie II §8.2) · alertes émises par le worker, sans reprise en V1 (Partie II §9.4) · tables `UserPreference`, `Setting`, `ReadState`, `EmergingDecision`, `AlertLog` (Partie III §11.12–11.13) · formule d'importance, fusion d'Events, catégories de tendance, cycle des candidats émergents (V-B) · repli / enrichi (`summary_origin`, `title_origin`, V-A §27.6–27.7) · le dashboard, la recherche, la hotness et les alertes déterministes fonctionnent sans la couche AI (Partie II §6).
 
@@ -309,7 +309,7 @@ Mono-utilisateur. **Un seul mécanisme : basic_auth Caddy.** Le `DASHBOARD_TOKEN
 
 - Identifiant et **hash bcrypt** fournis par l'environnement (`DASHBOARD_USER`, `DASHBOARD_PASSWORD_HASH`), injectés dans le `Caddyfile`. Jamais de mot de passe en clair dans le dépôt.
 - Mot de passe **aléatoire d'au moins 20 caractères**. Pas de limitation de tentatives en V1 : la longueur suffit pour un usage mono-utilisateur.
-- **Rotation** : nouveau hash dans l'environnement, redémarrage de `caddy`.
+- **Rotation** : nouveau hash dans l'environnement (`.env`), puis `docker compose up -d caddy` ; `docker compose restart` ne relit pas l'environnement (Partie IX décision 22, procédure §56.6-P4).
 - Les logs Caddy **n'enregistrent pas** l'en-tête `Authorization` (Partie VII §42).
 
 ### 32.2 Anti-CSRF
