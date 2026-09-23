@@ -420,3 +420,61 @@ Décision du propriétaire : —
 - **Bloque** : T0.4 à T0.8.
 
 Décision du propriétaire : —
+
+---
+
+## 3. Résultats des vérifications (IX §57.4)
+
+Aucune vérification n'est exécutée en T0.2. Elles sont jouées en **T0.3 (#6)**, qui consigne pour chacune la commande,
+la version et le résultat. Le planning (G1, §9) distingue les vérifications **bloquantes** des vérifications
+**contournables par ADR**.
+
+| # | Vérification | Attendu | Si échec | Résultat |
+|---|---|---|---|---|
+| V-01 | `paraphrase-multilingual-MiniLM-L12-v2` disponible dans `fastembed`, sur l'architecture cible (`amd64`, **IX décision 27**) | modèle chargé, 384 dimensions ; révision et empreinte sha256 du modèle notées pour épinglage au build | repli : autre modèle multilingue ≤ 384 dimensions supporté par fastembed, consigné dans l'ADR-0008 | à faire en T0.3 (#6) |
+| V-02 | SQLite de l'image de base Python retenue (voir E16) | ≥ 3.35, FTS5 et JSON1 compilés | autre image de base ou wheel SQLite, consigné | à faire en T0.3 (#6) |
+| V-03 | `BEGIN IMMEDIATE` avec SQLAlchemy 2.x async et aiosqlite | transaction d'écriture ouverte en `IMMEDIATE`, mécanisme noté (gestion des transactions du driver) | proposition alternative, question au propriétaire | à faire en T0.3 (#6) |
+| V-04 | WAL sur **volume nommé** Docker | `journal_mode=wal` effectif, fichiers `-wal` / `-shm` créés sur le volume | bloquant | à faire en T0.3 (#6) |
+| V-05 | restic en binaire statique pour l'architecture cible | version épinglée disponible | bloquant | à faire en T0.3 (#6) |
+| V-06 | onnxruntime et lingua pour l'architecture cible | wheels disponibles | bloquant | à faire en T0.3 (#6) |
+| V-07 | APScheduler 3.x sur Python 3.12 | dernière 3.x compatible, version notée | bloquant | à faire en T0.3 (#6) |
+| V-08 | Outils CI (analyse de secrets, audit backend et frontend) | outil retenu et version | outil équivalent, consigné | à faire en T0.3 (#6) |
+
+---
+
+## 4. Risques identifiés
+
+Probabilité et impact : faible · moyen · élevé.
+
+| # | Risque | Sprint | Probabilité | Impact | Parade proposée |
+|---|---|---|---|---|---|
+| R-01 | La Partie VII non réconciliée (E11) est lue telle quelle pendant l'implémentation : `.env.example` sans `HTTP_TEST_ALLOW_HOSTS`, racine en lecture seule reportée au Sprint 11, rollback et backup sans verrou | 1, 2, 11 | élevée tant que E11 n'est pas tranché | élevé | trancher E11 avant T0.4 ; en attendant, `CLAUDE.md` (T0.7) renvoie à CF-01 à CF-12 |
+| R-02 | Conflits de spec laissés ouverts (CF-15 à CF-25) et implémentés selon une seule des deux lectures | 1 à 11 | moyenne | moyen | appliquer les décisions dans une PR de spec dédiée (E21) avant T0.4 |
+| R-03 | `BEGIN IMMEDIATE` difficile à obtenir avec SQLAlchemy async et aiosqlite (V-03) : échecs immédiats « database is locked » entre les deux processus | 1 | moyenne | élevé | V-03 en T0.3 ; T-DB-04 dès le Sprint 1 ; repli documenté par question au propriétaire |
+| R-04 | Racine en lecture seule incompatible avec un cache ou un fichier temporaire d'onnxruntime, de fastembed ou de lingua | 1, 4 | moyenne | moyen | chemins de cache explicites vers `/tmp` (tmpfs) ou l'image ; T-SEC-09 joué dès l'arrivée de chaque bibliothèque |
+| R-05 | Échec d'une vérification bloquante de §57.4 (V-04 à V-07) | 0 | faible | élevé | arrêt, ADR et replanification (planning G1) |
+| R-06 | Le mécanisme de traçabilité (E1) rend la CI rouge dès le Sprint 1, ou au contraire ne contrôle plus rien | 1 | élevée si E1 n'est pas tranché | moyen | trancher E1 ; tester `check-test-catalog.py` sur le catalogue réel dès le Sprint 1 |
+| R-07 | Extraction des identifiants de test fragile : une retouche de mise en forme de **VIII §50.5** casse `check-test-catalog.py` | 1 à 11 | moyenne | faible | motif d'extraction simple (`T-[A-Z]+-\d{2}` en première colonne) et test du script lui-même |
+| R-08 | Durée de la CI : e2e Compose et build des images dans GitHub Actions dépassent la cible de 10 min (**VIII §49.3**) | 1, 4 | moyenne | faible | e2e seulement sur `main` et en nightly (**VIII décision 12**) ; caches uv, npm, couches Docker |
+| R-09 | Reddit bloque les IP de datacenter (**IV §15.4**) : canal perdu en pré-production | pré-prod | moyenne | moyen | traiter comme une panne de source ; mode API reporté en V2 ; le constater tôt sur le VPS |
+| R-10 | RAM du worker (modèle d'embeddings, lingua, matrice) au-delà de la cible sur le VPS prévu (M1) | 4, pré-prod | moyenne | moyen | M1 indicative au Sprint 4 ; VPS provisionné tôt pour jouer `radar-load` (planning §7) |
+| R-11 | Seuils de clustering inadaptés aux données réelles : bruit ou sous-regroupement jusqu'à la calibration | 4, pré-prod | élevée | moyen | `cluster-calibrate` sur 72 h réelles (**VIII §47.4**) ; recalage unique J7–J10 |
+| R-12 | Accès provider indisponible pour enregistrer les sorties LLM réelles (E8) : T-LLM-16 rouge | 7, 8 | moyenne | moyen | option B de E8 (scinder T-LLM-16) décidée d'avance comme repli |
+| R-13 | Gabarits `webpage` cassés par un changement du site suivi | 2, exploitation | élevée | faible | run `failed` sur liste vide (**IV §15.4**) ; fixtures de gabarit cassé (T-COL-01) |
+| R-14 | Stack nouvelle pour le propriétaire (asyncio, SQLAlchemy async, React) : relecture ligne à ligne plus longue que prévu | 1 à 3 | élevée | moyen | tampon de 25 % du planning ; recalage obligatoire après les Sprints 1 et 4 (planning §8) |
+| R-15 | Perte de `RESTIC_PASSWORD` ou du `.env` : backups inutilisables | 11, exploitation | faible | élevé | copie hors VPS obligatoire (**VII §38.2, §43.4**) ; exercice de restauration M7 sur machine neuve |
+| R-16 | Dépendances et références vers des documents absents du dépôt (V0.3 §25, E18) | 6 | élevée | faible | trancher E18 ; tout renvoi de la spec pointe vers un fichier du dépôt |
+
+---
+
+## 5. Questions ouvertes
+
+Besoins d'information, distincts des décisions. Ils doivent être vides à l'acceptation du Sprint 0 (**IX §57.5**).
+
+| # | Question | Pourquoi | Utile pour |
+|---|---|---|---|
+| Q-01 | Sur quel système travaillez-vous en développement (Linux, macOS, Windows avec WSL) et avec quelle version de Docker et de Compose ? | `/data` en volume nommé (**IX décision 26**), autorité interne de Caddy sur `https://localhost` (**VIII décision 3**), vérification V-04 dans les mêmes conditions que votre poste | T0.3, T0.5, Sprint 1 |
+| Q-02 | Disposez-vous du texte de la V0.3, en particulier du §25 (choix du gateway, check-list de mesure) ? | les renvois « V0.3 §25 » de **V-A §25** et **VII §45.4** pointent vers un document absent du dépôt (E18) | E18, Sprint 6 |
+| Q-03 | Quelle valeur de `HTTP_CONTACT` (URL ou adresse de contact) utiliser, y compris dans le `.env` de développement ? | le worker refuse de démarrer sans elle (**IV §22**) et elle figure dans chaque User-Agent | Sprint 1 |
+| Q-04 | Quelles sources, topics et entités mettre dans le `config/` du dépôt au Sprint 1 : un jeu de démonstration minimal, ou déjà un extrait de votre curation ? | `validate-config` tourne en CI dès le Sprint 1 sur le `config/` du dépôt (**VIII §49.2**, T-CFG-01) ; le planning ne démarre la curation qu'au Sprint 2 | T0.5, T0.8 |
+| Q-05 | Faut-il corriger aussi les annexes A et B de `docs/planning.md`, qui citent `docs/spec/SPEC-V0.4.md` (fichier qui n'existe pas dans le dépôt) ? | la consigne de T0.2 limite la mise à jour du planning à C11, E9 et la fiche S0 | planning |
