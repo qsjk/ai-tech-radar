@@ -1138,8 +1138,9 @@ En résumé, pour le schéma :
 
 ## 7. Incohérences relevées
 
-Écarts entre parties de la spec, ou trous, relevés en rédigeant ce document. **Aucun n'est tranché ici** : chacun
-cite ses passages. Les identifiants `I-nn` sont stables.
+Écarts entre parties de la spec, ou trous, relevés en rédigeant ce document (T0.4, #68), puis à sa revue (I-18).
+Chacun cite ses passages. Le propriétaire les a tous tranchés le 2026-09-23 ; les décisions sont appliquées à la spec
+et à ce document par T0.4b (#69). Les identifiants `I-nn` sont stables.
 
 #### I-01 — Nommage SQL des tables
 
@@ -1147,6 +1148,8 @@ cite ses passages. Les identifiants `I-nn` sont stables.
   `article`, `embedding` (V-A §23.4, §24.4, §24.5), `article_fts` (III §11.14). Elle ne fixe pas le nom SQL des
   tables composées (`CollectorRun`, `ArticleTopic`, `EmergingCandidate`…), ni la convention (`aijob` est écrit sans
   séparateur).
+
+Décision (2026-09-23) : tables SQL en `snake_case` ; `aijob` est gardé tel qu'il figure dans les requêtes de V-A — appliquée dans III §11.0 et dans ce document (en-tête, §1.1, blocs SQL du §3).
 
 #### I-02 — Liste des tables portant `created_at` et `updated_at`
 
@@ -1158,10 +1161,15 @@ cite ses passages. Les identifiants `I-nn` sont stables.
   `EmergingDecision.decided_at`, `CollectorRun.started_at`, `EmergingCandidate.first_detected_at`).
 - Non fixé : quelles tables sont « modifiables », et si l'horodatage métier remplace `created_at` / `updated_at`.
 
+Décision (2026-09-23) : `created_at` sur toutes les tables à identifiant `id` et sur les deux tables de liaison ; `updated_at` sur les tables dont les lignes sont modifiées après insertion, listées explicitement — appliquée dans III §11.0 et dans ce document (§1.1, §3).
+
 #### I-03 — Nullabilité et défauts non précisés
 
 - **III §11.0** fixe la règle « `NULL` = inconnu », mais la plupart des colonnes de III §11 n'ont ni nullabilité ni
-  défaut écrits. Elles sont marquées `n. p.` dans les tableaux du §3 ; la liste par table est donnée en I-15.
+  défaut écrits. Elles étaient marquées « non précisé » dans les tableaux du §3 ; la liste par table est donnée en
+  I-15.
+
+Décision (2026-09-23) : non nul par défaut ; nullable seulement si la spec le dit ou si `NULL` a un sens (valeur inconnue ou absente), chaque colonne nullable étant justifiée — appliquée dans III §11.0 et dans ce document (§1.1, tous les tableaux du §3).
 
 #### I-04 — Défaut de `AIJob.next_attempt_at`
 
@@ -1173,6 +1181,8 @@ cite ses passages. Les identifiants `I-nn` sont stables.
   `AAAA-MM-JJ HH:MM:SS`, sans `T` ni fuseau, alors que `UTCDateTime` stocke de l'ISO-8601 avec fuseau (III §10.6).
   Non fixé : défaut SQL (et son format) ou défaut côté SQLAlchemy (`default=` Python, lu par la `Clock`).
 
+Décision (2026-09-23) : `AIJob.next_attempt_at` est non nul et fourni par l'application (la `Clock`), sans défaut SQL — appliquée dans III §10.6, §11.10 et dans ce document (§2.4, §3.11).
+
 #### I-05 — Exclusions des topics sans colonne
 
 - **IV §16.3** : chaque topic de `topics.yaml` porte une liste `exclude` (termes masqués avant matching, §20.3).
@@ -1180,10 +1190,14 @@ cite ses passages. Les identifiants `I-nn` sont stables.
   `keywords` est décrit comme « mots-clés et motifs utilisés par le relevance filter ». Non fixé : si `exclude` est
   stocké dans `keywords`, dans une autre colonne, ou seulement en mémoire.
 
+Décision (2026-09-23) : `Topic.keywords` porte `{include, exclude}` — appliquée dans III §11.4, IV §16.3 et dans ce document (§3.5).
+
 #### I-06 — `created_at` sur `ArticleTopic` mais pas sur `ArticleEntity`
 
 - **III §11.5** : `ArticleTopic` = `article_id · topic_id · method · confidence · created_at`.
 - **III §11.7** : `ArticleEntity` = `article_id · entity_id · method · confidence`, sans `created_at`.
+
+Décision (2026-09-23) : `created_at` sur `ArticleEntity`, comme sur `ArticleTopic` — appliquée dans III §11.0, §11.7 et dans ce document (§3.8).
 
 #### I-07 — Index de lecture non spécifiés
 
@@ -1195,11 +1209,15 @@ cite ses passages. Les identifiants `I-nn` sont stables.
 - La spec ne dit pas si ces index sont voulus ou laissés à l'implémenteur (VII « Points d'interprétation » ne les
   cite pas).
 
+Décision (2026-09-23) : index `collector_run(source_id, finished_at)`, `article_topic(topic_id)` et `article_entity(entity_id)` — appliquée dans III §11.5, §11.7, §11.11 et dans ce document (§3.4, §3.7, §3.8).
+
 #### I-08 — Exemple d'idempotence avec un `job_type` supprimé
 
 - **III §11.10** : « par exemple `extract_topics` supprime puis réécrit les lignes `method=llm` de l'article ».
 - **V-A §23.2** et **V-A décision 3** : catalogue V1 réduit à `enrich_article · resolve_event · discover_topics` ;
   `extract_topics` est fusionné dans `enrich_article`.
+
+Décision (2026-09-23) : l'exemple d'idempotence cite `enrich_article` — appliquée dans III §11.10.
 
 #### I-09 — Création d'`AIJob` par l'app pour le rattachement de l'historique
 
@@ -1210,11 +1228,15 @@ cite ses passages. Les identifiants `I-nn` sont stables.
   `enrich_article` et `resolve_event` (régénération). **V-A §23.6** : la relance d'un `dead_letter` est un `UPDATE`,
   pas une création.
 
+Décision (2026-09-23) : le rattachement de l'historique à un topic créé est un traitement déterministe, sans `AIJob` ; l'app ne crée que des jobs de régénération — appliquée dans II §8.3.
+
 #### I-10 — Représentant d'un Event
 
 - **III §11.3** : `representative_article_id` = « article le plus ancien du groupe » (sans critère de date ni de
   statut) ; **II §7.2** : titre de repli = « titre de l'article le plus ancien du groupe ».
 - **V-B décision 10, §28.8** : représentant = **membre `ready` le plus ancien par `published_at`**.
+
+Décision (2026-09-23) : représentant d'un Event = membre `ready` le plus ancien par `published_at` — appliquée dans III §11.3, II §7.2 et dans ce document (§3.9).
 
 #### I-11 — Valeur de `Embedding.model`
 
@@ -1224,6 +1246,8 @@ cite ses passages. Les identifiants `I-nn` sont stables.
   fastembed (`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`) et le dépôt téléchargé
   (`qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q`) diffèrent (rapport de cadrage §3, V-01).
 
+Décision (2026-09-23) : `Embedding.model` = nom du modèle fastembed + `@` + révision courte ; un changement de révision produit de nouvelles lignes — appliquée dans III §11.9, §12.4 et dans ce document (§3.10).
+
 #### I-12 — `AlertLog.subject_type` et `subject_id` hors alertes `system`
 
 - **III §11.13** : `subject_type` · `subject_id`, sans liste de valeurs ni `CHECK` ; seule la valeur du type
@@ -1232,6 +1256,8 @@ cite ses passages. Les identifiants `I-nn` sont stables.
   (`weekly_digest`). Les valeurs de `subject_type` et le contenu de `subject_id` pour un digest (jour, semaine) ne
   sont pas écrits.
 
+Décision (2026-09-23) : `AlertLog.subject_type` ∈ {`event`, `emerging_candidate`, `digest`, `system`} avec `CHECK` ; `subject_id` `NULL` pour `digest` et `system` — appliquée dans III §11.13 et dans ce document (§3.18).
+
 #### I-13 — `AlertLog` sans horodatage
 
 - **III §11.13** : colonnes de `AlertLog` sans `created_at` ni date d'envoi.
@@ -1239,6 +1265,8 @@ cite ses passages. Les identifiants `I-nn` sont stables.
   plafond compte les alertes « par jour local » ; **III §13**, `AlertLog` est conservé **1 an** ; **VII §39.2**,
   alertes par statut « sur 24 h ». La convention III §11.0 (`created_at`) couvrirait le besoin, mais la table ne le
   liste pas (voir aussi I-02).
+
+Décision (2026-09-23) : `AlertLog` reçoit `created_at` (et `updated_at`, par I-02) — appliquée dans III §11.0, §11.13 et dans ce document (§3.18).
 
 #### I-14 — Schémas de valeur de certaines clés `SystemState`
 
@@ -1250,9 +1278,11 @@ cite ses passages. Les identifiants `I-nn` sont stables.
   schéma écrit pour la valeur stockée.
 - **`trends_since`** : « horodatage » (V-B §29.3), sans forme JSON précisée (chaîne ISO-8601 ou objet).
 
+Décision (2026-09-23) : `trends_last_run` = `{at, duration_s, status, error}` · `embeddings` = `{state, since}` · `trends_since` = `{at}` — appliquée dans III §11.13 et dans ce document (§3.19).
+
 #### I-15 — Colonnes dont la nullabilité n'est pas écrite
 
-Complète I-03. Colonnes marquées `n. p.` au §3 (III §11 ne dit ni « non nul » ni « nullable ») :
+Complète I-03. Colonnes dont la nullabilité n'était pas écrite (III §11 ne disait ni « non nul » ni « nullable ») :
 
 - `Source` : `key`, `name`, `type`, `url`, `config`, `enabled`, `poll_interval`, `relevance`, `extract`, `checkpoint`, `last_success_at`, `last_error`, `last_http_status`.
 - `Article` : `source_id`, `url`, `canonical_url`, `title`, `relevance_score`, `status`, `summary_origin`, `metrics`, `clustered_semantic`.
@@ -1273,6 +1303,8 @@ Complète I-03. Colonnes marquées `n. p.` au §3 (III §11 ne dit ni « non nul
 - `AlertLog` : `alert_type`, `subject_type`, `channel`, `status`, `error`, `dedup_key`.
 - `SystemState` : `value`, `updated_at`.
 
+Décision (2026-09-23) : même règle que I-03 : chaque colonne de la liste est désormais `non` ou `oui`, chaque `oui` justifié — appliquée dans III §11.0 et dans ce document (§3).
+
 #### I-16 — Reconstruction de table et `PRAGMA foreign_keys=ON`
 
 - **III §10.2** : `PRAGMA foreign_keys=ON` sur **toute nouvelle connexion**, par l'écouteur `connect`.
@@ -1283,6 +1315,8 @@ Complète I-03. Colonnes marquées `n. p.` au §3 (III §11 ne dit ni « non nul
   échouerait sur les `RESTRICT`. La spec ne dit pas si la connexion du service `migrate` désactive les clés
   étrangères pendant une reconstruction.
 
+Décision (2026-09-23) : la connexion de `migrate` fonctionne avec `PRAGMA foreign_keys=OFF`, posé avant l'ouverture de la transaction dans `env.py` ; chaque migration se termine par `PRAGMA foreign_key_check` et échoue sur une violation ; une migration qui reconstruit `article` recrée les triggers de `article_fts` ; `app` et `worker` gardent `foreign_keys=ON` — appliquée dans III §10.2, §10.5 et dans ce document (§2.2, §5).
+
 #### I-17 — Dates de référence des rétentions
 
 - **III §13** : `AIJob` terminés « supprimés à 30 jours », `CollectorRun` « 30 jours », ligne `Article` `filtered`
@@ -1290,3 +1324,15 @@ Complète I-03. Colonnes marquées `n. p.` au §3 (III §11 ne dit ni « non nul
 - Les colonnes qui portent ces délais ne sont pas nommées : `created_at` ou `completed_at` pour `AIJob` ;
   `started_at` ou `finished_at` pour `CollectorRun` ; `discovered_at` ou `published_at` pour `Article` ; aucune
   colonne de date pour `AlertLog` (I-13).
+
+Décision (2026-09-23) : départ des délais : `AIJob` → `completed_at` · `CollectorRun` → `finished_at` · article `filtered` → `discovered_at` · `AlertLog` → `created_at` — appliquée dans III §13 et dans ce document (§6).
+
+#### I-18 — Déclenchement du trigger de mise à jour d'`article_fts`
+
+- **III §11.14** : l'index est maintenu par des triggers « sur insertion, mise à jour et suppression d'`Article` ».
+- **Ce document, §3.20** (T0.4, #68) : trigger `AFTER UPDATE ON article`. Constat de la revue de #68 : toute mise à
+  jour d'un article (`event_id`, `status`, `clustered_at`, `processed_at`, purge du contenu…) réécrirait son entrée
+  dans l'index, alors que seules `title` et `summary` sont indexées.
+
+Décision (2026-09-23) : le trigger de mise à jour ne se déclenche que sur `UPDATE OF title, summary` — appliquée dans
+III §11.14 et dans ce document (§3.20).
