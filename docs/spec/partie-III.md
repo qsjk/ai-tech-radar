@@ -90,7 +90,7 @@ La mise en œuvre suit la technique documentée par SQLAlchemy (désactivation d
 
 - **Tout en UTC** en base, stocké en texte ISO-8601.
 - Un type SQLAlchemy dédié (`UTCDateTime`) **refuse les datetimes sans fuseau** à l'écriture et renvoie des datetimes UTC à la lecture. Conversion en heure locale **uniquement à l'affichage**.
-- **Aucune expression temporelle SQL** (`CURRENT_TIMESTAMP`, `datetime('now')`) dans le code ni dans les requêtes : l'instant est toujours fourni par l'application, via la `Clock` (Partie VIII décision 7). Les valeurs par défaut de colonnes, comme celle de `AIJob.next_attempt_at`, restent un filet de sécurité.
+- **Aucune expression temporelle SQL** (`CURRENT_TIMESTAMP`, `datetime('now')`) dans le code ni dans les requêtes : l'instant est toujours fourni par l'application, via la `Clock` (Partie VIII décision 7). Aucune colonne n'a de défaut temporel en SQL : `AIJob.next_attempt_at` est fourni par l'application (§11.10).
 
 ### 10.7 Transactions courtes
 
@@ -100,8 +100,13 @@ Rappel des contraintes de la Partie II §8.6 : transactions d'écriture découp�
 
 ### 11.0 Conventions
 
+- **Nommage SQL** : tables en `snake_case` (`article`, `article_topic`, `emerging_candidate`…). Exception : `aijob`, gardé tel qu'il figure dans les requêtes de la Partie V-A.
 - **Clé primaire** : `id INTEGER PRIMARY KEY` partout (sauf tables de liaison et clé/valeur).
-- **Horodatage** : `created_at` et, pour les tables modifiables, `updated_at` — type `UTCDateTime` (§10.6).
+- **Horodatage** — type `UTCDateTime` (§10.6) :
+  - `created_at` sur **toutes les tables à identifiant `id`**, ainsi que sur les tables de liaison `ArticleTopic` et `ArticleEntity` ;
+  - `updated_at` sur les tables dont les lignes sont **modifiées après insertion** : `Source` · `Article` · `Topic` · `Entity` · `Event` · `Embedding` (rejeu, Partie II §9.1) · `AIJob` · `Signal` (upsert horaire) · `EmergingCandidate` · `EmergingDecision` (upsert) · `UserPreference` (upsert) · `ReadState` · `AlertLog` (T2 de la séquence d'envoi) · `Setting` · `SystemState` ;
+  - pas de `updated_at` sur `CollectorRun` (écrit une fois, en fin de run), `ArticleTopic` et `ArticleEntity` (remplacées par suppression puis insertion).
+- **Nullabilité** : **non nul par défaut**. Une colonne n'est nullable que si la spec le dit ou si `NULL` a un sens (valeur inconnue ou absente). `docs/database.md` donne la nullabilité de chaque colonne et justifie chaque colonne nullable.
 - **JSON** : colonnes texte JSON, **validées par un schéma Pydantic** à l'écriture.
 - **Deux sortes d'énumérations** :
   - les **machines à états** (`status`, `*_origin`, `method`) sont fermées → contrainte `CHECK` en base ;
@@ -166,7 +171,7 @@ Rappel des contraintes de la Partie II §8.6 : transactions d'écriture découp�
 | `title` | texte, non nul | repli = titre de l'article représentatif |
 | `title_origin` | `CHECK {fallback, llm}` | indique ce que `resolve_event` doit encore enrichir |
 | `description` | nullable | produite par `resolve_event` |
-| `representative_article_id` | FK `Article` | article le plus ancien du groupe |
+| `representative_article_id` | FK `Article` | membre `ready` le plus ancien par `published_at` (Partie V-B §28.8) |
 | `first_seen_at` · `last_seen_at` | | |
 | `article_count` | entier | nombre de membres `ready` |
 | `distinct_source_count` | entier, non nul, défaut 1 | **hotness** |
@@ -184,7 +189,7 @@ Rappel des contraintes de la Partie II §8.6 : transactions d'écriture découp�
 
 ### 11.4 Topic — *écrit par le worker*
 
-`slug` (**UNIQUE**) · `name` · `description` · `parent_id` (FK `Topic`) · `origin` `CHECK {seeded, discovered, user}` · `keywords` (JSON — mots-clés et motifs utilisés par le relevance filter) · `enabled`.
+`slug` (**UNIQUE**) · `name` · `description` · `parent_id` (FK `Topic`) · `origin` `CHECK {seeded, discovered, user}` · `keywords` (JSON `{include, exclude}` — `include` : mots-clés et motifs utilisés par le relevance filter ; `exclude` : termes masqués avant matching, Partie IV §16.3, §20.3) · `enabled`.
 
 `origin` remplace le booléen `seeded` de la V0.3. Le suivi et la mise en sourdine ne sont **pas** ici : ce sont des préférences (§11.12).
 
@@ -192,6 +197,7 @@ Rappel des contraintes de la Partie II §8.6 : transactions d'écriture découp�
 
 `article_id` · `topic_id` · `method` `CHECK {keyword, llm}` · `confidence` · `created_at`.
 **Clé** : `(article_id, topic_id, method)` — un même topic peut être attribué par les deux méthodes ; les tendances comptent les **articles distincts**.
+**Index** : `topic_id` (lecture par topic : Trend Engine, vue Topic).
 
 ### 11.6 Entity — *écrit par le worker*
 
@@ -202,8 +208,9 @@ Les **alias** d'entités ne sont pas en base : ils vivent dans `config/entities.
 
 ### 11.7 ArticleEntity — *écrit par le worker*
 
-`article_id` · `entity_id` · `method` `CHECK {keyword, llm}` · `confidence`.
+`article_id` · `entity_id` · `method` `CHECK {keyword, llm}` · `confidence` · `created_at`.
 **Clé** : `(article_id, entity_id, method)`.
+**Index** : `entity_id` (entités communes du clustering, Partie V-B §28.4).
 
 ### 11.8 Signal — *écrit par le worker*
 
@@ -215,6 +222,8 @@ Les **alias** d'entités ne sont pas en base : ils vivent dans `config/entities.
 
 `article_id` · `model` · `dim` (nullable) · `vector` (BLOB, `float32`, **normalisé**, nullable) · `error` (texte, nullable) · `created_at`.
 **Contrainte** : `UNIQUE(article_id, model)`. Détails en §12.
+
+`model` = nom du modèle fastembed + `@` + révision courte (ex. `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2@faf4aa42`). Un changement de révision produit de nouvelles lignes, comme un changement de modèle (§12.5).
 
 Une ligne **sans vecteur** (`vector` `NULL`, `error` renseigné) enregistre un échec définitif d'embedding (Partie V-A §24.4) : elle compte comme traitée et elle est **exclue de la similarité**.
 
@@ -228,7 +237,7 @@ Une ligne **sans vecteur** (`vector` `NULL`, `error` renseigné) enregistre un �
 | `status` | `CHECK {pending, processing, completed, failed, retry, dead_letter, cancelled, skipped}` | |
 | `skip_reason` | texte, nullable (validé par le code) | motif d'un `skipped` (Partie V-A §23.3) |
 | `attempts` · `max_attempts` | entiers | |
-| `next_attempt_at` | non nul, défaut = maintenant | |
+| `next_attempt_at` | non nul, **fourni par l'application** (la `Clock`), sans défaut SQL | |
 | `last_error` | texte | |
 | `created_by` | `CHECK {worker, app}` | |
 | `started_at` · `completed_at` | nullable | |
@@ -240,12 +249,13 @@ Une ligne **sans vecteur** (`vector` `NULL`, `error` renseigné) enregistre un �
 - **Un seul job actif par cible et par type** : index unique partiel sur `(job_type, entity_type, entity_id)` `WHERE status IN ('pending','processing','retry')`. Une seconde demande identique est ignorée sans erreur.
 - **Index de claim** : `(status, next_attempt_at, priority)`.
 
-**Idempotence des résultats** : elle ne repose pas sur `AIJob` mais sur les tables métier. Un job **remplace** ses propres résultats pour sa cible dans une seule transaction — par exemple `extract_topics` supprime puis réécrit les lignes `method=llm` de l'article, sans toucher aux lignes `method=keyword`. Rejouer un job produit donc le même état final.
+**Idempotence des résultats** : elle ne repose pas sur `AIJob` mais sur les tables métier. Un job **remplace** ses propres résultats pour sa cible dans une seule transaction — par exemple `enrich_article` supprime puis réécrit les lignes `method=llm` de l'article, sans toucher aux lignes `method=keyword`. Rejouer un job produit donc le même état final.
 
 ### 11.11 CollectorRun — *écrit par le worker* (nouveau)
 
 Une ligne par exécution d'un collector : `source_id` · `started_at` · `finished_at` · `status` `CHECK {success, partial, failed}` · `items_fetched` · `items_created` · `items_duplicate` · `items_filtered` · `items_skipped` · `items_too_old` · `extractions_attempted` · `extractions_failed` · `requests_count` · `http_status` · `error`.
 Alimente les métriques par source (§39) ; `items_skipped` compte les items malformés, non persistés. Définition des compteurs et invariant : Partie IV §14.4.
+**Index** : `(source_id, finished_at)` (disjoncteur par source, Partie IV §21.5 ; rétention §13).
 
 ### 11.12 Tables écrites par l'app (nouvelles)
 
@@ -263,10 +273,10 @@ Alimente les métriques par source (§39) ; `items_skipped` compte les items mal
 | Table | Colonnes | Contrainte |
 |---|---|---|
 | **`EmergingCandidate`** | `key` (terme normalisé) · `kind` `CHECK {ngram, repository}` · `label` · `first_detected_at` · `last_evidence_at` · `evidence` (JSON validé par Pydantic, Partie V-B §30.4) · `ref_mentions` · `ref_channel_count` · `last_significant_at` · `resurfaced_at` · `backfilled_at` · `topic_id` (FK, renseigné quand le worker crée le topic suite à `create_topic`) · résultat de `discover_topics` : `llm_label` · `llm_description` · `covered_by_topic_id` (FK `Topic`, nullable) · `suggested_keywords` (JSON) · `assessed_at` | `UNIQUE(key)` |
-| **`AlertLog`** | `alert_type` `CHECK {important_event, emerging_topic, daily_digest, weekly_digest, system}` · `subject_type` · `subject_id` · `channel` `CHECK {email, telegram}` · `status` `CHECK {sending, sent, failed, suppressed}` · `error` · `dedup_key` | `UNIQUE(dedup_key)` — une alerte n'est jamais émise deux fois sur un même canal, même en échec (pas de reprise en V1) ; `dedup_key` inclut le canal (Partie VI §33.4) ; index `(alert_type, subject_type, subject_id)` |
+| **`AlertLog`** | `alert_type` `CHECK {important_event, emerging_topic, daily_digest, weekly_digest, system}` · `subject_type` `CHECK {event, emerging_candidate, digest, system}` · `subject_id` (`NULL` pour `digest` et `system`) · `channel` `CHECK {email, telegram}` · `status` `CHECK {sending, sent, failed, suppressed}` · `error` · `dedup_key` · `created_at` | `UNIQUE(dedup_key)` — une alerte n'est jamais émise deux fois sur un même canal, même en échec (pas de reprise en V1) ; `dedup_key` inclut le canal (Partie VI §33.4) ; index `(alert_type, subject_type, subject_id)` |
 | **`SystemState`** | `key` (PK) · `value` (JSON) · `updated_at` | chaque clé a un seul écrivain ; clés ci-dessous |
 
-Pour le type `system`, `subject_type = 'system'` et `subject_id` est `NULL` : la condition est portée par `dedup_key` (Partie VII §39.6).
+Pour le type `system`, `subject_type = 'system'` et `subject_id` est `NULL` : la condition est portée par `dedup_key` (Partie VII §39.6). Pour un digest, `subject_type = 'digest'` et `subject_id` est `NULL` : la période est portée par `dedup_key` (Partie VI §33.4).
 
 **Clés `SystemState`**, toutes écrites par le worker :
 
@@ -276,15 +286,16 @@ Pour le type `system`, `subject_type = 'system'` et `subject_id` est `NULL` : la
 | `last_backup` | `{at, snapshot_id, size_bytes, duration_s}` | Partie VII §38.2 |
 | `backup_last_attempt` · `last_restore_test` | dernier essai de backup · dernier test de restauration | Partie VII §38 |
 | `ops_metrics` · `ops_conditions` · `alerting` | instantané des métriques · conditions actives · état des canaux | Partie VII §39.3 |
-| `llm_gateway` · `llm_usage` · `embeddings` | disjoncteur LLM · budget quotidien · état du moteur d'embeddings | Partie V-A §24 |
-| `trends_since` | première insertion d'un article `ready`, écrite une fois par le runner | Partie V-B §29.3 |
-| `trends_last_run` | dernier calcul du Trend Engine | Partie V-B §29.1 |
+| `llm_gateway` · `llm_usage` | disjoncteur LLM · budget quotidien | Partie V-A §24 |
+| `embeddings` | `{state, since}` : état du moteur d'embeddings (`up` / `down`) | Partie V-A §24.4 |
+| `trends_since` | `{at}` : première insertion d'un article `ready`, écrite une fois par le runner | Partie V-B §29.3 |
+| `trends_last_run` | `{at, duration_s, status, error}` : dernier calcul du Trend Engine | Partie V-B §29.1 |
 
 Le candidat émergent et la décision de l'utilisateur sont **deux tables distinctes** pour respecter la règle d'un seul écrivain par table.
 
 ### 11.14 Index plein texte `article_fts`
 
-Table virtuelle **FTS5** sur `title` et `summary`, en mode *external content* (adossée à `Article`), tokenizer `unicode61 remove_diacritics 2`. Maintenue par **triggers** sur insertion, mise à jour et suppression d'`Article` — donc écrite par le worker. La mise à jour d'un résumé par le LLM met l'index à jour automatiquement.
+Table virtuelle **FTS5** sur `title` et `summary`, en mode *external content* (adossée à `Article`), tokenizer `unicode61 remove_diacritics 2`. Maintenue par **triggers** sur insertion, mise à jour de `title` ou `summary` (`AFTER UPDATE OF title, summary`) et suppression d'`Article` — donc écrite par le worker. La mise à jour d'un résumé par le LLM met l'index à jour automatiquement.
 
 ## 12. Embeddings
 
@@ -314,7 +325,7 @@ Les embeddings appartiennent à la **couche cœur** (Partie II §6.1) : calcul l
 - **Cosine brute-force numpy** sur une **fenêtre glissante** : les articles `ready` des dernières heures (même fenêtre que le clustering, 72 h par défaut, configurable).
 - La fenêtre est tenue **en mémoire dans le worker**, sous forme de matrice, mise à jour à chaque nouvel embedding et reconstruite depuis la base au démarrage. Ordre de grandeur : 2 000 articles × 384 dimensions × 4 octets ≈ 3 Mo.
 - **Deux seuils sur le même calcul** (valeurs configurables, à calibrer) : seuil haut → `duplicate` ; seuil médian → candidat même Event (Partie II §7.2).
-- On ne compare **que des vecteurs produits par le même modèle**.
+- On ne compare **que des vecteurs produits par le même modèle**, c'est-à-dire de même `Embedding.model`, révision comprise (§11.9).
 
 ### 12.5 Changement de modèle
 
@@ -329,14 +340,14 @@ Un nouveau modèle produit de nouvelles lignes (`model` différent). Les anciens
 | `Article.content` — article `ready` | purgé à `processed_at` **+ 1 jour** (configurable) ; **jamais** tant qu'un job de l'article est en `dead_letter` |
 | `Article.content` — article `filtered` ou `duplicate` | purgé **immédiatement** |
 | Ligne `Article` — `ready` ou `duplicate` | **indéfinie** (titre, URLs, métadonnées, résumé, hash) |
-| Ligne `Article` — `filtered` | **supprimée à 30 jours** |
+| Ligne `Article` — `filtered` | **supprimée 30 jours après `discovered_at`** |
 | `Event` · `Topic` · `Entity` · tables de liaison | indéfinie |
 | `Embedding` | indéfinie (volume faible ; utile pour la recherche sémantique V2) |
 | `Signal` | valeurs horaires conservées 30 jours, puis seule la ligne de `window_end` = 00:00 UTC est conservée, indéfiniment (une valeur par jour et par topic/fenêtre) |
-| `AIJob` — `completed` · `failed` · `cancelled` · `skipped` | supprimé à 30 jours |
+| `AIJob` — `completed` · `failed` · `cancelled` · `skipped` | supprimé 30 jours après `completed_at` |
 | `AIJob` — `dead_letter` | conservé jusqu'à action de l'utilisateur (relance ou abandon) |
-| `CollectorRun` | 30 jours |
-| `AlertLog` | 1 an (sert à la dédup des alertes) |
+| `CollectorRun` | 30 jours après `finished_at` |
+| `AlertLog` | 1 an après `created_at` (sert à la dédup des alertes) |
 | `UserPreference` · `Setting` · `ReadState` · `EmergingCandidate` · `EmergingDecision` · `SystemState` | indéfinie |
 
 **Effet de bord accepté** : un item `filtered` supprimé à 30 jours pourrait être re-collecté s'il réapparaît dans un flux ; il serait simplement réévalué et à nouveau écarté. Le checkpoint de collecte rend ce cas rare.
