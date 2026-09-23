@@ -3,7 +3,7 @@
 Plateforme personnelle de veille technologique qui collecte, dédoublonne, regroupe et hiérarchise l'actualité technique,
 et reste pleinement utilisable quand l'intelligence AI est indisponible.
 
-**Version** : V0.4, impacts reportés le 2026-09-22 (Sprint 0, T0.1). Le contenu vit dans `docs/spec/`, une partie par fichier ; ce fichier n'en est que l'index.
+**Version** : V0.4, impacts reportés le 2026-09-23 (Sprint 0 : T0.1, puis réconciliation de la Partie VII par T0.2b, #67). Le contenu vit dans `docs/spec/`, une partie par fichier ; ce fichier n'en est que l'index.
 
 ## Sommaire
 
