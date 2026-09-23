@@ -90,6 +90,8 @@ ai-tech-radar/
 ├── .env.example               # VII §36.7
 ├── .gitignore · .dockerignore # .env exclu des deux
 ├── .audit-exceptions.yaml     # exceptions d'audit datées (§49.4)
+├── .claude/                   # outillage de l'agent de développement (E22, ADR-0021) :
+│                              # permissions de projet (#62), skill radar-dev V1 (#63)
 ├── .github/workflows/
 │   ├── ci.yml                 # push, PR, main (§49.1)
 │   └── scheduled.yml          # nightly, audit hebdomadaire, rebuild mensuel
