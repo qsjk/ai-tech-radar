@@ -619,7 +619,7 @@ Décision (2026-09-23) : option A retenue : uid et gid 10001 fixes ; `/data` cr�
 - **Recommandation** : aucun choix ici ; l'ADR-0021 fixe le mode de développement (rootless ou non) et, s'il est
   rootless, la parade retenue pour chaque écart.
 
-Décision (2026-09-23) : reste ouvert ; il est tranché par l'ADR-0021 (T0.9, #60). L'écart A-04 lui est rattaché.
+Décision (2026-09-23) : tranché par l'ADR-0021, accepté le 2026-09-23 : option A, parade (a). L'écart A-04 lui est rattaché.
 
 Renvoi : [ADR-0021](adr/0021-acces-cloisonne-a-docker-en-developpement.md) — option A, Docker rootless sur le poste de
 développement, avec la parade (a) pour les ports 80 et 443 (`net.ipv4.ip_unprivileged_port_start=80` sur le poste).
@@ -763,4 +763,4 @@ Relevés en rédigeant ce document, puis traités par les décisions du 2026-09-
 | A-05 | `ACME_EMAIL` fait partie de « toutes les autres » variables reçues par le worker, qui n'en a pas l'usage | VII §36.7 (distribution par service) | **traité** : VII §36.7 (`ACME_EMAIL` réservé à `caddy`) ; §4.1 |
 | A-06 | `gateway` sans durcissement dans l'esquisse (`cap_drop`, `no-new-privileges`, `read_only`), alors que VII §43.2 vise les conteneurs sans distinction | VII §36.5 · VII §43.2 | **reporté** au Sprint 6, avec le choix du gateway |
 | A-07 | `scripts/radar-dev` (T0.9) absent de l'arborescence contractuelle | VIII §46.1 | **traité** : `scripts/radar-dev` ajouté à VIII §46.1 (T0.9, #60) |
-| A-08 | Le durcissement de `caddy` décidé par P-10 (non-root, `read_only`, aucune capacité) n'est couvert par aucun identifiant de test : T-SEC-08 ne cite `read_only` que pour `app` et `worker`, et la vérification du Sprint 1 n'a pas d'identifiant | VIII §50.5 (T-SEC-08) · P-10 | **ouvert** : à trancher (extension de T-SEC-08 ou nouvel identifiant), au plus tard en T0.8 |
+| A-08 | Le durcissement de `caddy` décidé par P-10 (non-root, `read_only`, aucune capacité) n'est couvert par aucun identifiant de test : T-SEC-08 ne cite `read_only` que pour `app` et `worker`, et la vérification du Sprint 1 n'a pas d'identifiant | VIII §50.5 (T-SEC-08) · P-10 | **traité** : T-SEC-08 étendu à `caddy` (non-root, `read_only`, aucune capacité), VIII §50.5 (T0.8, #11) ; les vérifications de l'image Caddy (§4.3) sont planifiées au Sprint 1 (`sprint-01.md`) |

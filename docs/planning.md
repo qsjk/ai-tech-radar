@@ -149,12 +149,12 @@ Les entrées et sorties **communes** (§0) s'appliquent à chaque sprint ; les f
 |---|---|
 | **Objectif** | Socle exécutable, durci et outillé, sans fonction métier |
 | **Livrables 🤖** | FastAPI + SQLAlchemy async/aiosqlite, deux fabriques de sessions, PRAGMA, `UTCDateTime`, `Clock` · Alembic + service `migrate` · worker minimal (heartbeat, fail-fast, watchdog, boot, SIGTERM) · `/health` et `/api/health` minimal · configuration typée, `validate-config` · logs structlog et nettoyage des secrets · Caddy (TLS interne, basic_auth, en-têtes) · Compose conforme VII §36.5 · CI six étapes, doubles branchés, blocage réseau, traçabilité (mécanisme E1) · `.github/` : modèles d'issue et de PR (check-list DoD §51.1) · **`scripts/radar-dev` V0** (#62, E22, ADR-0021), après le socle Compose · `runbook.md`, `testing.md`, `deployment.md` (dev) |
-| **Tests** | T-DB-01 à 08 · T-CFG-01, 02, 05, 07 · T-OPS-01 à 03, 07 à 11 · T-SEC-01 à 03, 05, 06, 08, 09 (sans restic) · T-RES-10 |
+| **Tests** | T-DB-01 à 08 · T-DB-13 [pragma, check] · T-CFG-01, 02, 05, 07, 10, 11 · T-OPS-01 à 03, 07 à 11 · T-SEC-01 à 03, 05, 06, 08, 09 (sans restic) · T-RES-10 |
 | **Sortie spécifique** | `docker compose up -d` : `migrate` terminé, `app`/`worker`/`caddy` `running` · `https://localhost/health` = ok sans auth, `/api/health` 401 · WAL actif · refus de démarrer hors `head` · CI verte e2e compris |
 | **Dépendances** | D1 → D2 → D3 → D4 (VIII §48) |
 | **Effort** | 6–9 |
 | **Risques** | courbe asyncio / SQLAlchemy async (`BEGIN IMMEDIATE`) · racine en lecture seule et non-root dès le départ · durée CI (e2e Compose dans Actions) · certificat Caddy local non reconnu par le navigateur · mypy strict |
-| **👤** | **poste de dev : Docker rootless, retrait du groupe `docker`** (#61), avant le premier Compose, une fois l'ADR-0021 accepté · ajouter les checks CI 1–5 obligatoires à la règle de `main` · démo sur Compose neuf |
+| **👤** | **poste de dev : Docker rootless, retrait du groupe `docker`** (#61), avant le premier Compose, une fois l'ADR-0021 accepté · checks CI obligatoires sur `main` dès que la CI minimale de T1.1 est verte, puis les checks 1–5 une fois la CI complétée (T1.11) · démo sur Compose neuf |
 
 ### S2 — Collecte & pipeline déterministe
 

@@ -194,7 +194,7 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - `https://localhost/health` répond `{"status":"ok"}` sans identifiants, et `/api/health` demande une authentification ;
 - WAL actif ; `app` et `worker` refusent de démarrer sur un schéma qui n'est pas à `head` ;
 - CI verte, e2e compris.
-- **Tests** : T-DB-01 à 08 · T-DB-13 (PRAGMA de `migrate` et `foreign_key_check` ; complété au Sprint 3) · T-CFG-01, 02, 05, 07, 10 · T-OPS-01 à 03, 07 à 11 · T-SEC-01 à 03, 05, 06, 08 et 09 (sans restic) · T-RES-10.
+- **Tests** : T-DB-01 à 08 · T-DB-13 (PRAGMA de `migrate` et `foreign_key_check` ; complété au Sprint 3) · T-CFG-01, 02, 05, 07, 10, 11 · T-OPS-01 à 03, 07 à 11 · T-SEC-01 à 03, 05, 06, 08 et 09 (sans restic) · T-RES-10.
 
 #### Sprint 2 — Collecte & pipeline déterministe
 
@@ -468,6 +468,7 @@ Fixtures et doubles : `tests/fixtures/` (réponses HTTP par type, configurations
   - tout marqueur renvoie à un identifiant existant ;
   - aucun identifiant de niveau M n'est marqué dans le code.
 - Les identifiants de niveau M sont reportés dans `docs/go-live.md`.
+- Un identifiant dont l'objet n'existe qu'en partie au sprint indiqué par §47.2 est couvert par volets : le sprint indiqué couvre le volet existant ; chaque volet restant est déclaré dans le plan du sprint qui livre son objet ; au Sprint 11, tous les identifiants sont complets (§52 A2).
 - Ajouter une ligne au catalogue est un changement de spec, et le test l'accompagne dans le même commit.
 
 ### 50.4 Doubles de test et jeux de données
@@ -520,6 +521,7 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | T-CFG-08 | Registre des `Setting` : clé absente → défaut ; valeur hors schéma refusée par l'API | I | VI §34.3 |
 | T-CFG-09 | `HTTP_TEST_ALLOW_HOSTS` renseignée avec `APP_ENV=production` → le worker refuse de démarrer | U | décision 23 |
 | T-CFG-10 | Commandes `app.cli` : code de sortie `2` sur usage ou configuration invalide ; résultat sur stdout, logs sur stderr | U | IX §56.3 |
+| T-CFG-11 | `scripts/radar-dev` : une sous-commande ou un argument hors liste renvoie le code `2`, avec un message sur stderr, **sans rien exécuter** (aucun appel à `docker`, vérifié par un `docker` factice placé en tête du `PATH`) | U | §46.1 · IX §56.3 · ADR-0021 |
 
 #### T-PIPE — Étages purs du pipeline *(IV §14, §18–§20, §14.5)*
 
@@ -779,7 +781,7 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | T-SEC-05 | `/docs`, `/redoc` et `/openapi.json` absents avec `APP_ENV=production` (défaut) ; présents en `development` | I | VI → VIII · VII §37.4 |
 | T-SEC-06 | Caddy : `Authorization` absent des logs ; `/health` non journalisé ; en-têtes de sécurité présents (CSP complète, `X-Frame-Options`, `Referrer-Policy`, `nosniff`, HSTS, pas de `Server`) ; corps > 1 Mo refusé ; `index.html` en `no-cache`, assets `immutable` | E | VII → VIII |
 | T-SEC-07 | Réseau : `app` sans sortie Internet ; `worker` ne joint pas `app:8000` ; `migrate` sans réseau | E | VII → VIII |
-| T-SEC-08 | Politique Compose : seul `caddy` publie des ports ; aucun montage du socket Docker ; `app` sans secret et variables distribuées par service (VII §36.7) ; utilisateur non-root, `cap_drop: ALL`, `no-new-privileges`, `read_only` sur `app` et `worker` | U | VII §36, §43.2 |
+| T-SEC-08 | Politique Compose : seul `caddy` publie des ports ; aucun montage du socket Docker ; `app` sans secret et variables distribuées par service (VII §36.7) ; utilisateur non-root, `cap_drop: ALL`, `no-new-privileges`, `read_only` sur `app`, `worker` et `caddy` ; aucun `cap_add`, `caddy` compris (non-root, uid 10001) | U | VII §36, §43.2 |
 | T-SEC-09 | Racine en lecture seule fonctionnelle : onnxruntime, lingua, restic (cache dans `/tmp`), préparation dans `/data/backup/` | E | VII §36.5 · décision 4 |
 | T-SEC-10 | Modèle d'embeddings intégré : le worker démarre et embedde sans aucun accès à un hub de modèles | E | VII décision 9 |
 | T-SEC-11 | Aucun secret renvoyé par l'API ni stocké dans `Setting` | I | VI §32.3 |
