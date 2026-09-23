@@ -512,7 +512,269 @@ CREATE TABLE article_entity (
 );
 ```
 
+### 3.9 `Event` — *écrit par le worker*
+
+Créé sans LLM par le clustering, dès deux articles (V-B décision 7) ; titre de repli, puis enrichi par
+`resolve_event` sans toucher à l'appartenance ni aux compteurs (II §7.3, V-A §27.3). **Compteurs recalculés depuis
+les membres dans chaque transaction qui modifie l'Event, jamais incrémentés** (V-B décision 9, §28.9 ; CF-15).
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 4 |
+| `title` | `TEXT` | `Text` | **non** | — | | repli = titre du représentant ; synthèse LLM ensuite | III §11.3 · V-B §28.5, §28.8 | 4 |
+| `title_origin` | `TEXT` | `String` | n. p. | — | `CHECK IN ('fallback','llm')` | ce que `resolve_event` doit encore enrichir | III §11.3 | 4 |
+| `description` | `TEXT` | `Text` | oui | — | | produite par `resolve_event` ; `NULL` à la création | III §11.3 · V-B §28.5 | 4 |
+| `representative_article_id` | `INTEGER` | `Integer` | n. p. | — | FK `article(id)` `RESTRICT` | membre `ready` le plus ancien par `published_at` | III §11.3 · V-B §28.8, décision 10 | 4 |
+| `first_seen_at` · `last_seen_at` | `TEXT` | `UTCDateTime` | n. p. | — | | min · max de `published_at` des membres `ready` | III §11.3 · V-B §28.9 | 4 |
+| `article_count` | `INTEGER` | `Integer` | n. p. | — | | membres `ready` | III §11.3 · V-B §28.9 | 4 |
+| `distinct_source_count` | `INTEGER` | `Integer` | **non** | `1` | | `source_id` distincts des membres `ready` (**hotness**) | III §11.3 · V-B §28.9 | 4 |
+| `distinct_channel_count` | `INTEGER` | `Integer` | **non** | `1` | | canaux distincts des membres `ready` | III §11.3, décision 16 · V-B §28.9 | 4 |
+| `importance` | `REAL` | `Float` | **non** | `0` | | dans [0, 1], indépendante du temps | III §11.3 · V-B §28.9 | 4 |
+| `resolve_enqueued_count` | `INTEGER` | `Integer` | oui | — | | `article_count` au dernier enqueue de `resolve_event` | III §11.3 · V-B §28.10 | 4 |
+| `status` | `TEXT` | `String` | n. p. | — | `CHECK IN ('active','merged','archived')` | `archived` = inactif depuis 7 j, informatif | III §11.3 · V-B §28.11 | 4 |
+| `merged_into_id` | `INTEGER` | `Integer` | oui | — | FK `event(id)` `RESTRICT` | renseigné si `merged` | III §11.3 · V-B §28.6 | 4 |
+
+- **Invariant testé** : `article_count`, `distinct_source_count` et `distinct_channel_count` égalent leur recalcul
+  depuis les membres `ready` ; contrôlable et corrigé par `python -m app.cli recount-events` (III §11.3, V-B §28.9).
+- `novelty` n'existe pas sur `Event` : elle se calcule à la lecture depuis `first_seen_at` (III §11.3, V-B décision 13).
+- Clés étrangères croisées : `article.event_id → event` et `event.representative_article_id → article`.
+
+**Index** (III §11.3, stories VI) : `(status, last_seen_at)` · `(status, importance)`, Sprint 4.
+
+```sql
+CREATE TABLE event (
+  id                        INTEGER PRIMARY KEY,
+  title                     TEXT NOT NULL,
+  title_origin              TEXT CHECK (title_origin IN ('fallback','llm')),
+  description               TEXT,
+  representative_article_id INTEGER REFERENCES article(id) ON DELETE RESTRICT,
+  first_seen_at             TEXT,
+  last_seen_at              TEXT,
+  article_count             INTEGER,
+  distinct_source_count     INTEGER NOT NULL DEFAULT 1,
+  distinct_channel_count    INTEGER NOT NULL DEFAULT 1,
+  importance                REAL    NOT NULL DEFAULT 0,
+  resolve_enqueued_count    INTEGER,
+  status                    TEXT CHECK (status IN ('active','merged','archived')),
+  merged_into_id            INTEGER REFERENCES event(id) ON DELETE RESTRICT
+);
+CREATE INDEX ix_event_status_last_seen  ON event(status, last_seen_at);
+CREATE INDEX ix_event_status_importance ON event(status, importance);
+```
+
+### 3.10 `Embedding` — *écrit par le worker*
+
+Écrit par la file dérivée des embeddings, sans `AIJob` (V-A §24.4). Stockage du vecteur : §4.
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 4 |
+| `article_id` | `INTEGER` | `Integer` | n. p. | — | FK `article(id)` **`CASCADE`** | | III §11.9 · §11.0 | 4 |
+| `model` | `TEXT` | `String` | n. p. | — | voir unicité | modèle qui a produit le vecteur | III §11.9 · §12.4 | 4 |
+| `dim` | `INTEGER` | `Integer` | oui | — | | dimension du vecteur (384) | III §11.9 | 4 |
+| `vector` | `BLOB` | `LargeBinary` | oui | — | | `float32` normalisé (§4) ; `NULL` = échec définitif | III §11.9 · §12.3 | 4 |
+| `error` | `TEXT` | `Text` | oui | — | | renseigné quand `vector` est `NULL` | III §11.9 · V-A §24.4 | 4 |
+| `created_at` | `TEXT` | `UTCDateTime` | n. p. | — | | | III §11.9 | 4 |
+
+- **Unicité** : `UNIQUE(article_id, model)` (III §11.9), Sprint 4. Rejouer un embedding écrase la ligne (II §9.1).
+- Une ligne à `vector` `NULL` (après `embeddings.max_failures` échecs) compte comme **traitée** pour `processed_at` et
+  est **exclue** de la similarité et de la seconde passe cosine (III §11.9, V-A §24.4, V-B §28.2).
+
+```sql
+CREATE TABLE embedding (
+  id         INTEGER PRIMARY KEY,
+  article_id INTEGER REFERENCES article(id) ON DELETE CASCADE,
+  model      TEXT,
+  dim        INTEGER,
+  vector     BLOB,       -- float32 normalisé, NULL = échec définitif
+  error      TEXT,
+  created_at TEXT,
+  UNIQUE (article_id, model)
+);
+```
+
+### 3.11 `AIJob` — *créé par le worker ou l'app ; exécuté par le worker*
+
+**Table introduite au Sprint 2** (E7) : le runner y crée un `enrich_article` par article `ready` dès ce sprint ; les
+jobs restent `pending` jusqu'au Sprint 5, qui livre la file (claim, gardes, TTL, retry). La table est donc créée
+complète au Sprint 2, index compris.
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 2 |
+| `job_type` | `TEXT` | `String` | n. p. | — | validé par le code (registre) | V1 : `enrich_article · resolve_event · discover_topics` ; inconnu → `failed` | III §11.10 · V-A §23.1, §23.2 | 2 |
+| `entity_type` | `TEXT` | `String` | n. p. | — | validé par le code | `article · event · emerging_candidate` | III §11.10 | 2 |
+| `entity_id` | `INTEGER` | `Integer` | n. p. | — | **sans FK** | cible du job | III §11.10 | 2 |
+| `priority` | `INTEGER` | `Integer` | n. p. | — | | 60 / 50 / 10 selon le type ; 100 pour un job de l'app | III §11.10 · V-A §23.2 | 2 |
+| `status` | `TEXT` | `String` | n. p. | — | `CHECK IN ('pending','processing','completed','failed','retry','dead_letter','cancelled','skipped')` | | III §11.10 | 2 |
+| `skip_reason` | `TEXT` | `String` | oui | — | validé par le code | `expired · article_not_ready · event_member · event_not_active · event_single_source · candidate_decided` | III §11.10 · V-A §23.3 | 2 |
+| `attempts` · `max_attempts` | `INTEGER` | `Integer` | n. p. | — | | `max_attempts = 3` | III §11.10 · V-A §23.5 | 2 |
+| `next_attempt_at` | `TEXT` | `UTCDateTime` | **non** | « maintenant » (§7, I-04) | index de claim | à la création par le worker : maintenant + délai du type | III §11.10 · V-A §23.1 | 2 |
+| `last_error` | `TEXT` | `Text` | n. p. | — | | sans secret | III §11.10 · VIII T-LLM-09 | 2 |
+| `created_by` | `TEXT` | `String` | n. p. | — | `CHECK IN ('worker','app')` | | III §11.10 · V-A §23.6 | 2 |
+| `started_at` · `completed_at` | `TEXT` | `UTCDateTime` | oui | — | | `completed_at` posé aussi pour `skipped` | III §11.10 · V-A §23.3 | 2 |
+| `created_at` | `TEXT` | `UTCDateTime` | n. p. | — | | TTL (`now − created_at > ttl`) et ordre de claim | III §11.0 · V-A §23.3, §23.4 | 2 |
+
+**Statuts terminaux** : `completed` · `failed` · `dead_letter` · `cancelled` · `skipped`. L'app ne fait que deux
+transitions, `dead_letter → pending` et `dead_letter → cancelled`, par un `UPDATE … WHERE status = 'dead_letter'`
+(III §11.10, V-A §23.6).
+
+**Contraintes et index**
+
+| Élément | Définition | Réf. | Sprint |
+|---|---|---|---|
+| **unicité partielle** (un seul job actif par cible et par type) | `UNIQUE(job_type, entity_type, entity_id) WHERE status IN ('pending','processing','retry')` ; une seconde demande identique est ignorée sans erreur | III §11.10 · V-A §23.2 | 2 (testé au Sprint 5, T-DB-09) |
+| index de claim | `(status, next_attempt_at, priority)` | III §11.10 | 2 |
+
+- Le claim (`UPDATE … RETURNING`, SQLite ≥ 3.35) filtre sur `status IN ('pending','retry')`,
+  `next_attempt_at <= :now`, `job_type` et `priority`, et trie par `priority DESC, created_at DESC` (V-A §23.4).
+- **Idempotence des résultats** : portée par les tables métier. Un job remplace ses propres résultats pour sa cible
+  dans une seule transaction (III §11.10) ; voir §7, I-08, pour l'exemple cité par III.
+
+```sql
+CREATE TABLE aijob (
+  id              INTEGER PRIMARY KEY,
+  job_type        TEXT,
+  entity_type     TEXT,
+  entity_id       INTEGER,            -- sans FK
+  priority        INTEGER,
+  status          TEXT CHECK (status IN ('pending','processing','completed','failed',
+                                         'retry','dead_letter','cancelled','skipped')),
+  skip_reason     TEXT,
+  attempts        INTEGER,
+  max_attempts    INTEGER,
+  next_attempt_at TEXT NOT NULL,      -- défaut « maintenant » : voir I-04
+  last_error      TEXT,
+  created_by      TEXT CHECK (created_by IN ('worker','app')),
+  started_at      TEXT,
+  completed_at    TEXT,
+  created_at      TEXT
+);
+CREATE UNIQUE INDEX ux_aijob_active ON aijob(job_type, entity_type, entity_id)
+  WHERE status IN ('pending','processing','retry');
+CREATE INDEX ix_aijob_claim ON aijob(status, next_attempt_at, priority);
+```
+
+### 3.12 `Signal` — *écrit par le worker*
+
+Upsert horaire par le Trend Engine, sur liaisons `keyword` uniquement (V-B §29).
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 8 |
+| `topic_id` | `INTEGER` | `Integer` | n. p. | — | FK `topic(id)` `RESTRICT` | | III §11.8 | 8 |
+| `period` | `TEXT` | `String` | n. p. | — | `CHECK IN ('24h','7d','30d')` | | III §11.8 | 8 |
+| `computed_at` | `TEXT` | `UTCDateTime` | n. p. | — | | | III §11.8 | 8 |
+| `window_start` · `window_end` | `TEXT` | `UTCDateTime` | n. p. | — | | fenêtre du calcul | III §11.8 · V-B §29.4 | 8 |
+| `mentions` | `INTEGER` | `Integer` | n. p. | — | | articles distincts | III §11.8 · V-B §29.2 | 8 |
+| `unique_sources` · `unique_authors` · `unique_companies` | `INTEGER` | `Integer` | n. p. | — | | | III §11.8 · V-B §29.2 | 8 |
+| `growth_rate` | `REAL` | `Float` | oui | — | | `NULL` en cold start | III §11.8 · V-B §29.5, décision 17 | 8 |
+| `velocity` | `REAL` | `Float` | n. p. | — | | | III §11.8 · V-B §29.5 | 8 |
+| `novelty` · `momentum` | `REAL` | `Float` | oui | — | | `NULL` en cold start | III §11.8 · V-B §29.5, décision 17 | 8 |
+| `category` | `TEXT` | `String` | **oui** | — | `CHECK IN ('established','trending','rising','declining')` | `NULL` = support insuffisant | III §11.8 · V-B §29.6 | 8 |
+
+**Contraintes et index** (Sprint 8) : `UNIQUE(topic_id, period, window_end)` (upsert horaire) · index
+`(topic_id, period, computed_at)` (III §11.8, V-B §29.4).
+
+```sql
+CREATE TABLE signal (
+  id               INTEGER PRIMARY KEY,
+  topic_id         INTEGER REFERENCES topic(id) ON DELETE RESTRICT,
+  period           TEXT CHECK (period IN ('24h','7d','30d')),
+  computed_at      TEXT,
+  window_start     TEXT,
+  window_end       TEXT,
+  mentions         INTEGER,
+  unique_sources   INTEGER,
+  unique_authors   INTEGER,
+  unique_companies INTEGER,
+  growth_rate      REAL,
+  velocity         REAL,
+  novelty          REAL,
+  momentum         REAL,
+  category         TEXT CHECK (category IN ('established','trending','rising','declining')),
+  UNIQUE (topic_id, period, window_end)
+);
+CREATE INDEX ix_signal_topic_period_computed ON signal(topic_id, period, computed_at);
+```
+
+### 3.13 `EmergingCandidate` — *écrit par le worker*
+
+Termes émergents (n-grammes des titres, dépôts GitHub) et résultat indicatif de `discover_topics` (V-B §30,
+V-A §27). Le statut du candidat (`converted`, `active`…) est **dérivé à la lecture**, sans colonne (V-B §30.4).
+
+| Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
+|---|---|---|---|---|---|---|---|---|
+| `id` | `INTEGER` | `Integer` | non | — | PK | | III §11.0 | 8 |
+| `key` | `TEXT` | `String` | n. p. | — | **UNIQUE** | terme normalisé | III §11.13 | 8 |
+| `kind` | `TEXT` | `String` | n. p. | — | `CHECK IN ('ngram','repository')` | | III §11.13 · V-B §30.2 | 8 |
+| `label` | `TEXT` | `String` | n. p. | — | | | III §11.13 | 8 |
+| `first_detected_at` | `TEXT` | `UTCDateTime` | n. p. | — | | | III §11.13 | 8 |
+| `last_evidence_at` | `TEXT` | `UTCDateTime` | n. p. | — | | dernière mise à jour de `evidence` | III §11.13 · V-B §30.4 | 8 |
+| `evidence` | `TEXT` (JSON) | `JSON` | n. p. | — | Pydantic | `mentions_7d · mentions_prev7d · growth · sources · authors · channels · stories · first_seen_at · article_ids` (≤ 20) | III §11.13 · V-B §30.4 | 8 |
+| `ref_mentions` · `ref_channel_count` | `INTEGER` | `Integer` | n. p. | — | | référence de l'évolution significative | III §11.13 · V-B §30.5 | 8 |
+| `last_significant_at` | `TEXT` | `UTCDateTime` | n. p. | — | | dernière évolution significative | III §11.13 · V-B §30.5 | 8 |
+| `resurfaced_at` | `TEXT` | `UTCDateTime` | oui | — | | réapparition d'un candidat ignoré | III §11.13 · V-B §30.7 | 8 |
+| `backfilled_at` | `TEXT` | `UTCDateTime` | **oui** | — | | fin du backfill d'un topic créé ; `NULL` avec `topic_id` renseigné = backfill à reprendre | III §11.13 · V-B §30.8 | 8 |
+| `topic_id` | `INTEGER` | `Integer` | **oui** | — | FK `topic(id)` `RESTRICT` | topic créé sur `create_topic` | III §11.13 · V-B §30.8 | 8 |
+| `llm_label` · `llm_description` | `TEXT` | `Text` | oui | — | | résultat de `discover_topics` | III §11.13 · V-A §27 | 8 |
+| `covered_by_topic_id` | `INTEGER` | `Integer` | **oui** | — | FK `topic(id)` `RESTRICT` | suggestion, jamais d'écartement automatique | III §11.13 · V-A §27 | 8 |
+| `suggested_keywords` | `TEXT` (JSON) | `JSON` | n. p. | — | Pydantic | mots-clés suggérés pour « Create topic » | III §11.13 · V-B §30.8 | 8 |
+| `assessed_at` | `TEXT` | `UTCDateTime` | n. p. | — | | dernier `discover_topics` | III §11.13 | 8 |
+
+**Unicité** : `UNIQUE(key)` (III §11.13), Sprint 8.
+
+```sql
+CREATE TABLE emerging_candidate (
+  id                  INTEGER PRIMARY KEY,
+  key                 TEXT UNIQUE,
+  kind                TEXT CHECK (kind IN ('ngram','repository')),
+  label               TEXT,
+  first_detected_at   TEXT,
+  last_evidence_at    TEXT,
+  evidence            TEXT,      -- JSON
+  ref_mentions        INTEGER,
+  ref_channel_count   INTEGER,
+  last_significant_at TEXT,
+  resurfaced_at       TEXT,
+  backfilled_at       TEXT,
+  topic_id            INTEGER REFERENCES topic(id) ON DELETE RESTRICT,
+  llm_label           TEXT,
+  llm_description     TEXT,
+  covered_by_topic_id INTEGER REFERENCES topic(id) ON DELETE RESTRICT,
+  suggested_keywords  TEXT,      -- JSON
+  assessed_at         TEXT
+);
+```
+
 <!-- TABLES -->
+
+---
+
+## 4. Embeddings : stockage des vecteurs
+
+- **Format** : BLOB de `float32`, **normalisé à la norme 1 à l'écriture** ; la similarité cosine devient un produit
+  scalaire (III §12.3). Modèle cible de 384 dimensions (III décision 12, §12.1), soit 1 536 octets par vecteur.
+- **Conversion à l'écriture** : fastembed renvoie des vecteurs **`float64`** (constat de T0.3, V-01, fastembed
+  0.8.1). Le worker convertit en `float32`, normalise, puis sérialise :
+
+  ```python
+  v = np.asarray(raw, dtype=np.float32)
+  v /= np.linalg.norm(v)
+  row.vector, row.dim = v.tobytes(), v.shape[0]
+  ```
+
+  À la lecture : `np.frombuffer(row.vector, dtype=np.float32)`.
+- **Modèle** : cible `paraphrase-multilingual-MiniLM-L12-v2` ; révision et empreintes relevées en T0.3 et reprises
+  dans l'ADR-0008 (rapport de cadrage §3, V-01). On ne compare que des vecteurs du **même** `model` (III §12.4).
+- **Ce qui est embeddé** : articles `ready` seulement, titre + 1 000 premiers caractères du contenu, avant la purge
+  du contenu (III §12.2).
+- **Fenêtre de similarité** : matrice en mémoire du worker, reconstruite depuis la base au démarrage ; environ 3 Mo
+  pour 2 000 articles (III §12.4).
+- **Changement de modèle** : nouvelles lignes pour le nouveau `model` ; pas de ré-embedding automatique de
+  l'historique (sélection sur `content_purged_at IS NULL`, V-A §24.4 ; III §12.5).
+
+<!-- SECTIONS -->
 
 ---
 
@@ -574,5 +836,34 @@ cite ses passages. Les identifiants `I-nn` sont stables.
   ni `entity_id`.
 - La spec ne dit pas si ces index sont voulus ou laissés à l'implémenteur (VII « Points d'interprétation » ne les
   cite pas).
+
+#### I-08 — Exemple d'idempotence avec un `job_type` supprimé
+
+- **III §11.10** : « par exemple `extract_topics` supprime puis réécrit les lignes `method=llm` de l'article ».
+- **V-A §23.2** et **V-A décision 3** : catalogue V1 réduit à `enrich_article · resolve_event · discover_topics` ;
+  `extract_topics` est fusionné dans `enrich_article`.
+
+#### I-09 — Création d'`AIJob` par l'app pour le rattachement de l'historique
+
+- **II §8.3** (« Deux conséquences ») : l'app insère des jobs « en réponse à une action utilisateur — régénérer un
+  résumé, **rattacher l'historique à un topic créé**, relancer un `dead_letter` ».
+- **V-A décision 18, §24.6** et **V-B §30.8** : le rattachement de l'historique est un traitement **déterministe,
+  hors `AIJob`**, déclenché par la lecture des `EmergingDecision` ; les jobs créables par l'app sont
+  `enrich_article` et `resolve_event` (régénération). **V-A §23.6** : la relance d'un `dead_letter` est un `UPDATE`,
+  pas une création.
+
+#### I-10 — Représentant d'un Event
+
+- **III §11.3** : `representative_article_id` = « article le plus ancien du groupe » (sans critère de date ni de
+  statut) ; **II §7.2** : titre de repli = « titre de l'article le plus ancien du groupe ».
+- **V-B décision 10, §28.8** : représentant = **membre `ready` le plus ancien par `published_at`**.
+
+#### I-11 — Valeur de `Embedding.model`
+
+- **III §11.9, §12.4** : colonne `model`, et comparaison « que des vecteurs produits par le même modèle ».
+- **III §12.1** : révision et empreinte du modèle épinglées au build (ADR-0008). La spec ne dit pas ce que contient
+  `model` (nom fastembed, dépôt Hugging Face réellement téléchargé, révision), alors que T0.3 a constaté que le nom
+  fastembed (`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`) et le dépôt téléchargé
+  (`qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q`) diffèrent (rapport de cadrage §3, V-01).
 
 <!-- INCOHERENCES -->
