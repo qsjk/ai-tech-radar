@@ -458,7 +458,7 @@ Dans toutes les commandes ci-dessous : `IMG=python:3.12.14-slim-trixie@sha256:2f
 |---|---|---|---|---|
 | V-01 | `paraphrase-multilingual-MiniLM-L12-v2` disponible dans `fastembed`, sur l'architecture cible (`amd64`, **IX décision 27**) | modèle chargé, 384 dimensions ; révision et empreinte sha256 du modèle notées pour épinglage au build | repli : autre modèle multilingue ≤ 384 dimensions supporté par fastembed, consigné dans l'ADR-0008 | à faire en T0.3 (#6) |
 | V-02 | SQLite de l'image de base Python retenue (voir E16) | ≥ 3.35, FTS5 et JSON1 compilés | autre image de base ou wheel SQLite, consigné | **concluant** — SQLite 3.46.1 ; FTS5 et JSON1 prouvés par requêtes réelles |
-| V-03 | `BEGIN IMMEDIATE` avec SQLAlchemy 2.x async et aiosqlite | transaction d'écriture ouverte en `IMMEDIATE`, mécanisme noté (gestion des transactions du driver) | proposition alternative, question au propriétaire | à faire en T0.3 (#6) |
+| V-03 | `BEGIN IMMEDIATE` avec SQLAlchemy 2.x async et aiosqlite | transaction d'écriture ouverte en `IMMEDIATE`, mécanisme noté (gestion des transactions du driver) | proposition alternative, question au propriétaire | **concluant** — SQLAlchemy 2.0.54, aiosqlite 0.22.1 ; événements `connect` + `begin` sur `engine.sync_engine` ; verrou pris dès le `BEGIN`, pas en lecture seule |
 | V-04 | WAL sur **volume nommé** Docker | `journal_mode=wal` effectif, fichiers `-wal` / `-shm` créés sur le volume | bloquant | **concluant** — `wal` effectif, `-wal` et `-shm` sur le volume ; 2 conteneurs pendant 75 s, 0 erreur ; `integrity_check` = `ok` |
 | V-05 | restic en binaire statique pour l'architecture cible | version épinglée disponible | bloquant | à faire en T0.3 (#6) |
 | V-06 | onnxruntime et lingua pour l'architecture cible | wheels disponibles | bloquant | à faire en T0.3 (#6) |
@@ -489,6 +489,80 @@ compile_options ['ENABLE_FTS3', 'ENABLE_FTS3_PARENTHESIS', 'ENABLE_FTS3_TOKENIZE
 
 - **Conclusion** : concluant. 3.46.1 ≥ 3.35 ; FTS5 est compilé et fonctionne ; JSON1 fonctionne (il est intégré
   d'office depuis SQLite 3.38, d'où l'absence d'option de compilation dédiée).
+
+#### V-03 — `BEGIN IMMEDIATE` avec SQLAlchemy 2.x async et aiosqlite
+
+```sh
+docker run --rm --platform linux/amd64 --name radar-t03-v03 -v ~/radar-t03:/w:ro $IMG \
+  sh -c 'pip install -q "sqlalchemy>=2,<3" aiosqlite && python /w/v03.py'
+docker run --rm --platform linux/amd64 --name radar-t03-v03alt -v ~/radar-t03:/w:ro $IMG \
+  sh -c 'pip install -q "sqlalchemy>=2,<3" aiosqlite && python /w/v03_alt.py'
+```
+
+- **Versions** : SQLAlchemy 2.0.54, aiosqlite 0.22.1, SQLite 3.46.1, Python 3.12.14.
+- **Mécanisme documenté** : documentation SQLAlchemy 2.0, dialecte SQLite, section *Enabling Non-Legacy SQLite
+  Transactional Modes with the sqlite3 or aiosqlite driver* (ancre `sqlite_enabling_transactions`), variante
+  *Using SQLAlchemy to emit BEGIN in lieu of SQLite's transaction control (all Python versions, sqlite3 and aiosqlite)* :
+  l'événement `connect` met `dbapi_connection.isolation_level = None` (le driver n'émet plus de `BEGIN`), l'événement
+  `begin` émet le `BEGIN` lui-même ; en asyncio, les deux écouteurs se posent sur `engine.sync_engine`. La section
+  *Serializable isolation / Savepoints / Transactional DDL (asyncio version)* du dialecte aiosqlite renvoie à celle-ci.
+- **Recette testée** (adaptation : `BEGIN IMMEDIATE` par défaut, `BEGIN DEFERRED` pour une connexion marquée lecture seule ;
+  le nom de l'option `readonly` est une proposition, à fixer en T0.4) :
+
+```python
+engine = create_async_engine("sqlite+aiosqlite:////data/radar.db", connect_args={"timeout": 5})
+
+@event.listens_for(engine.sync_engine, "connect")
+def _connect(dbapi_connection, connection_record):
+    dbapi_connection.isolation_level = None          # aiosqlite n'émet plus de BEGIN
+
+@event.listens_for(engine.sync_engine, "begin")
+def _begin(conn):
+    mode = "DEFERRED" if conn.get_execution_options().get("readonly") else "IMMEDIATE"
+    conn.exec_driver_sql(f"BEGIN {mode}")
+
+read_only = engine.execution_options(readonly=True)   # moteur des sessions de lecture seule
+```
+
+- **Protocole** : deux moteurs indépendants A et B sur le même fichier en WAL. Une sonde `sqlite3` tierce tente
+  `BEGIN IMMEDIATE` avec `timeout=0` pour lire l'état du verrou d'écriture sans attendre.
+- **Sortie** :
+
+```text
+sqlalchemy 2.0.54 | aiosqlite 0.22.1 | sqlite 3.46.1
+
+[1] A ouvre une transaction (AsyncSession) et ne fait qu'un SELECT, B tente BEGIN (timeout 1 s)
+  A : transaction ouverte, aucune écriture ; sonde : verrou d'écriture PRIS (database is locked)
+  B : échec sur BEGIN après 1.00s -> OperationalError: database is locked
+
+[2] B attend : A garde le verrou 2 s puis valide ; B (timeout 10 s) mesure la durée de son BEGIN
+  B : BEGIN IMMEDIATE obtenu après 1.73s (bloqué dans le BEGIN, avant toute écriture)
+
+[3] Session de lecture seule (execution_options readonly=True -> BEGIN DEFERRED)
+  lecture ouverte, lignes = ['A', 'B'] ; sonde : verrou d'écriture LIBRE
+  écrivain A : BEGIN IMMEDIATE + INSERT + COMMIT en 0.012s pendant la lecture
+  lecture seule toujours cohérente (instantané WAL) : 2
+  lecture seule OK en 0.001s, count=3 (ne voit pas A3 non validé)
+
+[4] Témoin sans la recette (comportement par défaut du driver) : B passe son BEGIN, échoue à la 1re écriture
+  B (défaut) : begin() réussi — aucun BEGIN émis
+  B (défaut) : SELECT réussi
+  B (défaut) : échec seulement à l'INSERT -> database is locked
+```
+
+- **Autres mécanismes de la même section, écartés** (`v03_alt.py`) : ni `connect_args={"isolation_level": "IMMEDIATE"}`
+  (mode historique du driver), ni `connect_args={"autocommit": False}` (mode Python 3.12, le plus récent documenté) ne
+  prennent le verrou au `begin()` : le `BEGIN` n'est émis qu'avec la première écriture (ou reste `DEFERRED`).
+
+```text
+connect_args isolation_level='IMMEDIATE' (legacy) verrou après begin+SELECT: LIBRE | après INSERT: PRIS
+connect_args autocommit=False (Python 3.12)      verrou après begin+SELECT: LIBRE | après INSERT: PRIS
+```
+
+- **Conclusion** : concluant. Avec les écouteurs `connect` et `begin` sur `engine.sync_engine`, la connexion B échoue
+  (ou attend, selon son `timeout`) **dès son `BEGIN`**, alors que A n'a encore rien écrit ; une session de lecture seule
+  (`BEGIN DEFERRED`) ne prend pas le verrou et ne bloque pas les écrivains. Limite notée par la documentation : cette
+  recette est incompatible avec le mode `AUTOCOMMIT` de SQLAlchemy au niveau du driver.
 
 #### V-04 — WAL sur volume nommé, deux conteneurs
 
