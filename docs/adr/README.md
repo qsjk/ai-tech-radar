@@ -15,6 +15,8 @@ prix (IX §54.1). Format, règles et registre : IX §54.2–§54.3. Gabarit : [`
 | [0004](0004-deux-processus-sans-ipc.md) | Deux processus sans IPC, écrivain unique par table | Proposé | 2026-09-23 | DV-06 | — |
 | [0005](0005-fastapi-un-processus-uvicorn.md) | FastAPI, un seul processus uvicorn | Proposé | 2026-09-23 | DV-07 | — |
 | [0006](0006-apscheduler-3x.md) | APScheduler 3.x | Proposé | 2026-09-23 | DV-08 | — |
+| [0007](0007-llm-api-openai-compatible-optionnel.md) | Accès LLM par API OpenAI-compatible, gateway hors app, LLM optionnel | Proposé | 2026-09-23 | DV-09 | — |
+| [0008](0008-embeddings-fastembed-modele.md) | Moteur et modèle d'embeddings | Proposé | 2026-09-23 | DV-10 | — |
 <!-- INDEX -->
 
 **À venir** (IX §54.3) : 0020, gateway LLM retenu, au Sprint 6 ; 0021, Docker en développement, par T0.9 (#60) ;
