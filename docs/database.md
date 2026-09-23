@@ -649,7 +649,7 @@ complète au Sprint 2, index compris.
 | `next_attempt_at` | `TEXT` | `UTCDateTime` | **non** | — | index de claim | **fourni par l'application** (la `Clock`), sans défaut SQL : maintenant + délai du type à la création par le worker, maintenant pour un job de l'app | III §11.10 · V-A §23.1 | 2 |
 | `last_error` | `TEXT` | `Text` | oui | — | | sans secret — `NULL` tant qu'aucune tentative n'a échoué. | III §11.10 · VIII T-LLM-09 | 2 |
 | `created_by` | `TEXT` | `String` | non | — | `CHECK IN ('worker','app')` | | III §11.10 · V-A §23.6 | 2 |
-| `started_at` · `completed_at` | `TEXT` | `UTCDateTime` | oui | — | | `completed_at` posé aussi pour `skipped` | III §11.10 · V-A §23.3 | 2 |
+| `started_at` · `completed_at` | `TEXT` | `UTCDateTime` | oui | — | | `started_at` : `NULL` avant le premier claim. `completed_at` : renseigné par l'application (la `Clock`) à toute transition vers `completed`, `failed`, `cancelled` ou `skipped` ; `NULL` sinon, `dead_letter` compris (une relance le laisse ou le remet à `NULL`) ; départ de la rétention de 30 jours (§6) | III §11.10, §13 · V-A §23.3, §23.6 | 2 |
 | `created_at` | `TEXT` | `UTCDateTime` | non | — | | TTL (`now − created_at > ttl`) et ordre de claim | III §11.0 · V-A §23.3, §23.4 | 2 |
 | `updated_at` | `TEXT` | `UTCDateTime` | non | — | | dernière modification de la ligne | III §11.0 | 2 |
 

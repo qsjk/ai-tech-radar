@@ -240,7 +240,7 @@ Une ligne **sans vecteur** (`vector` `NULL`, `error` renseigné) enregistre un �
 | `next_attempt_at` | non nul, **fourni par l'application** (la `Clock`), sans défaut SQL | |
 | `last_error` | texte | |
 | `created_by` | `CHECK {worker, app}` | |
-| `started_at` · `completed_at` | nullable | |
+| `started_at` · `completed_at` | nullable | `completed_at` est renseigné par l'application (la `Clock`) à toute transition vers `completed`, `failed`, `cancelled` ou `skipped` ; `NULL` sinon, `dead_letter` compris — une relance (`dead_letter → pending`) le laisse ou le remet à `NULL`. Point de départ de la rétention (§13) |
 
 **Statuts terminaux** : `completed` · `failed` (erreur non rejouable, ex. `job_type` inconnu) · `dead_letter` (tentatives épuisées) · `cancelled` — `dead_letter` abandonné par l'utilisateur · `skipped` — job sauté par sa garde d'éligibilité, sans appel LLM (Partie V-A §23.3). Un `dead_letter` peut aussi être **remis en `pending`** depuis le dashboard.
 
