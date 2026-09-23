@@ -1,7 +1,7 @@
 # Partie I — Vision & Objectifs
 
 > **Partie I — Vision & Objectifs.** Version durcie issue de la revue §1–§5.
-> Dernière révision : 2026-09-22. Les décisions tranchées lors de la revue
+> Dernière révision : 2026-09-23. Les décisions tranchées lors de la revue
 > sont récapitulées ci-dessous, puis intégrées au fil des sections.
 
 ---
@@ -113,10 +113,10 @@ Chaque fonction est étiquetée **[core]** (doit fonctionner **sans LLM**) ou
 | 1 | Collecter automatiquement | **[core]** |
 | 2 | Normaliser les contenus (dont détection de langue) | **[core]** |
 | 3 | Éliminer les doublons **exacts** | **[core]** |
-| 4 | Regrouper les contenus parlant du **même événement** | **[mixte]** — génération de candidats déterministe **[core]** ; confirmation des cas ambigus **[AI]** |
-| 5 | Identifier topics, entités, événements | **[AI]** (les *candidats* d'événement restent déterministes, cf. 4) |
+| 4 | Regrouper les contenus parlant du **même événement** | **[mixte]** — génération de candidats et appartenance déterministes **[core]** ; titre et description de l'événement **[AI]** ; confirmation des cas ambigus par l'AI **reportée en V2** (Partie V-A décision 7) |
+| 5 | Identifier topics, entités, événements | **[mixte]** — topics et entités par mots-clés et dictionnaire **[core]** (origine `keyword`, Partie III décision 1), complétés par le LLM **[AI]** ; événements : cf. 4 |
 | 6 | Générer des résumés / l'aperçu | **[mixte]** — aperçu enrichi FR **[AI]** ; repli lisible **[core]** (cf. §2.3) |
-| 7 | Détecter les tendances | **[mixte]** — comptages / diversité de sources **[core]** ; lecture qualitative **[AI]** |
+| 7 | Détecter les tendances | **[core]** — comptages / diversité de sources ; lecture qualitative **[AI]** (`analyze_trend`) **reportée en V2** (Partie V-A décision 4) |
 | 8 | Détecter les sujets émergents | **[mixte]** — signaux déterministes **[core]** ; qualification **[AI]** |
 | 9 | Envoyer des alertes | **[core]** — déclenchement possible sur base déterministe (événement multi-sources) |
 | 10 | Présenter les résultats dans un dashboard, **hotness incluse** | **[core]** |
@@ -173,7 +173,7 @@ Parties VII/VIII ; la Partie I n'en fixe que la **définition de succès** :
 | Qualité | Critère de succès (mesurable) |
 |---|---|
 | **Simple** | ≤ 3–4 services Docker **permanents** (le service one-shot `migrate` n'est pas compté, Partie VII §36.2) ; démarrage local en **une** commande (`docker compose up`) ; aucune techno bannie (§5). |
-| **Portable** | Migration vers un autre VPS = copie du volume persistant + `docker compose up`, **sans modification de code**. |
+| **Portable** | Migration vers un autre VPS = restauration du dernier backup (ou copie de `radar.db` **à l'arrêt**) + `.env` + `docker compose up -d`, **sans modification de code** (Partie VII §36.4). |
 | **Observable** | Tout incident majeur (source / worker / LLM down, disque plein) est détectable via `/health` ou une alerte, **sans SSH**. |
 | **Résilient** | Les tests de résilience de la Partie VIII passent (LLM down · 429 · source down · worker restart · VPS reboot · backup restore) : tableau de la Partie VIII §50.6. |
 | **Low-cost** | Coût récurrent ≤ **12 €/mois** ; le produit **fonctionne avec un LLM à 0 €**. |
@@ -208,7 +208,7 @@ Ne **pas** développer en V1 :
 - **Pas de personnalisation automatique** ni de recommandation par ML.
 - **Pas de vérification de véracité** : le système **agrège et hiérarchise**, il
   ne **fact-checke** pas.
-- **Pas d'internationalisation de l'interface** (UI mono-langue).
+- **Pas d'internationalisation de l'interface** (UI mono-langue) : interface, alertes et digests sont **en français**.
 - **Pas de garantie d'archivage du contenu brut** : la conservation du contenu
   brut est **configurable** (la donnée structurée et l'historique analytique sont
   prioritaires).
@@ -231,3 +231,4 @@ Points **explicitement repoussés**, à ne pas traiter en V1 mais à garder en v
 - **Newsletters email** et autres canaux (Mastodon, X…) (§2.2).
 - **Recherche sémantique** de l'historique (§3, fonction 13).
 - **Personnalisation automatique** / recommandation (§5.1).
+- **Lecture qualitative des tendances** et **confirmation des cas ambigus** par l'AI (§3, fonctions 4 et 7 ; Partie V-A).
