@@ -1,7 +1,7 @@
 # Partie II — Architecture
 
 > **Partie II — Architecture.** Version durcie issue de la revue §6–§9.
-> Dernière révision : 2026-09-22. Prend la Partie I durcie comme acquis
+> Dernière révision : 2026-09-23. Prend la Partie I durcie comme acquis
 > (objectif à 3 piliers, garantie transverse « fonctionner sans AI », hotness déterministe).
 
 ---
@@ -11,8 +11,8 @@
 Ces points étaient absents, implicites ou contradictoires en V0.3. Ils sont tranchés ici et intégrés au fil des sections.
 
 1. **§6 reformulé** : le principe fondamental n'est plus « les collectors ne sont jamais bloqués par le LLM » (trop étroit) mais une **architecture à deux couches** — un **cœur déterministe** complet de bout en bout, et une **couche d'enrichissement AI asynchrone**. La règle sur les collectors en devient un corollaire. Cf. §6.
-2. **Un `Event` est créé de façon déterministe**, sans LLM, avec un **titre de repli** (titre de l'article représentatif). Le job `resolve_event` **enrichit** (titre de synthèse, description) et arbitre les cas ambigus — il ne conditionne jamais l'existence de l'événement.
-3. **La hotness est matérialisée** : compteur de **sources distinctes** porté par l'`Event`, mis à jour à chaque rattachement d'article. Calculable et affichable **sans LLM**.
+2. **Un `Event` est créé de façon déterministe**, sans LLM, avec un **titre de repli** (titre de l'article représentatif). Le job `resolve_event` **enrichit** (titre de synthèse, description) — il ne conditionne jamais l'existence de l'événement. L'arbitrage des cas ambigus par le LLM est **reporté en V2** (Partie V-A décision 7).
+3. **La hotness est matérialisée** : compteur de **sources distinctes** porté par l'`Event`, **recalculé depuis les membres** dans chaque transaction qui modifie l'`Event`, jamais incrémenté (Partie V-B décision 9, §28.9). Calculable et affichable **sans LLM**.
 4. **La déduplication sémantique sort du pipeline synchrone.** Le pipeline ne fait que de la **dédup exacte** (URL canonique · external ID · content hash). La similarité vit dans l'**étage asynchrone embeddings/clustering**, avec **deux seuils sur un unique calcul cosine** : seuil haut → `duplicate` rétroactif ; seuil médian → même `Event`. Le `duplicate` rétroactif est restreint à la **même source** et aux titres normalisés égaux (Partie V-B §28.7) : entre sources différentes, un cosine ≥ seuil haut ne produit qu'un candidat « même Event ».
 5. **Tout travail CPU-bound du worker s'exécute hors de l'event-loop** (`asyncio.to_thread` / `ThreadPoolExecutor` borné). Cf. §8.4.
 6. **L'API peut déposer des jobs, jamais les exécuter.** Elle insère des `AIJob` de **types prédéfinis** (liste fermée §11.10) pour les actions du dashboard, et répond immédiatement.
@@ -36,7 +36,7 @@ L'architecture repose sur **deux couches nettement séparées**.
 > Cette couche va **de bout en bout** : elle ne dépend d'aucun service AI, à aucune étape.
 >
 > **Couche enrichissement — AI, asynchrone, best-effort.**
-> Résumés, extraction de topics et d'entités, confirmation des événements ambigus, lecture qualitative des tendances. Elle **améliore** le produit ; elle ne le **conditionne** jamais.
+> Résumés, extraction de topics et d'entités (en complément des liaisons déterministes `keyword`, Partie III décision 1), titre et description des événements. Elle **améliore** le produit ; elle ne le **conditionne** jamais. La confirmation des événements ambigus et la lecture qualitative des tendances (`analyze_trend`) sont **reportées en V2** (Partie V-A décisions 4 et 7).
 
 **Conséquence contractuelle** : lorsque la couche AI est indisponible, le produit reste **pleinement utilisable** — l'ingestion continue, la déduplication exacte fonctionne, les événements se forment, la **hotness reste affichée**, le dashboard, la recherche et les alertes déterministes fonctionnent. Seule la qualité de restitution se dégrade (titres et aperçus de repli au lieu de synthèses).
 
@@ -109,7 +109,7 @@ Après l'`INSERT`, l'architecture n'est plus un tuyau : c'est un **hub**. Des pr
   │ (7.1)          │     ▼       │      ▼
   │                │ Similarité  │  LLMClient → LLM Gateway → Providers
   │                │     │       │      (résumés, topics, entités,
-  │                │     ▼       │       resolve_event, analyse)
+  │                │     ▼       │       resolve_event)
   │                │ ┌───┴────┐  │
   │                │ │ seuil  │  │
   │                │ │ haut   │→ duplicate (rétroactif, même source)
@@ -128,7 +128,7 @@ Après l'`INSERT`, l'architecture n'est plus un tuyau : c'est un **hub**. Des pr
 | **Embeddings** | cœur | calcul local CPU, asynchrone, sur les seuls articles `ready` |
 | **Similarité (cosine)** | cœur | **un seul calcul, deux seuils** : haut **et même source** (titres normalisés égaux) → `duplicate` rétroactif ; médian, ou haut entre sources différentes → candidat même `Event` (Partie V-B §28.7) |
 | **Event clustering** | cœur | crée l'`Event` **sans LLM**, titre de repli = titre de l'article le plus ancien du groupe. Deux voies de déclenchement : après chaque lot d'embeddings, et par un tick pour les articles restés sans embedding (Partie V-B §28.2) |
-| **Hotness** | cœur | `distinct_source_count` matérialisé sur l'`Event`, incrémenté à chaque rattachement |
+| **Hotness** | cœur | `distinct_source_count` matérialisé sur l'`Event`, recalculé depuis les membres à chaque rattachement, jamais incrémenté (Partie V-B §28.9) |
 | **Trend Engine** | cœur | produit les `Signal` par topic et par fenêtre |
 | **Purge** | cœur | efface `Article.content` après traitement + délai de grâce (§8.5) |
 | **AI Job Queue → LLMClient** | AI | seul point de contact avec un provider ; **enrichit**, ne crée rien de structurant |
@@ -143,7 +143,7 @@ Chaîne complète, **entièrement dans la couche cœur** :
 ```
 Article ready → candidats (URL croisée · entités communes · cosine)
               → rattachement à un Event (créé si besoin)
-              → distinct_source_count++
+              → distinct_source_count recalculé depuis les membres (Partie V-B §28.9)
               → tri et affichage Overview
 ```
 
@@ -284,7 +284,7 @@ Chaque mode de panne est spécifié sur **quatre colonnes** : ce qui se dégrade
 |---|---|---|---|---|
 | **LLM Gateway indisponible** | résumés, topics, entités, `resolve_event` suspendus. **Ingestion, dédup, events, hotness, trends, dashboard, recherche, alertes déterministes → OK.** Aperçus et titres d'`Event` restent en **repli déterministe**. | disjoncteur LLM ouvert, exposé par `llm_gateway` dans `/health` | jobs en `pending`/`retry` **sans consommer de tentative**, repris automatiquement au retour du gateway ; familles d'échec et disjoncteur : Partie V-A §26 | **chaque `job_type` est rejouable sans effet de bord** : un seul job actif par cible et par type (index unique partiel), et chaque job **remplace** ses propres résultats pour sa cible (Partie III §11.10). Un job ayant écrit son résultat puis mort avant `completed` est rejoué sans dupliquer. |
 | **Gateway non configuré** (`LLM_BASE_URL` absent) | aucun enrichissement : le produit tourne à 0 € sans LLM, aperçus et titres en repli | `llm_gateway` = `not_configured` | aucune : disjoncteur ouvert en permanence, jobs créés et laissés en `pending` (Partie V-A §24.2) | — |
-| **Moteur d'embeddings indisponible** *(distinct du LLM : local, CPU)* | similarité sémantique perdue → pas de `duplicate` rétroactif, pas de candidat par cosine. **Dédup exacte et clustering par entités / URL croisées continuent → la hotness survit** : les liaisons d'entités `method=keyword` issues de `config/entities.yaml` ne dépendent d'aucun LLM (Partie III décision 1). | échec des jobs d'embedding | jobs d'embedding en `retry` ; le clustering tourne en mode dégradé sur les critères restants | rejouer un embedding écrase la ligne `Embedding` (clé `article_id` + `model`) |
+| **Moteur d'embeddings indisponible** *(distinct du LLM : local, CPU)* | similarité sémantique perdue → pas de `duplicate` rétroactif, pas de candidat par cosine. **Dédup exacte et clustering par entités / URL croisées continuent → la hotness survit** : les liaisons d'entités `method=keyword` issues de `config/entities.yaml` ne dépendent d'aucun LLM (Partie III décision 1). | échec du lot d'embeddings de la file dérivée (les embeddings n'ont pas d'`AIJob`) : `SystemState.embeddings` = `down` (Partie V-A §24.4) | backoff du tick de la file dérivée, reprise automatique ; un article en échec répété reçoit une ligne `Embedding` en échec après `embeddings.max_failures` ; le clustering tourne en mode dégradé sur les critères restants | rejouer un embedding écrase la ligne `Embedding` (clé `article_id` + `model`) |
 | **Réponse LLM malformée** (JSON invalide) | le job échoue | validation Pydantic | `retry`, puis `dead_letter` après `max_attempts` | aucune écriture partielle : la validation précède l'écriture |
 
 ### 9.2 Pannes de processus
