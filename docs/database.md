@@ -108,6 +108,8 @@ PRAGMA journal_size_limit=67108864;  -- 64 Mo, valeur initiale
   jamais corrompre la base (III §10.2).
 - Auto-checkpoint WAL à sa valeur par défaut ; `journal_size_limit` tronque le `-wal` après checkpoint, dont la
   taille reste une métrique lisible (III §10.2, VII §39).
+- **Seule exception** : la connexion du service `migrate`, qui fonctionne avec `foreign_keys=OFF` pendant les
+  migrations (III §10.2, §5).
 - Le fichier vit sur un **volume nommé local** (`radar_data` sur `/data`), jamais un bind mount ni un système de
   fichiers réseau (III §10.4, IX décision 26). T0.3 (V-04) a validé le WAL sur volume nommé partagé par deux
   conteneurs.
@@ -1026,12 +1028,33 @@ INSERT INTO article_fts(article_fts) VALUES ('rebuild');
 - **Réversibilité** : chaque migration fournit un `downgrade`, **ou se déclare irréversible dans son en-tête**
   (VII §36.9, T-DB-08). `scripts/deploy.sh` refuse un rollback à travers une migration ; la procédure IX §56.6-P2
   s'applique (*downgrade* avec l'image courante, ou restauration du snapshot pris au déploiement) (VIII §49.5).
-- **Points de vigilance** (constats SQLite, non tranchés par la spec) :
-  - la table virtuelle `article_fts` et ses triggers ne sont pas produits par l'autogénération d'Alembic : ils
-    s'écrivent en SQL explicite dans la migration du Sprint 3 ;
-  - une migration qui reconstruit `article` en mode batch supprime l'ancienne table, et avec elle ses triggers :
-    les trois triggers de `article_fts` sont à recréer dans la même migration ;
-  - reconstruction de table et `PRAGMA foreign_keys=ON` : voir §7, I-16.
+- **Clés étrangères désactivées pendant les migrations** (III §10.2, §10.5 ; I-16) : l'environnement Alembic
+  (`env.py`) pose `PRAGMA foreign_keys=OFF` sur la connexion de `migrate` **avant l'ouverture de la transaction**,
+  car ce PRAGMA est sans effet à l'intérieur d'une transaction. Sans cela, la reconstruction d'une table en mode batch
+  (copie, `DROP TABLE` de l'ancienne, renommage) exécuterait un `DELETE` implicite qui déclencherait les
+  `ON DELETE CASCADE` de `article_topic`, `article_entity` et `embedding`, ou échouerait sur les `RESTRICT`.
+- **Contrôle d'intégrité** : chaque migration se termine par `PRAGMA foreign_key_check` et **échoue** si une
+  violation est trouvée (III §10.5).
+- **Connexions applicatives** : `app` et `worker` gardent toujours `foreign_keys=ON` (§2.2).
+- **Index plein texte** : la table virtuelle `article_fts` et ses triggers ne sont pas produits par l'autogénération
+  d'Alembic ; ils s'écrivent en SQL explicite dans la migration du Sprint 3. Une migration qui reconstruit `article`
+  supprime l'ancienne table, et avec elle ses triggers : elle **recrée les trois triggers de `article_fts`**
+  (III §10.5, §11.14).
+
+```python
+# env.py (indicatif) — migrate uniquement
+with connectable.connect() as connection:
+    connection.exec_driver_sql("PRAGMA foreign_keys=OFF")   # hors transaction
+    context.configure(connection=connection, target_metadata=target_metadata,
+                      render_as_batch=True)
+    with context.begin_transaction():
+        context.run_migrations()
+
+# fin de chaque script de migration (upgrade et downgrade)
+violations = op.get_bind().exec_driver_sql("PRAGMA foreign_key_check").fetchall()
+if violations:
+    raise RuntimeError(f"violations de clés étrangères : {violations}")
+```
 
 ## 6. Rétention
 
