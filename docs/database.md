@@ -2,8 +2,8 @@
 
 > Tâche T0.4 (#7), rédigée le 2026-09-23 sur la spec arbitrée par T0.2b (#67).
 > Document de référence des migrations Alembic de chaque sprint (Partie IX §55.4, Partie VIII §47.1).
-> Il **rassemble** ce que la spec fixe, sans rien trancher : la spec fait foi, et tout écart relevé entre ses parties
-> est listé au §7, sans arbitrage.
+> Il **rassemble** ce que la spec fixe : la spec fait foi. Les écarts relevés entre ses parties sont listés au §7,
+> avec les décisions du propriétaire du 2026-09-23, appliquées par T0.4b (#69).
 
 Références : `docs/spec/partie-<N>.md` est abrégé en « <N> » (par exemple « III §11.2 »). Les décisions du rapport
 de cadrage (`docs/sprints/sprint-00-cadrage.md`) sont citées par leur identifiant (E7, CF-15…).
@@ -667,7 +667,7 @@ transitions, `dead_letter → pending` et `dead_letter → cancelled`, par un `U
 - Le claim (`UPDATE … RETURNING`, SQLite ≥ 3.35) filtre sur `status IN ('pending','retry')`,
   `next_attempt_at <= :now`, `job_type` et `priority`, et trie par `priority DESC, created_at DESC` (V-A §23.4).
 - **Idempotence des résultats** : portée par les tables métier. Un job remplace ses propres résultats pour sa cible
-  dans une seule transaction (III §11.10) ; voir §7, I-08, pour l'exemple cité par III.
+  dans une seule transaction : `enrich_article` supprime puis réécrit les lignes `method=llm` de l'article (III §11.10, I-08).
 
 ```sql
 CREATE TABLE aijob (
