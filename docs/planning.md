@@ -135,7 +135,7 @@ Les entrées et sorties **communes** (§0) s'appliquent à chaque sprint ; les f
 | | |
 |---|---|
 | **Objectif** | Transformer la spec en contrat cohérent et vérifié, préparer le S1 |
-| **Livrables 🤖** | **T0.1a** découpage mécanique en `docs/spec/partie-*.md` (E10) · **T0.1b** report des impacts, retrait des marqueurs, `SPEC.md` en index, Partie VII non modifiée (C11, E9) — **PR dédiée** · **T0.2** `sprint-00-cadrage.md` (conflits, décisions manquantes dont E1–E10, risques, questions) · **T0.3** vérifications §57.4 · **T0.4** `database.md` (table par table, sprint d'introduction) · **T0.5** `architecture.md` (arborescence, configuration, Compose proposé, CI, `Clock`, `check-test-catalog.py`) · **T0.6** ADR 0001–0019 + index + gabarit · **T0.7** `CLAUDE.md` · **T0.8** `sprints/sprint-01.md` |
+| **Livrables 🤖** | **T0.1a** découpage mécanique en `docs/spec/partie-*.md` (E10) · **T0.1b** report des impacts, retrait des marqueurs, `SPEC.md` en index, Partie VII non modifiée (C11, E9) — **PR dédiée** · **T0.2** `sprint-00-cadrage.md` (conflits, décisions manquantes dont E1–E10, risques, questions) · **T0.3** vérifications §57.4 · **T0.4** `database.md` (table par table, sprint d'introduction) · **T0.5** `architecture.md` (arborescence, configuration, Compose proposé, CI, `Clock`, `check-test-catalog.py`) · **T0.6** ADR 0001–0019 + index + gabarit · **T0.7** `CLAUDE.md` · **T0.8** `sprints/sprint-01.md` · **T0.9** ADR-0021 et E22, accès à Docker en développement (#60) |
 | **Entrée** | Pré-S0 clos |
 | **Sortie** | check-list IX §57.7 entièrement cochée : PR T0.1 fusionnée · documents présents · ADR 0001–0019 `Accepté` · plus aucune question ouverte · vérifications concluantes ou couvertes par ADR · diff limité à `docs/`, `SPEC.md`, `CLAUDE.md` · validation 👤 |
 | **Dépendances** | T0.1 fusionnée **avant** T0.2–T0.8 (IX décision 11) |
@@ -148,20 +148,20 @@ Les entrées et sorties **communes** (§0) s'appliquent à chaque sprint ; les f
 | | |
 |---|---|
 | **Objectif** | Socle exécutable, durci et outillé, sans fonction métier |
-| **Livrables 🤖** | FastAPI + SQLAlchemy async/aiosqlite, deux fabriques de sessions, PRAGMA, `UTCDateTime`, `Clock` · Alembic + service `migrate` · worker minimal (heartbeat, fail-fast, watchdog, boot, SIGTERM) · `/health` et `/api/health` minimal · configuration typée, `validate-config` · logs structlog et nettoyage des secrets · Caddy (TLS interne, basic_auth, en-têtes) · Compose conforme VII §36.5 · CI six étapes, doubles branchés, blocage réseau, traçabilité (mécanisme E1) · `.github/` : modèles d'issue et de PR (check-list DoD §51.1) · `runbook.md`, `testing.md`, `deployment.md` (dev) |
+| **Livrables 🤖** | FastAPI + SQLAlchemy async/aiosqlite, deux fabriques de sessions, PRAGMA, `UTCDateTime`, `Clock` · Alembic + service `migrate` · worker minimal (heartbeat, fail-fast, watchdog, boot, SIGTERM) · `/health` et `/api/health` minimal · configuration typée, `validate-config` · logs structlog et nettoyage des secrets · Caddy (TLS interne, basic_auth, en-têtes) · Compose conforme VII §36.5 · CI six étapes, doubles branchés, blocage réseau, traçabilité (mécanisme E1) · `.github/` : modèles d'issue et de PR (check-list DoD §51.1) · **`scripts/radar-dev` V0** (#62, E22, ADR-0021), après le socle Compose · `runbook.md`, `testing.md`, `deployment.md` (dev) |
 | **Tests** | T-DB-01 à 08 · T-CFG-01, 02, 05, 07 · T-OPS-01 à 03, 07 à 11 · T-SEC-01 à 03, 05, 06, 08, 09 (sans restic) · T-RES-10 |
 | **Sortie spécifique** | `docker compose up -d` : `migrate` terminé, `app`/`worker`/`caddy` `running` · `https://localhost/health` = ok sans auth, `/api/health` 401 · WAL actif · refus de démarrer hors `head` · CI verte e2e compris |
 | **Dépendances** | D1 → D2 → D3 → D4 (VIII §48) |
 | **Effort** | 6–9 |
 | **Risques** | courbe asyncio / SQLAlchemy async (`BEGIN IMMEDIATE`) · racine en lecture seule et non-root dès le départ · durée CI (e2e Compose dans Actions) · certificat Caddy local non reconnu par le navigateur · mypy strict |
-| **👤** | ajouter les checks CI 1–5 obligatoires à la règle de `main` · démo sur Compose neuf |
+| **👤** | **poste de dev : Docker rootless, retrait du groupe `docker`** (#61), avant le premier Compose, une fois l'ADR-0021 accepté · ajouter les checks CI 1–5 obligatoires à la règle de `main` · démo sur Compose neuf |
 
 ### S2 — Collecte & pipeline déterministe
 
 | | |
 |---|---|
 | **Objectif** | Ingestion complète des six types de sources, sans LLM ni clustering |
-| **Livrables 🤖** | `HttpClient` partagé (limiteur, retry, `Retry-After`, quota, anti-SSRF, `robots.txt`, User-Agent) · interface `Collector` et registre · collectors `rss`, `github`, `hackernews`, `reddit`, `youtube`, `webpage` · runner (normalisation → relevance → extraction → liaisons keyword → résumé de repli, transaction par page, checkpoint, `CollectorRun`) · disjoncteur par source, scheduler · `trends_since` (D11) · table `AIJob` et création des `enrich_article` (E7) · validation des trois fichiers `config/` · faux serveur de sources · `collectors.md` |
+| **Livrables 🤖** | `HttpClient` partagé (limiteur, retry, `Retry-After`, quota, anti-SSRF, `robots.txt`, User-Agent) · interface `Collector` et registre · collectors `rss`, `github`, `hackernews`, `reddit`, `youtube`, `webpage` · runner (normalisation → relevance → extraction → liaisons keyword → résumé de repli, transaction par page, checkpoint, `CollectorRun`) · disjoncteur par source, scheduler · `trends_since` (D11) · table `AIJob` et création des `enrich_article` (E7) · validation des trois fichiers `config/` · faux serveur de sources · `collectors.md` · **skill `radar-dev` V1** (#63, E22) |
 | **Tests** | T-PIPE-* · T-HTTP-* · T-COL-* · T-CFG-02 à 06, 09 · T-DB-12 (`Article.status`) · T-OPS-16 · T-RES-04 |
 | **Sortie spécifique** | six types collectés contre le faux serveur avec le `config/` de démo · rejeu sans doublon · invariant de compteurs · source en panne isolée |
 | **Dépendances** | D4 → D5 → D6 · D7 amorcé (liaisons keyword, `entities.yaml`) |
@@ -174,7 +174,7 @@ Les entrées et sorties **communes** (§0) s'appliquent à chaque sprint ; les f
 | | |
 |---|---|
 | **Objectif** | Premier écran : lire et chercher les articles collectés |
-| **Livrables 🤖** | API de lecture (stories = articles isolés), pagination keyset, filtres · `article_fts` et triggers, recherche `q` · frontend React/TS/Vite servi par Caddy (Feed, badge de hotness, indicateur repli / enrichi) · vitest, règle lint |
+| **Livrables 🤖** | API de lecture (stories = articles isolés), pagination keyset, filtres · `article_fts` et triggers, recherche `q` · frontend React/TS/Vite servi par Caddy (Feed, badge de hotness, indicateur repli / enrichi) · vitest, règle lint · **`radar-dev` V2, serveur MCP local — conditionnel** : go ou no-go au démarrage du sprint, sur les bilans S1 et S2 (#64, E22) |
 | **Tests** | T-DB-11 · T-API-05 à 07 · T-FE-01 à 05, 07 |
 | **Sortie spécifique** | Feed alimenté · recherche tolérante à la syntaxe FTS5 · aucun `offset` · build sans script ni style en ligne |
 | **Effort** | 3–5 |
@@ -326,6 +326,7 @@ Menée en parallèle des sprints. « Au plus tard » = sinon l'étape citée ne 
 |---|---|---|---|---|
 | Dépôt public, spec brute, règle sur `main`, outillage `gh` | Pré-S0 | avant S0 | — | IX §57.2 |
 | Arbitrages du S0 (PR T0.1, rapport, ADR, plan S1) | S0 | fin S0 | — | IX §57.7 |
+| Poste de dev : Docker rootless, retrait du groupe `docker` ; sysctl `net.ipv4.ip_unprivileged_port_start=80` (parade (a)) (#61) | S1 | avant le premier Compose du S1 | dès l'acceptation de l'ADR-0021 | ADR-0021 · E22 |
 | Checks CI obligatoires sur `main` | S1 | fin S1 | dès la CI verte | VIII §46.2 |
 | Curation du `config/` réel | S2 → S8 | J0 | finie au S8 | IV §16 · V-B §29.7 |
 | Choix du fournisseur de VPS, provisioning amd64, durcissement VII §43.1 | S4 | fin S11 | S4–S6, puis M1 indicative dans `radar-load` sur le VPS (aucune donnée réelle, D15) | VII §43.1 · §45.4 |
