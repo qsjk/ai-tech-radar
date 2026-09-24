@@ -10,7 +10,7 @@ import pytest
 import structlog
 
 from app.core.config import WorkerSettings
-from app.core.logging import MASK, SENSITIVE_KEYS, SecretRedactor, configure_logging
+from app.core.logging import MASK, SENSITIVE_SUFFIXES, SecretRedactor, configure_logging
 from tests.fakes.clock import ManualClock
 
 FAKE_GITHUB = "FAKE-github-token-0001"
@@ -87,11 +87,30 @@ def test_aucun_secret_factice_dans_les_logs_captures(journal: io.StringIO) -> No
 
 
 @pytest.mark.spec("T-SEC-02")
-@pytest.mark.parametrize("cle", sorted(SENSITIVE_KEYS) + ["Authorization", "PASSWORD"])
+@pytest.mark.parametrize(
+    "cle",
+    [
+        *SENSITIVE_SUFFIXES,
+        "Authorization",
+        "PASSWORD",
+        "x-api-key",
+        "set-cookie",
+        "access_token",
+        "proxy-authorization",
+        "smtp_password",
+    ],
+)
 def test_cles_sensibles_masquees(cle: str) -> None:
     event = SecretRedactor([])(None, "info", {"event": "http.request", cle: "valeur-quelconque"})
     assert event[cle] == MASK
     assert event["event"] == "http.request"
+
+
+@pytest.mark.spec("T-SEC-02")
+@pytest.mark.parametrize("cle", ["prompt_tokens", "token_count"])
+def test_cles_proches_non_masquees(cle: str) -> None:
+    event = SecretRedactor([])(None, "info", {"event": "llm.call", cle: 1234})
+    assert event[cle] == 1234
 
 
 @pytest.mark.spec("T-SEC-02")

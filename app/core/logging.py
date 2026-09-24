@@ -19,7 +19,13 @@ from structlog.typing import EventDict, Processor, WrappedLogger
 from app.core.clock import Clock
 
 MASK = "***"
-SENSITIVE_KEYS = frozenset({"authorization", "password", "token", "secret", "api_key", "cookie"})
+# Une clé est sensible si son nom, en minuscules et `-` remplacé par `_`, se termine par l'un de ces suffixes
+# (VII §42.4 ; décision du 2026-09-24) : `x-api-key`, `set-cookie`, `access_token`, `smtp_password`…
+SENSITIVE_SUFFIXES = ("authorization", "password", "token", "secret", "api_key", "cookie")
+
+
+def is_sensitive_key(name: str) -> bool:
+    return name.lower().replace("-", "_").endswith(SENSITIVE_SUFFIXES)
 
 
 class SecretRedactor:
@@ -33,7 +39,7 @@ class SecretRedactor:
         return self._clean_mapping(event_dict)
 
     def _clean_mapping(self, mapping: MutableMapping[str, Any]) -> dict[str, Any]:
-        return {key: MASK if key.lower() in SENSITIVE_KEYS else self._clean(value) for key, value in mapping.items()}
+        return {key: MASK if is_sensitive_key(key) else self._clean(value) for key, value in mapping.items()}
 
     def _clean(self, value: Any) -> Any:
         if isinstance(value, str):
