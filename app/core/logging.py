@@ -10,7 +10,7 @@ Le niveau 2 (transport, `HttpClient`) arrive avec la collecte (Sprint 2).
 
 import logging
 import sys
-from collections.abc import Iterable, MutableMapping
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 import structlog
@@ -38,13 +38,18 @@ class SecretRedactor:
     def __call__(self, logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
         return self._clean_mapping(event_dict)
 
-    def _clean_mapping(self, mapping: MutableMapping[str, Any]) -> dict[str, Any]:
-        return {key: MASK if is_sensitive_key(key) else self._clean(value) for key, value in mapping.items()}
+    def _clean_mapping(self, mapping: Mapping[Any, Any]) -> dict[str, Any]:
+        # Clés normalisées en texte : une clé non textuelle (ex. un code HTTP) ne doit pas faire perdre la ligne.
+        cleaned: dict[str, Any] = {}
+        for key, value in mapping.items():
+            name = str(key)
+            cleaned[name] = MASK if is_sensitive_key(name) else self._clean(value)
+        return cleaned
 
     def _clean(self, value: Any) -> Any:
         if isinstance(value, str):
             return self.clean_text(value)
-        if isinstance(value, MutableMapping):
+        if isinstance(value, Mapping):
             return self._clean_mapping(value)
         if isinstance(value, list | tuple | set | frozenset):
             return type(value)(self._clean(item) for item in value)

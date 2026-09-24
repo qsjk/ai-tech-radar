@@ -119,3 +119,9 @@ def test_cles_sensibles_masquees_en_profondeur() -> None:
         None, "info", {"event": "x", "headers": {"authorization": "Bearer abc", "accept": "*/*"}}
     )
     assert event["headers"] == {"authorization": MASK, "accept": "*/*"}
+
+
+@pytest.mark.spec("T-SEC-02")
+def test_cle_non_textuelle_dans_un_dict_imbrique() -> None:
+    event = SecretRedactor(["FAKE-x"])(None, "info", {"event": "x", "par_statut": {200: "ok FAKE-x", 401: "refusé"}})
+    assert event["par_statut"] == {"200": f"ok {MASK}", "401": "refusé"}
