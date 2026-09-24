@@ -148,15 +148,15 @@ def _on_connect(dbapi_connection, connection_record):
 
 @event.listens_for(engine.sync_engine, "begin")
 def _on_begin(conn):
-    mode = "DEFERRED" if conn.get_execution_options().get("readonly") else "IMMEDIATE"
+    mode = "DEFERRED" if conn.get_execution_options().get("radar_read_only") else "IMMEDIATE"
     conn.exec_driver_sql(f"BEGIN {mode}")
 
 write_session = async_sessionmaker(engine)
-read_session = async_sessionmaker(engine.execution_options(readonly=True))
+read_session = async_sessionmaker(engine.execution_options(radar_read_only=True))
 ```
 
-- **Le nom de l'option `readonly` est une proposition** (rapport de cadrage §3, V-03) : il sera fixé à
-  l'implémentation du Sprint 1.
+- **Option de lecture seule : `radar_read_only`** (`app/db/engine.py`, constante `READ_ONLY_OPTION`), fixée en T1.3
+  (#80). Le préfixe évite toute collision avec une option d'exécution de SQLAlchemy ou d'un dialecte.
 - Résultat de V-03 (SQLAlchemy 2.0.54, aiosqlite 0.22.1) : une connexion B échoue ou attend **dès son `BEGIN`**
   quand A tient une transaction d'écriture ; une session de lecture seule ne prend pas le verrou et ne bloque pas
   les écrivains. Les autres mécanismes (`isolation_level="IMMEDIATE"`, `autocommit=False`) ne prennent le verrou
@@ -165,6 +165,9 @@ read_session = async_sessionmaker(engine.execution_options(readonly=True))
   SQLAlchemy).
 - Transactions courtes : lots bornés côté worker, aucune écriture longue côté app, lectures paginées ; un échec
   après `busy_timeout` donne un retry borné et la métrique `db_locked` (III §10.7, II §8.6, T-DB-06).
+  Mise en œuvre (T1.3) : `Database.run_write` (`app/db/session.py`) rejoue l'unité d'écriture au plus 3 fois en tout,
+  immédiatement, `busy_timeout` portant déjà l'attente ; chaque échec « database is locked » est compté par le
+  compteur `db_locked` du processus, horodaté par la `Clock`, sur une fenêtre glissante d'une heure (VII §39.4).
 
 ### 2.4 Dates, heures et temps
 

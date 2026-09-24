@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from app.core.config import AppEnv, AppSettings, WorkerSettings
 
+DB = "/data/radar.db"
 FAKE_GITHUB = "FAKE-github-token-0001"
 FAKE_LLM = "FAKE-llm-api-key-0002"
 FAKE_TELEGRAM = "FAKE-telegram-bot-token-0003"
@@ -14,7 +15,15 @@ FAKE_RESTIC = "FAKE-restic-password-0005"
 
 @pytest.fixture(autouse=True)
 def _environnement_vide(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("DASHBOARD_URL", "APP_ENV", "LOG_LEVEL", "RADAR_VERSION", "HTTP_CONTACT", "GITHUB_TOKEN"):
+    for name in (
+        "RADAR_DB_PATH",
+        "DASHBOARD_URL",
+        "APP_ENV",
+        "LOG_LEVEL",
+        "RADAR_VERSION",
+        "HTTP_CONTACT",
+        "GITHUB_TOKEN",
+    ):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -36,28 +45,32 @@ def _environnement_vide(monkeypatch: pytest.MonkeyPatch) -> None:
 )
 def test_dashboard_url_invalide_refusee(url: str) -> None:
     with pytest.raises(ValidationError):
-        AppSettings(dashboard_url=url)
+        AppSettings(radar_db_path=DB, dashboard_url=url)
     with pytest.raises(ValidationError):
-        WorkerSettings(dashboard_url=url, http_contact="https://github.com/qsjk/ai-tech-radar")
+        WorkerSettings(radar_db_path=DB, dashboard_url=url, http_contact="https://github.com/qsjk/ai-tech-radar")
 
 
 @pytest.mark.spec("T-CFG-07")
 def test_http_localhost_admise_en_developpement_seulement() -> None:
-    assert AppSettings(dashboard_url="http://localhost", app_env=AppEnv.DEVELOPMENT).dashboard_url == "http://localhost"
+    assert (
+        AppSettings(radar_db_path=DB, dashboard_url="http://localhost", app_env=AppEnv.DEVELOPMENT).dashboard_url
+        == "http://localhost"
+    )
     with pytest.raises(ValidationError):
-        AppSettings(dashboard_url="http://localhost")  # production par défaut
+        AppSettings(radar_db_path=DB, dashboard_url="http://localhost")  # production par défaut
     with pytest.raises(ValidationError):
-        AppSettings(dashboard_url="http://localhost", app_env=AppEnv.TEST)
+        AppSettings(radar_db_path=DB, dashboard_url="http://localhost", app_env=AppEnv.TEST)
 
 
 @pytest.mark.spec("T-CFG-07")
 @pytest.mark.parametrize("url", ["https://radar.example.com", "https://localhost"])
 def test_dashboard_url_valide_acceptee(url: str) -> None:
-    assert AppSettings(dashboard_url=url).dashboard_url == url
+    assert AppSettings(radar_db_path=DB, dashboard_url=url).dashboard_url == url
 
 
 @pytest.mark.spec("T-CFG-07")
 def test_dashboard_url_lue_dans_l_environnement(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RADAR_DB_PATH", DB)
     monkeypatch.setenv("DASHBOARD_URL", "https://radar.example.com/")
     with pytest.raises(ValidationError):
         AppSettings()  # type: ignore[call-arg]
@@ -69,6 +82,7 @@ def test_dashboard_url_lue_dans_l_environnement(monkeypatch: pytest.MonkeyPatch)
 @pytest.mark.spec("T-SEC-02")
 def test_representation_des_secrets_masquee() -> None:
     settings = WorkerSettings(
+        radar_db_path=DB,
         dashboard_url="https://radar.example.com",
         http_contact="https://github.com/qsjk/ai-tech-radar",
         github_token=FAKE_GITHUB,  # type: ignore[arg-type]
@@ -86,8 +100,8 @@ def test_representation_des_secrets_masquee() -> None:
 @pytest.mark.spec("T-SEC-02")
 def test_app_ne_declare_aucun_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", FAKE_GITHUB)
-    settings = AppSettings(dashboard_url="https://radar.example.com")
-    assert set(AppSettings.model_fields) == {"dashboard_url", "app_env", "log_level", "radar_version"}
+    settings = AppSettings(radar_db_path=DB, dashboard_url="https://radar.example.com")
+    assert set(AppSettings.model_fields) == {"radar_db_path", "dashboard_url", "app_env", "log_level", "radar_version"}
     assert settings.secret_values() == []
     assert FAKE_GITHUB not in settings.model_dump_json()
 
@@ -96,6 +110,15 @@ def test_app_ne_declare_aucun_secret(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_variable_vide_vaut_absente(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "")
     settings = WorkerSettings(
-        dashboard_url="https://radar.example.com", http_contact="https://github.com/qsjk/ai-tech-radar"
+        radar_db_path=DB,
+        dashboard_url="https://radar.example.com",
+        http_contact="https://github.com/qsjk/ai-tech-radar",
     )
     assert settings.github_token is None
+
+
+def test_radar_db_path_obligatoire_et_lue_dans_l_environnement(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValidationError):
+        AppSettings(dashboard_url="https://radar.example.com")  # type: ignore[call-arg]
+    monkeypatch.setenv("RADAR_DB_PATH", "/tmp/autre.db")
+    assert AppSettings(dashboard_url="https://radar.example.com").radar_db_path == "/tmp/autre.db"
