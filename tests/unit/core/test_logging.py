@@ -13,6 +13,7 @@ from app.core.config import WorkerSettings
 from app.core.logging import MASK, SENSITIVE_SUFFIXES, SecretRedactor, configure_logging
 from tests.fakes.clock import ManualClock
 
+DB = "/data/radar.db"
 FAKE_GITHUB = "FAKE-github-token-0001"
 FAKE_LLM = "FAKE-llm-api-key-0002"
 FAKE_TELEGRAM = "123456:FAKE-telegram-bot-token-0003"
@@ -25,6 +26,7 @@ FAKES = (FAKE_GITHUB, FAKE_LLM, FAKE_TELEGRAM, FAKE_SMTP, FAKE_RESTIC)
 def journal() -> Iterator[io.StringIO]:
     """Configure les logs comme le ferait le worker, avec des secrets factices, et capture la sortie."""
     settings = WorkerSettings(
+        radar_db_path=DB,
         dashboard_url="https://radar.example.com",
         http_contact="https://github.com/qsjk/ai-tech-radar",
         github_token=FAKE_GITHUB,  # type: ignore[arg-type]

@@ -52,10 +52,15 @@ def validate_dashboard_url(url: str, app_env: AppEnv) -> str:
 
 
 class _ProcessSettings(BaseSettings):
-    """Variables communes à `app` et `worker`."""
+    """Variables communes à `app` et `worker`.
+
+    `RADAR_DB_PATH` est fixée par Compose (`/data/radar.db`, VII §36.5) : c'est la seule source du chemin de la base
+    (`architecture.md` P-01).
+    """
 
     model_config = SettingsConfigDict(env_ignore_empty=True, extra="ignore", frozen=True)
 
+    radar_db_path: str
     dashboard_url: str
     app_env: AppEnv = AppEnv.PRODUCTION
     log_level: LogLevel = LogLevel.INFO
@@ -79,7 +84,8 @@ class _ProcessSettings(BaseSettings):
 
 
 class AppSettings(_ProcessSettings):
-    """Variables de `app` : `DASHBOARD_URL`, `APP_ENV`, `LOG_LEVEL`, `RADAR_VERSION` — aucun secret (VII §36.7)."""
+    """Variables de `app` : `RADAR_DB_PATH`, `DASHBOARD_URL`, `APP_ENV`, `LOG_LEVEL`, `RADAR_VERSION` — aucun secret
+    (VII §36.7)."""
 
 
 class WorkerSettings(_ProcessSettings):
