@@ -45,6 +45,10 @@ python_version = "3.12"
 strict = true
 files = ["app"]
 
+[tool.coverage.run]
+# Les écouteurs SQLAlchemy du moteur async s'exécutent dans des greenlets.
+concurrency = ["greenlet", "thread"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Blocage réseau pour toute la session (VIII §50.1) : seules les connexions vers 127.0.0.1 et ::1 sont permises ;
