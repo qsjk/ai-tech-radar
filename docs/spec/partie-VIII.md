@@ -517,7 +517,7 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | T-CFG-04 | `pipeline.yaml` absent → défauts ; présent, chaque section (`collectors`, `normalization`, `relevance`, `extraction`, `http`, `llm`, `embeddings`, `topic_backfill`, `clustering`, `importance`, `trends`, `emerging`, `alerts`, `ops`, `backup`, `restore_test`) est validée | U | IV §16.6 · V-A §27.8 · V-B · VII §39.7 |
 | T-CFG-05 | `HTTP_CONTACT` absent → le worker refuse de démarrer | I | IV §22 |
 | T-CFG-06 | `GITHUB_TOKEN` absent → sources `github` non planifiées, log `warning`, état « credentials manquants » exposé ; le worker démarre | I | IV §22 |
-| T-CFG-07 | `DASHBOARD_URL` invalide (schéma, chemin, slash final) → `app` et `worker` refusent de démarrer ; `http://localhost` accepté en développement | U | VII §36.7 |
+| T-CFG-07 | `DASHBOARD_URL` invalide (schéma, chemin, slash final, port) → `app` et `worker` refusent de démarrer ; `http://localhost` accepté en développement | U | VII §36.7 |
 | T-CFG-08 | Registre des `Setting` : clé absente → défaut ; valeur hors schéma refusée par l'API | I | VI §34.3 |
 | T-CFG-09 | `HTTP_TEST_ALLOW_HOSTS` renseignée avec `APP_ENV=production` → le worker refuse de démarrer | U | décision 23 |
 | T-CFG-10 | Commandes `app.cli` : code de sortie `2` sur usage ou configuration invalide ; résultat sur stdout, logs sur stderr | U | IX §56.3 |
