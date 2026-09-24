@@ -4,7 +4,12 @@ version = "0.1.0"
 description = "Radar de veille technologique : collecte, regroupement et tendances (docs/spec/)."
 readme = "README.md"
 requires-python = "==3.12.*"
-dependencies = []
+dependencies = [
+    "pydantic==2.13.5",
+    "pydantic-settings==2.15.0",
+    "sqlalchemy==2.0.54",
+    "structlog==26.1.0",
+]
 
 [dependency-groups]
 dev = [
@@ -43,4 +48,12 @@ files = ["app"]
 testpaths = ["tests"]
 # Blocage réseau pour toute la session (VIII §50.1) : seules les connexions vers 127.0.0.1 et ::1 sont permises ;
 # les sockets Unix restent autorisées. Couverture de app/ mesurée à chaque exécution, jamais bloquante (VIII §49.2).
-addopts = ["--allow-hosts=127.0.0.1,::1", "--allow-unix-socket", "--cov=app", "--cov-report=term-missing"]
+addopts = [
+    "--allow-hosts=127.0.0.1,::1",
+    "--allow-unix-socket",
+    "--cov=app",
+    "--cov-report=term-missing",
+    "--strict-markers",
+]
+# Traçabilité du catalogue (VIII §50.3) : `@pytest.mark.spec("T-DB-07")`, ou avec un volet `spec("T-SEC-01:logs")`.
+markers = ["spec(identifiant): identifiant du catalogue VIII §50.5 couvert par le test, volet éventuel après « : »"]
