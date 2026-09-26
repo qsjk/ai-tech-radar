@@ -23,13 +23,14 @@ def database_url(db_path: str) -> str:
     return f"sqlite+aiosqlite:///{db_path}"
 
 
-def connection_pragmas(*, busy_timeout_ms: int, journal_size_limit: int) -> list[str]:
-    """PRAGMA de chaque connexion de `app` et `worker` (III §10.2)."""
+def connection_pragmas(*, busy_timeout_ms: int, journal_size_limit: int, foreign_keys: bool = True) -> list[str]:
+    """PRAGMA de chaque connexion (III §10.2). `foreign_keys` vaut `ON` pour `app` et `worker` ; seule la connexion de
+    `migrate` le pose à `OFF` (III §10.5, `docs/database.md` §5)."""
     return [
         "PRAGMA journal_mode=WAL",
         "PRAGMA synchronous=NORMAL",
         f"PRAGMA busy_timeout={int(busy_timeout_ms)}",
-        "PRAGMA foreign_keys=ON",
+        f"PRAGMA foreign_keys={'ON' if foreign_keys else 'OFF'}",
         f"PRAGMA journal_size_limit={int(journal_size_limit)}",
     ]
 
