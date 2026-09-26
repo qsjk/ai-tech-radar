@@ -8,23 +8,13 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
-from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import inspect, text
 
 from app.db.engine import create_migrate_engine
 from app.db.models import Base
-
-RACINE = Path(__file__).resolve().parents[3]
-MIGRATIONS = RACINE / "migrations"
-
-
-def alembic_config(db_path: str, script_location: Path = MIGRATIONS) -> Config:
-    config = Config(str(RACINE / "alembic.ini"))
-    config.set_main_option("script_location", str(script_location))
-    config.attributes["radar_db_path"] = db_path
-    return config
+from tests.integration.db.conftest import MIGRATIONS, alembic_config
 
 
 def lire(db_path: str, sql: str) -> list[tuple[object, ...]]:
