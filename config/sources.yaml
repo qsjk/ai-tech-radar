@@ -1,0 +1,20 @@
+# Sources de collecte — jeu de démonstration minimal (Sprint 1, décision Q-04).
+# Format : IV §16.2. La curation réelle commence au Sprint 2.
+sources:
+  - key: claude-code-releases
+    name: Claude Code — Releases
+    type: github
+    url: https://github.com/anthropics/claude-code
+    relevance: always
+    config:
+      repo: anthropics/claude-code
+      include_prereleases: true
+
+  - key: hn-mcp
+    name: HN — MCP
+    type: hackernews
+    url: https://news.ycombinator.com
+    poll_interval: 15m
+    config:
+      mode: query
+      query: "model context protocol"

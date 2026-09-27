@@ -1,0 +1,18 @@
+# Dictionnaire d'entités — jeu de démonstration minimal (Sprint 1, décision Q-04).
+# Format : IV §16.4. Les alias sont déclarés ici, jamais en base (CF-19).
+entities:
+  - type: company
+    canonical_name: anthropic
+    name: Anthropic
+  - type: product
+    canonical_name: claude-code
+    name: Claude Code
+    aliases: ["claude code", "claude-code"]
+  - type: model
+    canonical_name: claude-opus
+    name: Claude Opus
+    aliases: [{ term: 'claude[ -]?opus', regex: true }]
+
+github_reserved_paths:   # premiers segments d'URL github.com qui ne sont pas des owners
+  [orgs, topics, settings, features, marketplace, sponsors, collections, trending,
+   explore, about, pricing, login, join, notifications, search, apps, enterprise]
