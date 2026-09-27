@@ -29,11 +29,11 @@ def journal() -> Iterator[io.StringIO]:
         radar_db_path=DB,
         dashboard_url="https://radar.example.com",
         http_contact="https://github.com/qsjk/ai-tech-radar",
-        github_token=FAKE_GITHUB,  # type: ignore[arg-type]
-        llm_api_key=FAKE_LLM,  # type: ignore[arg-type]
-        telegram_bot_token=FAKE_TELEGRAM,  # type: ignore[arg-type]
-        smtp_password=FAKE_SMTP,  # type: ignore[arg-type]
-        restic_password=FAKE_RESTIC,  # type: ignore[arg-type]
+        github_token=FAKE_GITHUB,
+        llm_api_key=FAKE_LLM,
+        telegram_bot_token=FAKE_TELEGRAM,
+        smtp_password=FAKE_SMTP,
+        restic_password=FAKE_RESTIC,
     )
     root = logging.getLogger()
     saved = (root.handlers[:], root.level)

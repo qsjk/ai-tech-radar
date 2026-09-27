@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from app.core.config_files import ConfigError, ConfigIssue, load_config_files, load_pipeline
+from app.core.config_files import WATCHDOG_TIMEOUT_MIN, ConfigError, ConfigIssue, load_config_files, load_pipeline
+from app.ops.watchdog import REFRESH_INTERVAL
 
 SOURCES = """\
 sources:
@@ -193,6 +194,25 @@ def test_pipeline_invalide_refuse_avec_le_meme_format(tmp_path: Path, contenu: s
         load_pipeline(tmp_path)
     (issue,) = info.value.issues
     assert (issue.file, issue.key, issue.field) == ("pipeline.yaml", "ops", champ)
+
+
+@pytest.mark.spec("T-CFG-02:schemas")
+@pytest.mark.parametrize("valeur", ["9s", "1s", "0s", 5])
+def test_watchdog_timeout_sous_le_minimum_refuse(tmp_path: Path, valeur: str | int) -> None:
+    (tmp_path / "pipeline.yaml").write_text(f"ops:\n  watchdog_timeout: {valeur}\n", encoding="utf-8")
+    with pytest.raises(ConfigError) as info:
+        load_pipeline(tmp_path)
+    (issue,) = info.value.issues
+    assert (issue.file, issue.key, issue.field) == ("pipeline.yaml", "ops", "watchdog_timeout")
+    assert "au moins 10s" in issue.message
+    assert "rafraîchissement du watchdog" in issue.message
+
+
+@pytest.mark.spec("T-CFG-02:schemas")
+def test_watchdog_timeout_au_minimum_accepte(tmp_path: Path) -> None:
+    (tmp_path / "pipeline.yaml").write_text("ops:\n  watchdog_timeout: 10s\n", encoding="utf-8")
+    assert load_pipeline(tmp_path).ops.watchdog_timeout == timedelta(seconds=10)
+    assert WATCHDOG_TIMEOUT_MIN == timedelta(seconds=2 * REFRESH_INTERVAL)
 
 
 @pytest.mark.spec("T-CFG-01")

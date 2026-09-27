@@ -15,16 +15,10 @@ FAKE_RESTIC = "FAKE-restic-password-0005"
 
 @pytest.fixture(autouse=True)
 def _environnement_vide(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in (
-        "RADAR_DB_PATH",
-        "DASHBOARD_URL",
-        "APP_ENV",
-        "LOG_LEVEL",
-        "RADAR_VERSION",
-        "HTTP_CONTACT",
-        "GITHUB_TOKEN",
-    ):
-        monkeypatch.delenv(name, raising=False)
+    """Test hermétique : aucune variable déclarée par les modèles ne vient de l'environnement du poste ou de la CI."""
+    for model in (AppSettings, WorkerSettings):
+        for name in model.model_fields:
+            monkeypatch.delenv(name.upper(), raising=False)
 
 
 @pytest.mark.spec("T-CFG-07")
@@ -73,10 +67,10 @@ def test_dashboard_url_lue_dans_l_environnement(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("RADAR_DB_PATH", DB)
     monkeypatch.setenv("DASHBOARD_URL", "https://radar.example.com/")
     with pytest.raises(ValidationError):
-        AppSettings()  # type: ignore[call-arg]
+        AppSettings()
     monkeypatch.setenv("DASHBOARD_URL", "https://radar.example.com")
     monkeypatch.setenv("APP_ENV", "development")
-    assert AppSettings().app_env is AppEnv.DEVELOPMENT  # type: ignore[call-arg]
+    assert AppSettings().app_env is AppEnv.DEVELOPMENT
 
 
 @pytest.mark.spec("T-SEC-02")
@@ -85,11 +79,11 @@ def test_representation_des_secrets_masquee() -> None:
         radar_db_path=DB,
         dashboard_url="https://radar.example.com",
         http_contact="https://github.com/qsjk/ai-tech-radar",
-        github_token=FAKE_GITHUB,  # type: ignore[arg-type]
-        llm_api_key=FAKE_LLM,  # type: ignore[arg-type]
-        telegram_bot_token=FAKE_TELEGRAM,  # type: ignore[arg-type]
-        smtp_password=FAKE_SMTP,  # type: ignore[arg-type]
-        restic_password=FAKE_RESTIC,  # type: ignore[arg-type]
+        github_token=FAKE_GITHUB,
+        llm_api_key=FAKE_LLM,
+        telegram_bot_token=FAKE_TELEGRAM,
+        smtp_password=FAKE_SMTP,
+        restic_password=FAKE_RESTIC,
     )
     shown = f"{settings!r} {settings} {settings.model_dump()} {settings.model_dump_json()}"
     for fake in (FAKE_GITHUB, FAKE_LLM, FAKE_TELEGRAM, FAKE_SMTP, FAKE_RESTIC):
@@ -119,6 +113,6 @@ def test_variable_vide_vaut_absente(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_radar_db_path_obligatoire_et_lue_dans_l_environnement(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(ValidationError):
-        AppSettings(dashboard_url="https://radar.example.com")  # type: ignore[call-arg]
+        AppSettings(dashboard_url="https://radar.example.com")
     monkeypatch.setenv("RADAR_DB_PATH", "/tmp/autre.db")
     assert AppSettings(dashboard_url="https://radar.example.com").radar_db_path == "/tmp/autre.db"
