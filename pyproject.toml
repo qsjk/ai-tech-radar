@@ -47,6 +47,8 @@ select = ["E", "W", "F", "I", "UP", "B"]
 python_version = "3.12"
 strict = true
 files = ["app"]
+# Le plugin pydantic donne à mypy la signature réelle des modèles, BaseSettings compris (lu dans l'environnement).
+plugins = ["pydantic.mypy"]
 
 [tool.coverage.run]
 # Les écouteurs SQLAlchemy du moteur async s'exécutent dans des greenlets.
