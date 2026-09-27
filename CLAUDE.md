@@ -82,5 +82,7 @@ la spec, sans inventer d'options.
 | Traçabilité du catalogue | `scripts/check-test-catalog.py` | VIII §50.3 |
 | Compose local | `scripts/radar-dev up` · `down` · `reset` · `ps` · `logs <service>` · `health` | VIII §46.1 · ADR-0021 |
 | Tests par `radar-dev` | `scripts/radar-dev test` · `scripts/radar-dev e2e` | VIII §46.1 |
+| Lint du script | `shellcheck scripts/radar-dev` | VIII §49.2, étape 1 |
 
-Le mode d'emploi détaillé vit dans `docs/testing.md` (IX §55.4), créé au Sprint 1.
+`radar-dev` utilise le projet Compose de développement `radar-dev` et exige un `.env` local copié de `.env.example`.
+Le mode d'emploi détaillé vit dans `docs/testing.md` (IX §55.4), section « Environnement local par `radar-dev` ».
