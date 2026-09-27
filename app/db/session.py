@@ -1,10 +1,10 @@
-"""Fabriques de sessions, retry borné sur verrou et compteur `db_locked` (III §10.3, §10.7 ; II §8.6).
+"""Session factories, bounded retry on lock and `db_locked` counter (III §10.3, §10.7; II §8.6).
 
-- `write_session` : transaction ouverte en `BEGIN IMMEDIATE`.
-- `read_session` : transaction différée (`BEGIN DEFERRED`), lecture seule ; ne prend pas le verrou d'écriture.
-- `Database.run_write` : exécute une unité d'écriture dans une transaction ; si `busy_timeout` est épuisé
-  (« database is locked »), la transaction est annulée, l'échec est compté dans `db_locked`, puis l'unité est rejouée,
-  au plus `attempts` fois en tout. `busy_timeout` porte déjà l'attente : le rejeu est immédiat.
+- `write_session`: transaction opened with `BEGIN IMMEDIATE`.
+- `read_session`: deferred transaction (`BEGIN DEFERRED`), read-only; does not take the write lock.
+- `Database.run_write`: runs a write unit in a transaction; if `busy_timeout` is exhausted ("database is locked"),
+  the transaction is rolled back, the failure is counted in `db_locked`, then the unit is replayed, at most `attempts`
+  times in total. `busy_timeout` already carries the wait: the replay is immediate.
 """
 
 from collections import deque
@@ -20,13 +20,13 @@ from app.core.clock import Clock
 from app.db.engine import READ_ONLY_OPTION
 
 DEFAULT_WRITE_ATTEMPTS = 3
-DB_LOCKED_WINDOW = timedelta(hours=1)  # fenêtre de la condition db_locked (VII §39.4, ops.db_locked_max_per_hour)
+DB_LOCKED_WINDOW = timedelta(hours=1)  # window of the db_locked condition (VII §39.4, ops.db_locked_max_per_hour)
 
 log = structlog.get_logger()
 
 
 class DatabaseLockedError(RuntimeError):
-    """Écriture abandonnée : `busy_timeout` épuisé à chaque tentative."""
+    """Write abandoned: `busy_timeout` exhausted on every attempt."""
 
 
 def is_database_locked(error: OperationalError) -> bool:
@@ -34,7 +34,7 @@ def is_database_locked(error: OperationalError) -> bool:
 
 
 class DbLockedCounter:
-    """Compteur `db_locked` du processus : horodatages des échecs, lus par la `Clock` injectée."""
+    """`db_locked` counter of the process: failure timestamps, read from the injected `Clock`."""
 
     def __init__(self, clock: Clock, window: timedelta = DB_LOCKED_WINDOW) -> None:
         self._clock = clock
@@ -47,7 +47,7 @@ class DbLockedCounter:
         self.total += 1
 
     def count_in_window(self) -> int:
-        """Nombre d'échecs dans la dernière fenêtre (une heure par défaut)."""
+        """Number of failures in the last window (one hour by default)."""
         horizon = self._clock.now() - self._window
         while self._events and self._events[0] <= horizon:
             self._events.popleft()
@@ -56,7 +56,7 @@ class DbLockedCounter:
 
 @dataclass
 class Database:
-    """Accès base d'un processus : moteur, fabriques de sessions et compteur `db_locked`."""
+    """Database access of a process: engine, session factories and `db_locked` counter."""
 
     engine: AsyncEngine
     clock: Clock
@@ -74,9 +74,9 @@ class Database:
     async def run_write[T](
         self, unit: Callable[[AsyncSession], Awaitable[T]], *, attempts: int = DEFAULT_WRITE_ATTEMPTS
     ) -> T:
-        """Exécute `unit` dans une transaction d'écriture ; rejoue sur verrou, au plus `attempts` fois en tout."""
+        """Run `unit` in a write transaction; replay on lock, at most `attempts` times in total."""
         if attempts < 1:
-            raise ValueError("attempts doit valoir au moins 1")
+            raise ValueError("attempts must be at least 1")
         for attempt in range(1, attempts + 1):
             try:
                 async with self.write_session() as session, session.begin():
@@ -87,7 +87,7 @@ class Database:
                 self.db_locked.record()
                 log.warning("db.locked", attempt=attempt, attempts=attempts)
         log.error("db.write.abandoned", attempts=attempts)
-        raise DatabaseLockedError(f"écriture abandonnée après {attempts} tentatives : database is locked")
+        raise DatabaseLockedError(f"write abandoned after {attempts} attempts: database is locked")
 
     async def dispose(self) -> None:
         await self.engine.dispose()

@@ -1,8 +1,8 @@
-"""Configuration typée des processus (VII §36.7, docs/architecture.md §3.3).
+"""Typed process configuration (VII §36.7, docs/architecture.md §3.3).
 
-Chaque processus déclare **ses seules variables** (distribution par service, VII §36.7) : une variable absente de son
-modèle n'est jamais lue. `app` ne reçoit aucun secret. Les secrets sont des `SecretStr`, dont la représentation est
-masquée (VII §42.4, niveau 1). Une variable vide dans `.env` vaut « absente ».
+Each process declares **only its own variables** (per-service distribution, VII §36.7): a variable missing from its
+model is never read. `app` receives no secret. Secrets are `SecretStr`, whose representation is masked (VII §42.4,
+level 1). An empty variable in `.env` counts as absent.
 """
 
 from enum import StrEnum
@@ -28,33 +28,33 @@ class LogLevel(StrEnum):
 
 
 def validate_dashboard_url(url: str, app_env: AppEnv) -> str:
-    """Contrôle `DASHBOARD_URL` (VII §36.7, T-CFG-07) et renvoie l'URL inchangée.
+    """Check `DASHBOARD_URL` (VII §36.7, T-CFG-07) and return the URL unchanged.
 
-    Schéma `https`, ou `http://localhost` en développement seulement ; un hôte ; ni port, ni chemin, ni slash final,
-    ni identifiants, ni requête, ni fragment.
+    `https` scheme, or `http://localhost` in development only; a host; no port, path, trailing slash, credentials,
+    query or fragment.
     """
     parts = urlsplit(url)
     if parts.scheme not in ("https", "http"):
-        raise ValueError(f"DASHBOARD_URL : schéma « {parts.scheme} » refusé, https attendu")
+        raise ValueError(f"DASHBOARD_URL: scheme '{parts.scheme}' rejected, https expected")
     if not parts.hostname:
-        raise ValueError("DASHBOARD_URL : hôte manquant")
+        raise ValueError("DASHBOARD_URL: missing host")
     if parts.scheme == "http" and not (parts.hostname == "localhost" and app_env is AppEnv.DEVELOPMENT):
-        raise ValueError("DASHBOARD_URL : http n'est admis que pour localhost, en développement")
+        raise ValueError("DASHBOARD_URL: http is only allowed for localhost, in development")
     if parts.port is not None:
-        raise ValueError("DASHBOARD_URL : aucun port n'est admis")
+        raise ValueError("DASHBOARD_URL: no port allowed")
     if parts.path:
-        raise ValueError("DASHBOARD_URL : ni chemin ni slash final")
+        raise ValueError("DASHBOARD_URL: no path and no trailing slash")
     if parts.username is not None or parts.password is not None:
-        raise ValueError("DASHBOARD_URL : aucun identifiant dans l'URL")
+        raise ValueError("DASHBOARD_URL: no credentials in the URL")
     if parts.query or parts.fragment:
-        raise ValueError("DASHBOARD_URL : ni requête ni fragment")
+        raise ValueError("DASHBOARD_URL: no query and no fragment")
     return url
 
 
 class _ProcessSettings(BaseSettings):
-    """Variables communes à `app` et `worker`.
+    """Variables shared by `app` and `worker`.
 
-    `RADAR_DB_PATH` est fixée par Compose (`/data/radar.db`, VII §36.5) : c'est la seule source du chemin de la base
+    `RADAR_DB_PATH` is set by Compose (`/data/radar.db`, VII §36.5): it is the only source of the database path
     (`architecture.md` P-01).
     """
 
@@ -72,7 +72,7 @@ class _ProcessSettings(BaseSettings):
         return self
 
     def secret_values(self) -> list[str]:
-        """Valeurs des secrets configurés, pour le nettoyage des logs par valeur (VII §42.4, niveau 3)."""
+        """Values of the configured secrets, for value-based log redaction (VII §42.4, level 3)."""
         values = []
         for name in type(self).model_fields:
             field = getattr(self, name)
@@ -84,12 +84,12 @@ class _ProcessSettings(BaseSettings):
 
 
 class AppSettings(_ProcessSettings):
-    """Variables de `app` : `RADAR_DB_PATH`, `DASHBOARD_URL`, `APP_ENV`, `LOG_LEVEL`, `RADAR_VERSION` — aucun secret
+    """Variables of `app`: `RADAR_DB_PATH`, `DASHBOARD_URL`, `APP_ENV`, `LOG_LEVEL`, `RADAR_VERSION`; no secret
     (VII §36.7)."""
 
 
 class WorkerSettings(_ProcessSettings):
-    """Variables du worker (VII §36.7) : toutes, sauf celles réservées à `caddy`."""
+    """Worker variables (VII §36.7): all of them, except those reserved for `caddy`."""
 
     http_contact: str
     github_token: SecretStr | None = None

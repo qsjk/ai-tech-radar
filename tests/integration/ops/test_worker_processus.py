@@ -79,7 +79,7 @@ def test_http_contact_absent_refus(lancer: Any, base_migree: str) -> None:
     refus = worker.attendre_log("worker.refused")
     assert worker.attendre_fin() == 2
     assert refus["level"] == "critical"
-    assert refus["problems"] == ["HTTP_CONTACT : Field required"]
+    assert refus["problems"] == ["HTTP_CONTACT: Field required"]
     assert worker.evenements() == ["worker.refused"]
 
 

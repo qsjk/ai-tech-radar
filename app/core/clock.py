@@ -1,7 +1,7 @@
-"""Horloge injectable (ADR-0016, VIII décision 7, §50.1).
+"""Injectable clock (ADR-0016, VIII decision 7, §50.1).
 
-Aucun instant n'est lu par `datetime.now()` ou `time.time()` dans le code métier : il passe par une `Clock`,
-injectée au démarrage de chaque processus. Les tests utilisent une horloge manuelle (`tests/fakes/clock.py`).
+Business code never reads an instant through `datetime.now()` or `time.time()`: it goes through a `Clock`, injected
+at the start of each process. Tests use a manual clock (`tests/fakes/clock.py`).
 """
 
 import asyncio
@@ -12,20 +12,20 @@ from typing import Protocol
 
 class Clock(Protocol):
     def now(self) -> datetime:
-        """Instant courant, en UTC, avec fuseau."""
+        """Current instant, in UTC, timezone-aware."""
         ...
 
     def monotonic(self) -> float:
-        """Horloge monotone, en secondes : durées, délais, watchdog."""
+        """Monotonic clock, in seconds: durations, timeouts, watchdog."""
         ...
 
     async def sleep(self, seconds: float) -> None:
-        """Attente de `seconds` secondes."""
+        """Wait for `seconds` seconds."""
         ...
 
 
 class SystemClock:
-    """Horloge de production."""
+    """Production clock."""
 
     def now(self) -> datetime:
         return datetime.now(UTC)

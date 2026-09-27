@@ -26,7 +26,7 @@ def verifier(db_path: str) -> str:
 
 
 def test_base_non_migree_detectee(tmp_path: Path) -> None:
-    with pytest.raises(SchemaRevisionError, match="base non migrée"):
+    with pytest.raises(SchemaRevisionError, match="database not migrated"):
         verifier(str(tmp_path / "radar.db"))
 
 
@@ -43,7 +43,7 @@ def test_revision_differente_de_head_detectee(tmp_path: Path) -> None:
     conn.execute("UPDATE alembic_version SET version_num = 'ffffffffffff'")
     conn.commit()
     conn.close()
-    with pytest.raises(SchemaRevisionError, match=f"révision ffffffffffff, `head` attendue \\({head_revision()}\\)"):
+    with pytest.raises(SchemaRevisionError, match=f"revision ffffffffffff, `head` expected \\({head_revision()}\\)"):
         verifier(db_path)
 
 
@@ -52,5 +52,5 @@ def test_base_revenue_a_zero_detectee(tmp_path: Path) -> None:
     config = alembic_config(db_path)
     command.upgrade(config, "head")
     command.downgrade(config, "base")
-    with pytest.raises(SchemaRevisionError, match="base non migrée"):
+    with pytest.raises(SchemaRevisionError, match="database not migrated"):
         verifier(db_path)

@@ -40,7 +40,7 @@ def lancer(capsys: pytest.CaptureFixture[str], *argv: str) -> tuple[int, str, st
 def test_config_du_depot_acceptee(capsys: pytest.CaptureFixture[str]) -> None:
     code, out, err = lancer(capsys, "validate-config", "--config-dir", str(CONFIG_DU_DEPOT))
     assert code == 0
-    assert out.startswith("configuration valide")
+    assert out.startswith("valid configuration")
     assert [json.loads(ligne)["event"] for ligne in err.splitlines()] == [
         "config.validate.started",
         "config.validate.finished",
@@ -53,7 +53,7 @@ def test_point_d_entree_module_depuis_la_racine_du_depot() -> None:
         [sys.executable, "-m", "app.cli", "validate-config"], cwd=RACINE, capture_output=True, text=True, check=False
     )
     assert resultat.returncode == 0, resultat.stdout + resultat.stderr
-    assert resultat.stdout.startswith("configuration valide (config)")
+    assert resultat.stdout.startswith("valid configuration (config)")
     assert all(json.loads(ligne)["service"] == "worker" for ligne in resultat.stderr.splitlines())
 
 
@@ -64,8 +64,8 @@ def test_configuration_invalide_code_2_resultat_sur_stdout(tmp_path: Path, capsy
     topics.write_text(topics.read_text(encoding="utf-8").replace("parent: anthropic", "parent: absent"), "utf-8")
     code, out, err = lancer(capsys, "validate-config", "--config-dir", str(tmp_path / "config"))
     assert code == 2
-    assert "topics.yaml · entrée « claude-code » · champ « parent » : parent « absent » inexistant" in out
-    assert "config.validate.invalid" in err and "inexistant" not in err  # logs sur stderr, résultat sur stdout
+    assert "topics.yaml · entry 'claude-code' · field 'parent': parent 'absent' does not exist" in out
+    assert "config.validate.invalid" in err and "does not exist" not in err  # logs sur stderr, résultat sur stdout
 
 
 @pytest.mark.spec("T-CFG-10")
@@ -74,7 +74,7 @@ def test_fichier_obligatoire_absent_code_2(tmp_path: Path, capsys: pytest.Captur
     (tmp_path / "config" / "entities.yaml").unlink()
     code, out, _ = lancer(capsys, "validate-config", "--config-dir", str(tmp_path / "config"))
     assert code == 2
-    assert "entities.yaml : fichier obligatoire absent" in out
+    assert "entities.yaml: required file missing" in out
 
 
 @pytest.mark.spec("T-CFG-10")
@@ -92,5 +92,5 @@ def test_echec_de_l_operation_code_1(tmp_path: Path, capsys: pytest.CaptureFixtu
     fichier.write_text("", encoding="utf-8")
     code, out, err = lancer(capsys, "validate-config", "--config-dir", str(fichier))
     assert code == 1
-    assert out.startswith("échec : lecture de")
+    assert out.startswith("failed: cannot read")
     assert "config.validate.failed" in err

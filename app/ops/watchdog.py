@@ -1,10 +1,10 @@
-"""Watchdog de l'event-loop du worker (VII §36.6).
+"""Watchdog of the worker event loop (VII §36.6).
 
-Un thread surveille un horodatage (`Clock.monotonic`) que l'event-loop rafraîchit toutes les 5 s ; au-delà de
-`ops.watchdog_timeout` (300 s) sans rafraîchissement, log `critical` et arrêt immédiat du processus. Le travail CPU
-étant hors event-loop, un gel de cette durée est un bug.
+A thread watches a timestamp (`Clock.monotonic`) that the event loop refreshes every 5 s; beyond
+`ops.watchdog_timeout` (300 s) without a refresh, it logs `critical` and stops the process immediately. CPU work runs
+outside the event loop, so a freeze that long is a bug.
 
-L'action d'arrêt est injectable : les tests unitaires la remplacent pour ne pas arrêter le processus de pytest.
+The stop action is injectable: unit tests replace it so as not to stop the pytest process.
 """
 
 import logging
@@ -18,7 +18,7 @@ import structlog
 from app.core.clock import Clock
 
 REFRESH_INTERVAL = 5.0
-"""Période de rafraîchissement de l'horodatage par l'event-loop, et de contrôle par le thread, en secondes."""
+"""Period of the timestamp refresh by the event loop, and of the check by the thread, in seconds."""
 
 EXIT_WATCHDOG = 1
 
@@ -26,7 +26,7 @@ log = structlog.get_logger()
 
 
 def exit_process() -> None:
-    """Action par défaut : arrêt immédiat, sans attendre l'event-loop gelée (`os._exit`)."""
+    """Default action: immediate stop, without waiting for the frozen event loop (`os._exit`)."""
     for handler in logging.getLogger().handlers:
         handler.flush()
     sys.stdout.flush()
@@ -53,15 +53,15 @@ class Watchdog:
         self._thread: threading.Thread | None = None
 
     def beat(self) -> None:
-        """Rafraîchit l'horodatage : appelé par l'event-loop."""
+        """Refresh the timestamp: called by the event loop."""
         self._last = self._clock.monotonic()
 
     def frozen_for(self) -> float:
-        """Secondes écoulées depuis le dernier rafraîchissement."""
+        """Seconds elapsed since the last refresh."""
         return self._clock.monotonic() - self._last
 
     def check(self) -> bool:
-        """Contrôle du thread : au-delà du délai, log `critical` puis action d'arrêt, une seule fois."""
+        """Thread check: beyond the timeout, log `critical` then run the stop action, only once."""
         frozen_for = self.frozen_for()
         if frozen_for <= self._timeout:
             return False
@@ -72,7 +72,7 @@ class Watchdog:
         return True
 
     async def refresh(self) -> None:
-        """Tâche permanente de l'event-loop : rafraîchit l'horodatage toutes les 5 s."""
+        """Permanent event-loop task: refresh the timestamp every 5 s."""
         while True:
             self.beat()
             await self._clock.sleep(REFRESH_INTERVAL)

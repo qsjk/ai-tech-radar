@@ -91,7 +91,7 @@ def test_base_non_migree_code_1(tmp_path: Path, config_dir: Path, capsys: pytest
         code, detail = asyncio.run(health_detail(reglages(db_path), config_dir, ManualClock(DEBUT)))
     assert (code, detail) == (1, None)
     assert [(e["event"], e["log_level"]) for e in logs] == [("app.refused", "critical")]
-    assert capsys.readouterr().out.startswith("échec : base non migrée")
+    assert capsys.readouterr().out.startswith("failed: database not migrated")
 
 
 @pytest.mark.spec("T-CFG-10")
@@ -101,7 +101,7 @@ def test_pipeline_invalide_code_2(base_migree: str, config_dir: Path, capsys: py
         code, detail = asyncio.run(health_detail(reglages(base_migree), config_dir, ManualClock(DEBUT)))
     assert (code, detail) == (2, None)
     assert [(e["event"], e["log_level"]) for e in logs] == [("app.refused", "critical")]
-    assert capsys.readouterr().out.startswith("échec : configuration invalide")
+    assert capsys.readouterr().out.startswith("failed: invalid configuration")
 
 
 @pytest.mark.spec("T-CFG-10")
@@ -126,5 +126,5 @@ def test_variables_invalides_code_2(
     monkeypatch.setenv("DASHBOARD_URL", "https://radar.example.com/")
     code, out, _ = lancer(capsys, "health", "--config-dir", str(config_dir))
     assert code == 2
-    assert out.startswith("configuration invalide : variables d'environnement")
+    assert out.startswith("invalid configuration: environment variables")
     assert "radar.example.com/" not in out.split("\n", 1)[0]

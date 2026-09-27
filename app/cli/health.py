@@ -1,12 +1,12 @@
-"""`python -m app.cli health` : détail de santé sur stdout, calculé par le module unique (VII §40, IX §56.4).
+"""`python -m app.cli health`: health detail on stdout, computed by the single module (VII §40, IX §56.4).
 
-Même calcul que `/api/health` (`app/ops/health.py`), après les vérifications de démarrage (IX §56.3 : prérequis
-SQLite, révision à `head`, `pipeline.yaml`). Le composant `app` n'est pas affiché : ses valeurs (`started_at`,
-`db_locked_1h`) sont celles du processus uvicorn, que la commande ne voit pas. `journal_size_limit` est ajouté au
-composant `database` (IX §56.4).
+Same computation as `/api/health` (`app/ops/health.py`), after the startup checks (IX §56.3: SQLite prerequisites,
+revision at `head`, `pipeline.yaml`). The `app` component is not shown: its values (`started_at`, `db_locked_1h`)
+belong to the uvicorn process, which the command cannot see. `journal_size_limit` is added to the `database`
+component (IX §56.4).
 
-Codes (IX §56.3) : `0` détail affiché, statut `ok` ou `degraded` · `1` statut `down`, ou échec d'un prérequis, de la
-révision ou de la lecture · `2` configuration invalide (`AppSettings`, `pipeline.yaml`) ou usage invalide.
+Codes (IX §56.3): `0` detail shown, status `ok` or `degraded` · `1` status `down`, or a failed prerequisite, revision
+or read · `2` invalid configuration (`AppSettings`, `pipeline.yaml`) or invalid usage.
 """
 
 import argparse
@@ -28,31 +28,31 @@ from app.db.session import Database
 from app.main import StartupRefused, check_startup
 from app.ops.health import HealthChecker, Status
 
-# Relatif au répertoire courant : le dépôt en développement et en CI, /app dans l'image (architecture.md §3.2).
+# Relative to the working directory: the repository in development and CI, /app in the image (architecture.md §3.2).
 DEFAULT_CONFIG_DIR = Path("config")
 
 log = structlog.get_logger()
 
 
 def register(commands: Any) -> None:
-    parser = commands.add_parser("health", help="détail de santé : composants, conditions, révision, WAL")
+    parser = commands.add_parser("health", help="health detail: components, conditions, revision, WAL")
     parser.add_argument(
         "--config-dir",
         type=Path,
         default=DEFAULT_CONFIG_DIR,
-        help="dossier de pipeline.yaml (défaut : config, relatif au répertoire courant)",
+        help="directory of pipeline.yaml (default: config, relative to the working directory)",
     )
     parser.set_defaults(handler=run)
 
 
 async def health_detail(settings: AppSettings, config_dir: Path, clock: Clock) -> tuple[int, dict[str, Any] | None]:
-    """Vérifications de démarrage puis détail de santé ; renvoie le code de sortie et le détail (s'il existe)."""
+    """Startup checks, then health detail; return the exit code and the detail (if any)."""
     db = Database(create_engine(settings.radar_db_path), clock)
     try:
         try:
             pipeline = await check_startup(db, config_dir=config_dir)
         except StartupRefused as error:
-            print(f"échec : {error}")
+            print(f"failed: {error}")
             return (EXIT_INVALID if isinstance(error.__cause__, ConfigError) else EXIT_FAILURE), None
         checker = HealthChecker(
             db,
@@ -78,10 +78,10 @@ def run(args: argparse.Namespace) -> int:
     try:
         settings = AppSettings()
     except ValidationError as error:
-        print("configuration invalide : variables d'environnement")
+        print("invalid configuration: environment variables")
         for problem in error.errors(include_input=False):
             variable = ".".join(str(part) for part in problem["loc"]).upper()
-            print(f"  - {variable} : {problem['msg']}" if variable else f"  - {problem['msg']}")
+            print(f"  - {variable}: {problem['msg']}" if variable else f"  - {problem['msg']}")
         return EXIT_INVALID
     code, detail = asyncio.run(health_detail(settings, args.config_dir, SystemClock()))
     if detail is not None:

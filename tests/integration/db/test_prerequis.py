@@ -13,9 +13,9 @@ pytestmark = pytest.mark.spec("T-DB-01")
 @pytest.mark.parametrize(
     ("features", "attendu"),
     [
-        (SqliteFeatures(version="3.34.1", fts5=True, json1=True), "3.34.1 trop ancien"),
-        (SqliteFeatures(version="3.46.1", fts5=False, json1=True), "FTS5 absente"),
-        (SqliteFeatures(version="3.46.1", fts5=True, json1=False), "JSON1 absentes"),
+        (SqliteFeatures(version="3.34.1", fts5=True, json1=True), "3.34.1 too old"),
+        (SqliteFeatures(version="3.46.1", fts5=False, json1=True), "FTS5 extension missing"),
+        (SqliteFeatures(version="3.46.1", fts5=True, json1=False), "JSON1 functions missing"),
     ],
 )
 def test_prerequis_manquant_refuse_avec_un_message_explicite(features: SqliteFeatures, attendu: str) -> None:

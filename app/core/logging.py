@@ -1,11 +1,10 @@
-"""Logs structurés en JSON et nettoyage des secrets (VII §42.1, §42.4).
+"""Structured JSON logs and secret redaction (VII §42.1, §42.4).
 
-- Rendu JSON, une ligne par événement, sur stdout ; les loggers des bibliothèques (module `logging`) passent par le
-  même rendu.
-- Niveau 1 du nettoyage : les secrets sont des `SecretStr` (`app/core/config.py`).
-- Niveau 3 (filet final) : `SecretRedactor` remplace par `***` toute occurrence de la valeur d'un secret configuré,
-  dans tous les champs, messages et traces d'exception, et masque les valeurs des clés sensibles.
-Le niveau 2 (transport, `HttpClient`) arrive avec la collecte (Sprint 2).
+- JSON rendering, one line per event, on stdout; library loggers (`logging` module) go through the same rendering.
+- Redaction level 1: secrets are `SecretStr` (`app/core/config.py`).
+- Level 3 (final safety net): `SecretRedactor` replaces with `***` every occurrence of a configured secret value, in
+  every field, message and exception traceback, and masks the values of sensitive keys.
+Level 2 (transport, `HttpClient`) comes with collection (Sprint 2).
 """
 
 import logging
@@ -19,8 +18,8 @@ from structlog.typing import EventDict, Processor, WrappedLogger
 from app.core.clock import Clock
 
 MASK = "***"
-# Une clé est sensible si son nom, en minuscules et `-` remplacé par `_`, se termine par l'un de ces suffixes
-# (VII §42.4 ; décision du 2026-09-24) : `x-api-key`, `set-cookie`, `access_token`, `smtp_password`…
+# A key is sensitive if its name, lowercased with `-` replaced by `_`, ends with one of these suffixes
+# (VII §42.4; decision of 2026-09-24): `x-api-key`, `set-cookie`, `access_token`, `smtp_password`...
 SENSITIVE_SUFFIXES = ("authorization", "password", "token", "secret", "api_key", "cookie")
 
 
@@ -29,17 +28,17 @@ def is_sensitive_key(name: str) -> bool:
 
 
 class SecretRedactor:
-    """Processeur structlog de nettoyage par valeur et par clé (VII §42.4, niveau 3)."""
+    """structlog processor redacting by value and by key (VII §42.4, level 3)."""
 
     def __init__(self, secrets: Iterable[str]) -> None:
-        # Les plus longs d'abord : un secret qui en contient un autre est masqué en entier.
+        # Longest first: a secret that contains another one is masked in full.
         self._secrets = sorted({s for s in secrets if s}, key=len, reverse=True)
 
     def __call__(self, logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
         return self._clean_mapping(event_dict)
 
     def _clean_mapping(self, mapping: Mapping[Any, Any]) -> dict[str, Any]:
-        # Clés normalisées en texte : une clé non textuelle (ex. un code HTTP) ne doit pas faire perdre la ligne.
+        # Keys normalized to text: a non-text key (e.g. an HTTP status code) must not make the line fail.
         cleaned: dict[str, Any] = {}
         for key, value in mapping.items():
             name = str(key)
@@ -81,8 +80,8 @@ def _add_constants(service: str, version: str) -> Processor:
 
 
 def build_processors(*, service: str, version: str, clock: Clock, secrets: Iterable[str]) -> list[Processor]:
-    """Chaîne commune aux logs structlog et aux logs des bibliothèques. Le nettoyage vient en dernier, après le rendu
-    des traces d'exception, pour les couvrir."""
+    """Chain shared by structlog logs and library logs. Redaction comes last, after exception tracebacks are
+    rendered, so that it covers them."""
     return [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
@@ -96,7 +95,7 @@ def build_processors(*, service: str, version: str, clock: Clock, secrets: Itera
 def configure_logging(
     *, service: str, version: str, level: str, clock: Clock, secrets: Iterable[str], stream: Any = None
 ) -> None:
-    """Configure structlog et le module `logging` : JSON sur `stream` (stdout par défaut), niveau `level`."""
+    """Configure structlog and the `logging` module: JSON on `stream` (stdout by default), at level `level`."""
     shared = build_processors(service=service, version=version, clock=clock, secrets=list(secrets))
     handler = logging.StreamHandler(stream if stream is not None else sys.stdout)
     handler.setFormatter(

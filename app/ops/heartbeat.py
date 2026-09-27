@@ -1,8 +1,8 @@
-"""Heartbeat du worker (VII §36.6, §39.3 ; docs/database.md §3.19).
+"""Worker heartbeat (VII §36.6, §39.3; docs/database.md §3.19).
 
-`SystemState.worker_heartbeat` = `{at, started_at, version, pid}`, écrit toutes les `ops.heartbeat_interval` (30 s).
-L'instant vient de la `Clock` ; l'écriture passe par `Database.run_write` (retry borné sur verrou). C'est la preuve de
-vie du worker, indépendante de son activité : `/health` la lit (T1.7).
+`SystemState.worker_heartbeat` = `{at, started_at, version, pid}`, written every `ops.heartbeat_interval` (30 s).
+The instant comes from the `Clock`; the write goes through `Database.run_write` (bounded retry on lock). It is the
+worker's proof of life, independent of its activity: `/health` reads it (T1.7).
 """
 
 import os
@@ -25,7 +25,7 @@ log = structlog.get_logger()
 
 @dataclass
 class Heartbeat:
-    """Écrit la preuve de vie du worker. Une seule instance par processus, créée au boot."""
+    """Write the worker's proof of life. A single instance per process, created at boot."""
 
     db: Database
     clock: Clock
@@ -47,7 +47,7 @@ class Heartbeat:
         }
 
     async def beat(self) -> None:
-        """Écrit un heartbeat, dans une transaction d'écriture."""
+        """Write one heartbeat, in a write transaction."""
         at = self.clock.now()
         value = self.value(at)
 
@@ -63,11 +63,11 @@ class Heartbeat:
         self.beats += 1
 
     async def run(self) -> None:
-        """Tâche permanente : un heartbeat toutes les `interval`. Le premier est écrit au boot, par `beat()`.
+        """Permanent task: one heartbeat every `interval`. The first one is written at boot, by `beat()`.
 
-        Un verrou prolongé (`DatabaseLockedError`, déjà compté par `db_locked`) ne tue pas la tâche : le tour est
-        sauté et le heartbeat suivant réessaie ; si les échecs persistent, le heartbeat vieillit et `/health` le
-        signale. Toute autre exception reste fatale (supervision fail-fast).
+        A prolonged lock (`DatabaseLockedError`, already counted by `db_locked`) does not kill the task: the round is
+        skipped and the next heartbeat retries; if failures persist, the heartbeat ages and `/health` reports it. Any
+        other exception stays fatal (fail-fast supervision).
         """
         while True:
             await self.clock.sleep(self.interval.total_seconds())

@@ -1,19 +1,19 @@
-"""Worker : `python -m app.worker` (VII §36.6, VIII §48 D2).
+"""Worker: `python -m app.worker` (VII §36.6, VIII §48 D2).
 
-Séquence de démarrage (VII §36.6), dans l'ordre :
+Startup sequence (VII §36.6), in order:
 
-1. vérifications : variables d'environnement (`WorkerSettings`, `HTTP_CONTACT` compris), prérequis SQLite
-   (III §10.1), révision du schéma égale à `head`, fichiers `config/` (`validate-config`) ;
-2. heartbeat démarré : premier `worker_heartbeat` écrit, puis tâche permanente ;
-3. étapes à venir, à insérer ici dans cet ordre : requalification des `processing` et des `sending`, chargement des
-   modèles, reconstruction de la matrice de similarité, scheduler.
+1. checks: environment variables (`WorkerSettings`, `HTTP_CONTACT` included), SQLite prerequisites (III §10.1),
+   schema revision equal to `head`, `config/` files (`validate-config`);
+2. heartbeat started: first `worker_heartbeat` written, then the permanent task;
+3. upcoming steps, to be inserted here in this order: requalification of `processing` and `sending`, model loading,
+   similarity matrix rebuild, scheduler.
 
-Supervision fail-fast : une tâche permanente qui se termine (exception non gérée comprise) → log `critical` → sortie
-en code non nul, Docker relance. Watchdog : thread qui arrête le processus si l'event-loop gèle au-delà de
-`ops.watchdog_timeout`. SIGTERM (ou SIGINT) : arrêt propre, tâches annulées et attendues au plus 20 s, code 0.
+Fail-fast supervision: a permanent task that ends (unhandled exception included) → `critical` log → non-zero exit,
+Docker restarts. Watchdog: a thread that stops the process if the event loop freezes beyond `ops.watchdog_timeout`.
+SIGTERM (or SIGINT): clean stop, tasks cancelled and awaited for at most 20 s, code 0.
 
-Codes de sortie, alignés sur le contrat des commandes (IX §56.3) : `0` arrêt propre · `1` échec (prérequis SQLite,
-révision du schéma, tâche permanente morte, watchdog) · `2` configuration invalide (environnement ou `config/`).
+Exit codes, aligned with the command contract (IX §56.3): `0` clean stop · `1` failure (SQLite prerequisites, schema
+revision, dead permanent task, watchdog) · `2` invalid configuration (environment or `config/`).
 """
 
 import argparse
@@ -41,17 +41,17 @@ from app.db.session import Database
 from app.ops.heartbeat import Heartbeat
 from app.ops.watchdog import Watchdog, exit_process
 
-# Relatif au répertoire courant : le dépôt en développement et en CI, /app dans l'image (architecture.md §3.2).
+# Relative to the working directory: the repository in development and CI, /app in the image (architecture.md §3.2).
 DEFAULT_CONFIG_DIR = Path("config")
 
 STOP_TIMEOUT = 20.0
-"""Attente maximale des tâches en cours sur SIGTERM, en secondes (VII §36.6)."""
+"""Maximum wait for running tasks on SIGTERM, in seconds (VII §36.6)."""
 
 log = structlog.get_logger()
 
 
 class Worker:
-    """Un processus worker. Les dépendances externes (horloge, vérifications, action du watchdog) sont injectables."""
+    """A worker process. External dependencies (clock, checks, watchdog action) are injectable."""
 
     def __init__(
         self,
@@ -74,7 +74,7 @@ class Worker:
         self._stop = asyncio.Event()
 
     def request_stop(self) -> None:
-        """Demande d'arrêt propre : appelé par le gestionnaire de SIGTERM."""
+        """Clean stop request: called by the SIGTERM handler."""
         if not self._stop.is_set():
             log.info("worker.stop.requested")
         self._stop.set()
@@ -90,7 +90,7 @@ class Worker:
             await db.dispose()
 
     async def _check(self, db: Database) -> ConfigFiles | int:
-        """Étape 1 : vérifications, avant toute écriture. Un échec refuse le démarrage."""
+        """Step 1: checks, before any write. A failure refuses the start."""
         try:
             await self.prerequisites(db.engine)
             await check_revision(db.engine, self.script_location)
@@ -102,7 +102,7 @@ class Worker:
         except ConfigError as error:
             log.critical(
                 "worker.refused",
-                reason=f"configuration invalide ({self.config_dir})",
+                reason=f"invalid configuration ({self.config_dir})",
                 issues=[str(issue) for issue in error.issues],
             )
             return EXIT_INVALID
@@ -114,11 +114,11 @@ class Worker:
 
     async def _serve(self, db: Database, config: ConfigFiles) -> int:
         ops = config.pipeline.ops
-        # Étape 2 : heartbeat démarré, avant toute autre étape.
+        # Step 2: heartbeat started, before any other step.
         heartbeat = Heartbeat(db, self.clock, ops.heartbeat_interval, version=self.settings.radar_version)
         await heartbeat.beat()
         log.info("worker.heartbeat.started", interval_s=ops.heartbeat_interval.total_seconds(), pid=heartbeat.pid)
-        # Étapes à venir (VII §36.6) : requalification, chargement des modèles, matrice de similarité, scheduler.
+        # Upcoming steps (VII §36.6): requalification, model loading, similarity matrix, scheduler.
 
         watchdog = Watchdog(self.clock, ops.watchdog_timeout.total_seconds(), on_timeout=self.on_watchdog_timeout)
         tasks = {
@@ -135,7 +135,7 @@ class Worker:
             watchdog.stop()
 
     async def _supervise(self, tasks: set[asyncio.Task[None]]) -> int:
-        """Attend la première fin : une tâche permanente (échec) ou la demande d'arrêt (code 0)."""
+        """Wait for the first to finish: a permanent task (failure) or the stop request (code 0)."""
         stop = asyncio.create_task(self._stop.wait(), name="stop")
         done, _ = await asyncio.wait({*tasks, stop}, return_when=asyncio.FIRST_COMPLETED)
         code = EXIT_OK
@@ -170,18 +170,18 @@ class Worker:
 
 
 def _problem(loc: tuple[int | str, ...], message: str) -> str:
-    """Problème de réglage lisible : variable concernée (si connue) et message, sans la valeur reçue."""
+    """Readable settings problem: the variable concerned (if known) and the message, without the received value."""
     variable = ".".join(str(part) for part in loc).upper()
-    return f"{variable} : {message}" if variable else message
+    return f"{variable}: {message}" if variable else message
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="python -m app.worker", description="Worker de l'AI Tech Radar.")
+    parser = argparse.ArgumentParser(prog="python -m app.worker", description="AI Tech Radar worker.")
     parser.add_argument(
         "--config-dir",
         type=Path,
         default=DEFAULT_CONFIG_DIR,
-        help="dossier des fichiers de configuration (défaut : config, relatif au répertoire courant)",
+        help="directory of the configuration files (default: config, relative to the working directory)",
     )
     return parser
 
@@ -193,10 +193,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         settings = WorkerSettings()
     except ValidationError as error:
-        # Réglages illisibles : logs au niveau par défaut, sans les valeurs reçues (un secret peut y figurer).
+        # Unreadable settings: logs at the default level, without the received values (a secret may be among them).
         configure_logging(service="worker", version=version, level="INFO", clock=clock, secrets=[])
         problems = [_problem(e["loc"], e["msg"]) for e in error.errors(include_input=False)]
-        log.critical("worker.refused", reason="variables d'environnement invalides", problems=problems)
+        log.critical("worker.refused", reason="invalid environment variables", problems=problems)
         return EXIT_INVALID
     configure_logging(
         service="worker",

@@ -1,1 +1,1 @@
-"""Exploitation du worker : heartbeat, watchdog (VII §36.6, §39)."""
+"""Operations: heartbeat, watchdog, health (VII §36.6, §39, §40)."""

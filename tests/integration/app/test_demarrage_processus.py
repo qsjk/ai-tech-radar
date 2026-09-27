@@ -135,8 +135,8 @@ def test_prerequis_sqlite_absents_refus(lancer: Any, base_migree: str) -> None:
     refus = app.attendre_log("app.refused")
     assert app.attendre_fin() == UVICORN_STARTUP_FAILURE
     assert (refus["level"], refus["error_class"]) == ("critical", "PrerequisiteError")
-    assert "SQLite 3.34.1 trop ancien" in refus["reason"]
-    assert "FTS5 absente" in refus["reason"]
+    assert "SQLite 3.34.1 too old" in refus["reason"]
+    assert "FTS5 extension missing" in refus["reason"]
     assert "Uvicorn running" not in json.dumps(app.logs)
 
 
@@ -147,7 +147,7 @@ def test_pipeline_invalide_refus_meme_message_que_le_worker(lancer: Any, base_mi
     refus = app.attendre_log("app.refused")
     assert app.attendre_fin() == UVICORN_STARTUP_FAILURE
     assert refus["level"] == "critical"
-    assert refus["reason"] == "configuration invalide (config)"
+    assert refus["reason"] == "invalid configuration (config)"
     assert refus["issues"] and "pipeline.yaml" in refus["issues"][0]
     assert "heartbeat_stale_after" in refus["issues"][0]
 

@@ -1,1 +1,1 @@
-"""Accès à la base SQLite (docs/database.md §2)."""
+"""SQLite database access (docs/database.md §2)."""

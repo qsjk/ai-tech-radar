@@ -15,7 +15,7 @@ PARIS_ETE = timezone(timedelta(hours=2))
 
 
 def test_refuse_un_datetime_naif_a_l_ecriture() -> None:
-    with pytest.raises(ValueError, match="sans fuseau"):
+    with pytest.raises(ValueError, match="naive datetime"):
         UTCDateTime().process_bind_param(datetime(2026, 9, 24, 10, 0), dialect=None)  # type: ignore[arg-type]
 
 

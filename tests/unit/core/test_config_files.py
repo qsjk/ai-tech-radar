@@ -81,7 +81,7 @@ def test_configuration_valide_chargee(tmp_path: Path) -> None:
 def test_syntaxe_yaml_invalide(tmp_path: Path) -> None:
     (issue,) = probleme(ecrire(tmp_path, topics="topics:\n  - slug: [ouvert\n"))
     assert issue.file == "topics.yaml"
-    assert "syntaxe YAML invalide (ligne" in issue.message
+    assert "invalid YAML syntax (line" in issue.message
 
 
 @pytest.mark.spec("T-CFG-02:schemas")
@@ -89,7 +89,7 @@ def test_champ_obligatoire_manquant(tmp_path: Path) -> None:
     sources = SOURCES.replace("    url: https://github.com/b/b\n", "")
     (issue,) = probleme(ecrire(tmp_path, sources=sources))
     assert (issue.file, issue.key, issue.field) == ("sources.yaml", "repo-b", "url")
-    assert str(issue) == "sources.yaml · entrée « repo-b » · champ « url » : Field required"
+    assert str(issue) == "sources.yaml · entry 'repo-b' · field 'url': Field required"
 
 
 @pytest.mark.spec("T-CFG-02:schemas")
@@ -114,14 +114,14 @@ def test_champ_obligatoire_manquant(tmp_path: Path) -> None:
 def test_doublon_de_cle(tmp_path: Path, fichier: str, contenu: str, attendu: tuple[str, str, str]) -> None:
     (issue,) = probleme(ecrire(tmp_path, **{fichier: contenu}))
     assert (issue.file, issue.key, issue.field) == attendu
-    assert "en double" in issue.message
+    assert "duplicate" in issue.message
 
 
 @pytest.mark.spec("T-CFG-02:schemas")
 def test_parent_inexistant(tmp_path: Path) -> None:
     (issue,) = probleme(ecrire(tmp_path, topics=TOPICS.replace("parent: parent", "parent: absent")))
     assert (issue.file, issue.key, issue.field) == ("topics.yaml", "enfant", "parent")
-    assert issue.message == "parent « absent » inexistant"
+    assert issue.message == "parent 'absent' does not exist"
 
 
 @pytest.mark.spec("T-CFG-02:schemas")
@@ -129,7 +129,7 @@ def test_cycle_de_parents(tmp_path: Path) -> None:
     topics = TOPICS.replace("    name: Parent\n", "    name: Parent\n    parent: enfant\n")
     (issue,) = probleme(ecrire(tmp_path, topics=topics))
     assert (issue.file, issue.field) == ("topics.yaml", "parent")
-    assert issue.message.startswith("cycle de parents : ")
+    assert issue.message.startswith("parent cycle: ")
     assert "parent" in issue.message and "enfant" in issue.message
 
 
@@ -142,7 +142,7 @@ def test_regex_invalide_dans_un_topic_et_un_alias(tmp_path: Path) -> None:
         ("topics.yaml", "enfant", "keywords.1"),
         ("entities.yaml", "model:acme-one", "aliases.0"),
     ]
-    assert all(i.message.startswith("regex invalide") for i in issues)
+    assert all(i.message.startswith("invalid regex") for i in issues)
 
 
 @pytest.mark.spec("T-CFG-02:schemas")
@@ -150,7 +150,7 @@ def test_cle_repetee_dans_un_meme_mappage(tmp_path: Path) -> None:
     sources = SOURCES.replace("    name: Blog A\n", "    name: Blog A\n    name: Blog A bis\n")
     (issue,) = probleme(ecrire(tmp_path, sources=sources))
     assert issue.file == "sources.yaml"
-    assert issue.message == "clé « name » répétée dans un même mappage (ligne 4)"
+    assert issue.message == "key 'name' repeated in the same mapping (line 4)"
 
 
 @pytest.mark.spec("T-CFG-02:schemas")
@@ -163,8 +163,8 @@ def test_champ_inconnu_refuse(tmp_path: Path) -> None:
 def test_tous_les_problemes_sont_rassembles(tmp_path: Path) -> None:
     issues = probleme(ecrire(tmp_path, sources=None, topics=TOPICS.replace("parent: parent", "parent: absent")))
     assert [(i.file, i.message) for i in issues] == [
-        ("sources.yaml", "fichier obligatoire absent"),
-        ("topics.yaml", "parent « absent » inexistant"),
+        ("sources.yaml", "required file missing"),
+        ("topics.yaml", "parent 'absent' does not exist"),
     ]
 
 
@@ -204,8 +204,8 @@ def test_watchdog_timeout_sous_le_minimum_refuse(tmp_path: Path, valeur: str | i
         load_pipeline(tmp_path)
     (issue,) = info.value.issues
     assert (issue.file, issue.key, issue.field) == ("pipeline.yaml", "ops", "watchdog_timeout")
-    assert "au moins 10s" in issue.message
-    assert "rafraîchissement du watchdog" in issue.message
+    assert "at least 10s" in issue.message
+    assert "watchdog refresh period" in issue.message
 
 
 @pytest.mark.spec("T-CFG-02:schemas")

@@ -1,12 +1,12 @@
-"""Fichiers de configuration fonctionnelle `config/` (IV §16, docs/architecture.md §3.2).
+"""Functional configuration files `config/` (IV §16, docs/architecture.md §3.2).
 
-- `load_config_files(path)` charge les quatre fichiers : pour le worker et `validate-config`.
-- `load_pipeline(path)` charge `pipeline.yaml` seul, en lecture seule : pour l'app (E17).
-- Toute erreur lève `ConfigError`, qui liste chaque problème avec **fichier, clé et champ** (IV §16.5).
+- `load_config_files(path)` loads the four files: for the worker and `validate-config`.
+- `load_pipeline(path)` loads `pipeline.yaml` alone, read-only: for the app (E17).
+- Any error raises `ConfigError`, which lists each problem with **file, key and field** (IV §16.5).
 
-Schémas du Sprint 1 (volet `schemas` de T-CFG-02). Le type de source, `poll_interval` et `config` restent des champs
-libres jusqu'au registre des collectors (Sprint 2). `pipeline.yaml` ne déclare que les sections utiles au Sprint 1 ;
-les autres arrivent avec leur étage (E6).
+Sprint 1 schemas (`schemas` part of T-CFG-02). The source type, `poll_interval` and `config` stay free-form fields
+until the collector registry (Sprint 2). `pipeline.yaml` only declares the sections used in Sprint 1; the others come
+with their stage (E6).
 """
 
 import re
@@ -26,12 +26,12 @@ PIPELINE_FILE = "pipeline.yaml"
 
 SOURCE_KEY = r"^[a-z0-9-]+$"  # IV §16.2
 
-# ── Erreurs ───────────────────────────────────────────────────────────────────────────────────────────────────────
+# ── Errors ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
 @dataclass(frozen=True)
 class ConfigIssue:
-    """Un problème de configuration : fichier, entrée (clé), champ, message."""
+    """A configuration problem: file, entry (key), field, message."""
 
     file: str
     key: str | None
@@ -41,21 +41,21 @@ class ConfigIssue:
     def __str__(self) -> str:
         parts = [self.file]
         if self.key is not None:
-            parts.append(f"entrée « {self.key} »")
+            parts.append(f"entry '{self.key}'")
         if self.field is not None:
-            parts.append(f"champ « {self.field} »")
-        return " · ".join(parts) + f" : {self.message}"
+            parts.append(f"field '{self.field}'")
+        return " · ".join(parts) + f": {self.message}"
 
 
 class ConfigError(Exception):
-    """Configuration invalide : un ou plusieurs problèmes, chacun avec fichier, clé et champ."""
+    """Invalid configuration: one or more problems, each with file, key and field."""
 
     def __init__(self, issues: Iterable[ConfigIssue]) -> None:
         self.issues = list(issues)
         super().__init__("\n".join(str(issue) for issue in self.issues))
 
 
-# ── Lecture YAML sûre, clés dupliquées refusées ───────────────────────────────────────────────────────────────────
+# ── Safe YAML loading, duplicate keys rejected ────────────────────────────────────────────────────────────────────────
 
 
 class _DuplicateKeyError(yaml.YAMLError):
@@ -63,7 +63,7 @@ class _DuplicateKeyError(yaml.YAMLError):
 
 
 class _StrictLoader(yaml.SafeLoader):
-    """Chargeur sûr qui refuse une clé répétée dans un même mappage (PyYAML garde sinon la dernière, en silence)."""
+    """Safe loader that rejects a key repeated in the same mapping (otherwise PyYAML silently keeps the last one)."""
 
     def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Hashable, Any]:
         seen: set[Any] = set()
@@ -71,7 +71,7 @@ class _StrictLoader(yaml.SafeLoader):
             key = self.construct_object(key_node, deep=deep)
             if key in seen:
                 mark = key_node.start_mark
-                raise _DuplicateKeyError(f"clé « {key} » répétée dans un même mappage (ligne {mark.line + 1})")
+                raise _DuplicateKeyError(f"key '{key}' repeated in the same mapping (line {mark.line + 1})")
             seen.add(key)
         return super().construct_mapping(node, deep=deep)
 
@@ -80,28 +80,28 @@ def _read_yaml(path: Path) -> Any:
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        raise ConfigError([ConfigIssue(path.name, None, None, "fichier obligatoire absent")]) from None
+        raise ConfigError([ConfigIssue(path.name, None, None, "required file missing")]) from None
     try:
-        return yaml.load(text, Loader=_StrictLoader)  # noqa: S506 — chargeur dérivé de SafeLoader
+        return yaml.load(text, Loader=_StrictLoader)  # noqa: S506 — loader derived from SafeLoader
     except _DuplicateKeyError as error:
         raise ConfigError([ConfigIssue(path.name, None, None, str(error))]) from None
     except yaml.YAMLError as error:
         mark = getattr(error, "problem_mark", None)
-        where = f" (ligne {mark.line + 1}, colonne {mark.column + 1})" if mark is not None else ""
+        where = f" (line {mark.line + 1}, column {mark.column + 1})" if mark is not None else ""
         problem = getattr(error, "problem", None) or str(error)
-        raise ConfigError([ConfigIssue(path.name, None, None, f"syntaxe YAML invalide{where} : {problem}")]) from None
+        raise ConfigError([ConfigIssue(path.name, None, None, f"invalid YAML syntax{where}: {problem}")]) from None
 
 
-# ── Types communs ─────────────────────────────────────────────────────────────────────────────────────────────────
+# ── Common types ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
 _DURATION = re.compile(r"^\s*(\d+)\s*(s|m|h|d)\s*$")
 _UNITS = {"s": "seconds", "m": "minutes", "h": "hours", "d": "days"}
 
 
 def _parse_duration(value: Any) -> Any:
-    """Durée écrite comme dans la spec (`120s`, `15m`, `2h`, `30d`), ou un entier de secondes."""
+    """Duration written as in the spec (`120s`, `15m`, `2h`, `30d`), or an integer number of seconds."""
     if isinstance(value, bool):
-        raise ValueError("durée attendue, par exemple 120s, 15m ou 2h")
+        raise ValueError("duration expected, for example 120s, 15m or 2h")
     if isinstance(value, int):
         return timedelta(seconds=value)
     if isinstance(value, str):
@@ -110,7 +110,7 @@ def _parse_duration(value: Any) -> Any:
             return timedelta(**{_UNITS[match.group(2)]: int(match.group(1))})
     if isinstance(value, timedelta):
         return value
-    raise ValueError("durée attendue, par exemple 120s, 15m ou 2h")
+    raise ValueError("duration expected, for example 120s, 15m or 2h")
 
 
 Duration = Annotated[timedelta, BeforeValidator(_parse_duration)]
@@ -121,7 +121,7 @@ class _Model(BaseModel):
 
 
 class Keyword(_Model):
-    """Terme de matching : chaîne, ou `{term, weight, regex}` (IV §16.3)."""
+    """Matching term: a string, or `{term, weight, regex}` (IV §16.3)."""
 
     term: str = Field(min_length=1)
     weight: float = Field(default=1, gt=0)
@@ -133,7 +133,7 @@ class Keyword(_Model):
             try:
                 re.compile(self.term)
             except re.error as error:
-                raise ValueError(f"regex invalide « {self.term} » : {error}") from None
+                raise ValueError(f"invalid regex '{self.term}': {error}") from None
         return self
 
 
@@ -143,21 +143,21 @@ def _keyword(value: Any) -> Any:
 
 KeywordEntry = Annotated[Keyword, BeforeValidator(_keyword)]
 
-# ── Fichiers ──────────────────────────────────────────────────────────────────────────────────────────────────────
+# ── Files ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
 class SourceSpec(_Model):
-    """Entrée de `sources.yaml` (IV §16.2)."""
+    """Entry of `sources.yaml` (IV §16.2)."""
 
     key: str = Field(pattern=SOURCE_KEY)
     name: str = Field(min_length=1)
-    type: str = Field(min_length=1)  # contrôlé par le registre des collectors au Sprint 2
+    type: str = Field(min_length=1)  # checked by the collector registry in Sprint 2
     url: str = Field(min_length=1)
     enabled: bool = True
-    poll_interval: Duration | None = None  # minimum du type contrôlé au Sprint 2
+    poll_interval: Duration | None = None  # per-type minimum checked in Sprint 2
     relevance: Literal["filter", "always"] = "filter"
     extract: Literal["auto", "never"] | None = None
-    config: dict[str, Any] = Field(default_factory=dict)  # validé par le collector au Sprint 2
+    config: dict[str, Any] = Field(default_factory=dict)  # validated by the collector in Sprint 2
 
 
 class SourcesFile(_Model):
@@ -165,9 +165,9 @@ class SourcesFile(_Model):
 
 
 class TopicSpec(_Model):
-    """Entrée de `topics.yaml` (IV §16.3)."""
+    """Entry of `topics.yaml` (IV §16.3)."""
 
-    slug: str = Field(min_length=1)  # IV §16.3 : unique, sans format imposé
+    slug: str = Field(min_length=1)  # IV §16.3: unique, no enforced format
     name: str = Field(min_length=1)
     description: str | None = None
     parent: str | None = None
@@ -181,7 +181,7 @@ class TopicsFile(_Model):
 
 
 class EntitySpec(_Model):
-    """Entrée de `entities.yaml` (IV §16.4)."""
+    """Entry of `entities.yaml` (IV §16.4)."""
 
     type: Literal["company", "product", "person", "project", "technology", "model", "repository"]
     canonical_name: str = Field(min_length=1)
@@ -192,7 +192,7 @@ class EntitySpec(_Model):
     @classmethod
     def _lowercase(cls, value: str) -> str:
         if value != value.lower():
-            raise ValueError("canonical_name doit être en minuscules")
+            raise ValueError("canonical_name must be lowercase")
         return value
 
 
@@ -202,12 +202,12 @@ class EntitiesFile(_Model):
 
 
 WATCHDOG_TIMEOUT_MIN = timedelta(seconds=10)
-"""Minimum de `ops.watchdog_timeout` : deux fois la période de rafraîchissement du watchdog (5 s). En dessous, un
-worker sain serait arrêté (décision du 2026-09-27)."""
+"""Minimum of `ops.watchdog_timeout`: twice the watchdog refresh period (5 s). Below it, a healthy worker would be
+stopped (decision of 2026-09-27)."""
 
 
 class OpsSettings(_Model):
-    """Section `ops` de `pipeline.yaml`, réglages utiles au Sprint 1 (VII §39.7)."""
+    """`ops` section of `pipeline.yaml`, settings used in Sprint 1 (VII §39.7)."""
 
     heartbeat_interval: Duration = timedelta(seconds=30)
     heartbeat_stale_after: Duration = timedelta(seconds=120)
@@ -219,14 +219,14 @@ class OpsSettings(_Model):
         if value < WATCHDOG_TIMEOUT_MIN:
             minimum = int(WATCHDOG_TIMEOUT_MIN.total_seconds())
             raise ValueError(
-                f"au moins {minimum}s attendu, deux fois la période de rafraîchissement du watchdog (5 s) ; "
-                "en dessous, un worker sain serait arrêté"
+                f"at least {minimum}s expected, twice the watchdog refresh period (5 s); "
+                "below it, a healthy worker would be stopped"
             )
         return value
 
 
 class PipelineConfig(_Model):
-    """`pipeline.yaml` : optionnel, absent → défauts (IV §16.5). Sections ajoutées sprint par sprint (E6)."""
+    """`pipeline.yaml`: optional, missing → defaults (IV §16.5). Sections added sprint by sprint (E6)."""
 
     ops: OpsSettings = Field(default_factory=OpsSettings)
 
@@ -239,11 +239,11 @@ class ConfigFiles:
     pipeline: PipelineConfig
 
 
-# ── Validation ────────────────────────────────────────────────────────────────────────────────────────────────────
+# ── Validation ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
 def _entry_key(file: str, data: Any, loc: tuple[int | str, ...]) -> tuple[str | None, str | None]:
-    """Traduit l'emplacement Pydantic en (clé de l'entrée, champ)."""
+    """Translate the Pydantic location into (entry key, field)."""
     if file == PIPELINE_FILE:
         return (str(loc[0]) if loc else None), (".".join(str(p) for p in loc[1:]) or None)
     if len(loc) < 2 or not isinstance(loc[1], int):
@@ -282,19 +282,19 @@ def _validate[M: BaseModel](model: type[M], file: str, data: Any) -> M:
 
 def _check_sources(sources: SourcesFile) -> list[ConfigIssue]:
     return [
-        ConfigIssue(SOURCES_FILE, key, "key", "clé en double")
+        ConfigIssue(SOURCES_FILE, key, "key", "duplicate key")
         for key in _duplicates(source.key for source in sources.sources)
     ]
 
 
 def _check_topics(topics: TopicsFile) -> list[ConfigIssue]:
     issues = [
-        ConfigIssue(TOPICS_FILE, slug, "slug", "slug en double") for slug in _duplicates(t.slug for t in topics.topics)
+        ConfigIssue(TOPICS_FILE, slug, "slug", "duplicate slug") for slug in _duplicates(t.slug for t in topics.topics)
     ]
     parents = {topic.slug: topic.parent for topic in topics.topics}
     for topic in topics.topics:
         if topic.parent is not None and topic.parent not in parents:
-            issues.append(ConfigIssue(TOPICS_FILE, topic.slug, "parent", f"parent « {topic.parent} » inexistant"))
+            issues.append(ConfigIssue(TOPICS_FILE, topic.slug, "parent", f"parent '{topic.parent}' does not exist"))
     reported: set[str] = set()
     for start in parents:
         path, current = [start], parents.get(start)
@@ -306,14 +306,14 @@ def _check_topics(topics: TopicsFile) -> list[ConfigIssue]:
             if not reported.intersection(cycle):
                 reported.update(cycle)
                 chain = " → ".join([*cycle, current])
-                issues.append(ConfigIssue(TOPICS_FILE, current, "parent", f"cycle de parents : {chain}"))
+                issues.append(ConfigIssue(TOPICS_FILE, current, "parent", f"parent cycle: {chain}"))
     return issues
 
 
 def _check_entities(entities: EntitiesFile) -> list[ConfigIssue]:
     keys = (f"{entity.type}:{entity.canonical_name}" for entity in entities.entities)
     return [
-        ConfigIssue(ENTITIES_FILE, key, "canonical_name", "(type, canonical_name) en double")
+        ConfigIssue(ENTITIES_FILE, key, "canonical_name", "duplicate (type, canonical_name)")
         for key in _duplicates(keys)
     ]
 
@@ -329,7 +329,7 @@ def _duplicates(values: Iterable[str]) -> list[str]:
 
 
 def load_pipeline(path: Path) -> PipelineConfig:
-    """Charge `pipeline.yaml` du dossier `path` ; absent → défauts."""
+    """Load `pipeline.yaml` from the `path` directory; missing → defaults."""
     file = path / PIPELINE_FILE
     if not file.exists():
         return PipelineConfig()
@@ -337,7 +337,7 @@ def load_pipeline(path: Path) -> PipelineConfig:
 
 
 def load_config_files(path: Path) -> ConfigFiles:
-    """Charge et valide les quatre fichiers du dossier `path`. Rassemble tous les problèmes avant de lever."""
+    """Load and validate the four files of the `path` directory. Collect every problem before raising."""
     issues: list[ConfigIssue] = []
     sources = topics = entities = None
     try:

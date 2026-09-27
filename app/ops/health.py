@@ -1,15 +1,15 @@
-"""Module unique de santé (VII §40, ADR-0012) : `/health`, `/api/health` et `python -m app.cli health`.
+"""Single health module (VII §40, ADR-0012): `/health`, `/api/health` and `python -m app.cli health`.
 
-Calcul à chaque appel, sans aucun appel réseau (VII §40.2) :
+Computed on every call, without any network call (VII §40.2):
 
-1. une lecture courte en `read_session` de `SystemState` (heartbeat) et de la révision du schéma ; échec ou délai de
-   plus de 2 s → `down` (condition `database_down`) ;
-2. l'âge du heartbeat, calculé **au moment de l'appel** avec la `Clock` injectée, dépasse
-   `ops.heartbeat_stale_after` → `down` : un worker mort ne peut pas écrire qu'il est mort ;
-3. au moins une condition active (VII §39.5) → `degraded` ; aucune condition n'existe encore au Sprint 1 ;
-4. sinon `ok`.
+1. a short `read_session` read of `SystemState` (heartbeat) and of the schema revision; failure or a read longer than
+   2 s → `down` (`database_down` condition);
+2. the heartbeat age, computed **at call time** with the injected `Clock`, exceeds `ops.heartbeat_stale_after` →
+   `down`: a dead worker cannot write that it is dead;
+3. at least one active condition (VII §39.5) → `degraded`; no condition exists yet in Sprint 1;
+4. otherwise `ok`.
 
-Composants du Sprint 1 : `database`, `worker`, `app`. Les autres (VII §40.3) arrivent avec leur sprint.
+Sprint 1 components: `database`, `worker`, `app`. The others (VII §40.3) come with their sprint.
 """
 
 import asyncio
@@ -29,7 +29,7 @@ from app.db.session import Database
 from app.ops.heartbeat import HEARTBEAT_KEY
 
 READ_TIMEOUT = 2.0
-"""Délai maximal de la lecture de santé, en secondes (VII §40.2)."""
+"""Maximum duration of the health read, in seconds (VII §40.2)."""
 
 log = structlog.get_logger()
 
@@ -41,12 +41,12 @@ class Status(StrEnum):
 
 
 HTTP_CODES = {Status.OK: 200, Status.DEGRADED: 200, Status.DOWN: 503}
-"""Code HTTP de `/health` par statut (VII §40.2)."""
+"""HTTP status code of `/health` per status (VII §40.2)."""
 
 
 @dataclass(frozen=True)
 class StateSnapshot:
-    """Ce que la lecture courte rapporte de la base."""
+    """What the short read brings back from the database."""
 
     schema_revision: str | None
     heartbeat: dict[str, Any] | None
@@ -56,7 +56,7 @@ Reader = Callable[[Database], Awaitable[StateSnapshot]]
 
 
 async def read_state(db: Database) -> StateSnapshot:
-    """Lecture courte, en lecture seule : révision du schéma et `SystemState.worker_heartbeat`."""
+    """Short read-only read: schema revision and `SystemState.worker_heartbeat`."""
     async with db.read_session() as session:
         revision = (await session.execute(text("SELECT version_num FROM alembic_version"))).scalar_one_or_none()
         heartbeat = (
@@ -66,7 +66,7 @@ async def read_state(db: Database) -> StateSnapshot:
 
 
 def iso(moment: datetime) -> str:
-    """Horodatage UTC à la seconde, suffixe `Z`, comme dans VII §40.3."""
+    """UTC timestamp to the second, `Z` suffix, as in VII §40.3."""
     return moment.astimezone(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
@@ -87,12 +87,12 @@ class HealthReport:
         return HTTP_CODES[self.status]
 
     def public(self) -> dict[str, str]:
-        """Réponse de `/health` : le statut seul, aucune information interne (VII §40.2)."""
+        """`/health` response: the status alone, no internal information (VII §40.2)."""
         return {"status": self.status.value}
 
 
 class HealthChecker:
-    """Calcule la santé. Une instance par processus ; la lecture et son délai sont injectables pour les tests."""
+    """Compute health. One instance per process; the read and its timeout are injectable for tests."""
 
     def __init__(
         self,
@@ -120,7 +120,7 @@ class HealthChecker:
         try:
             async with asyncio.timeout(self.read_timeout):
                 snapshot = await self.reader(self.db)
-        except Exception as error:  # base inaccessible ou lecture trop longue : `down`, quelle qu'en soit la cause
+        except Exception as error:  # unreachable database or read too long: `down`, whatever the cause
             timed_out = isinstance(error, TimeoutError)
             log.warning(
                 "health.database.down",
@@ -140,7 +140,7 @@ class HealthChecker:
             }
             worker = self._worker(snapshot.heartbeat, checked_at)
             status = Status.DOWN if worker["status"] == Status.DOWN.value else Status.OK
-        conditions: list[dict[str, Any]] = []  # conditions de VII §39.5 : évaluées par ops.tick, sprints suivants
+        conditions: list[dict[str, Any]] = []  # VII §39.5 conditions: evaluated by ops.tick, later sprints
         if status is Status.OK and conditions:
             status = Status.DEGRADED
         detail = {
@@ -157,7 +157,7 @@ class HealthChecker:
         return HealthReport(status, detail)
 
     def _worker(self, heartbeat: dict[str, Any] | None, checked_at: datetime) -> dict[str, Any]:
-        """Composant `worker` : âge du heartbeat calculé maintenant ; absent, illisible ou périmé → `down`."""
+        """`worker` component: heartbeat age computed now; missing, unreadable or stale → `down`."""
         if heartbeat is None:
             return {"status": Status.DOWN.value, "heartbeat_at": None, "heartbeat_age_s": None}
         try:

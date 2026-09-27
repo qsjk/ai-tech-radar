@@ -1,7 +1,7 @@
-"""Commandes d'exploitation `python -m app.cli <commande>` (IX §56.3, §56.4).
+"""Operations commands `python -m app.cli <command>` (IX §56.3, §56.4).
 
-Contrat commun (IX §56.3) : codes de sortie `0` succès · `1` échec de l'opération · `2` usage ou configuration
-invalide ; résultat lisible sur stdout ; logs structurés sur stderr.
+Common contract (IX §56.3): exit codes `0` success · `1` operation failed · `2` invalid usage or configuration;
+readable result on stdout; structured logs on stderr.
 """
 
 EXIT_OK = 0

@@ -1,1 +1,1 @@
-"""Briques transverses : horloge, configuration, logs (VIII §46.1)."""
+"""Cross-cutting building blocks: clock, configuration, logging (VIII §46.1)."""
