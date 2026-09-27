@@ -201,12 +201,28 @@ class EntitiesFile(_Model):
     github_reserved_paths: list[str] = Field(default_factory=list)
 
 
+WATCHDOG_TIMEOUT_MIN = timedelta(seconds=10)
+"""Minimum de `ops.watchdog_timeout` : deux fois la période de rafraîchissement du watchdog (5 s). En dessous, un
+worker sain serait arrêté (décision du 2026-09-27)."""
+
+
 class OpsSettings(_Model):
     """Section `ops` de `pipeline.yaml`, réglages utiles au Sprint 1 (VII §39.7)."""
 
     heartbeat_interval: Duration = timedelta(seconds=30)
     heartbeat_stale_after: Duration = timedelta(seconds=120)
     watchdog_timeout: Duration = timedelta(seconds=300)
+
+    @field_validator("watchdog_timeout")
+    @classmethod
+    def _watchdog_timeout_min(cls, value: timedelta) -> timedelta:
+        if value < WATCHDOG_TIMEOUT_MIN:
+            minimum = int(WATCHDOG_TIMEOUT_MIN.total_seconds())
+            raise ValueError(
+                f"au moins {minimum}s attendu, deux fois la période de rafraîchissement du watchdog (5 s) ; "
+                "en dessous, un worker sain serait arrêté"
+            )
+        return value
 
 
 class PipelineConfig(_Model):

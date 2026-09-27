@@ -206,5 +206,5 @@ def test_boucle_gelee_watchdog_arrete_le_processus(lancer: Any, base_migree: str
     worker.attendre_log("worker.started")
     alerte = worker.attendre_log("worker.watchdog.timeout")
     assert worker.attendre_fin() == 1
-    assert (alerte["level"], alerte["timeout_s"]) == ("critical", 6.0)
+    assert (alerte["level"], alerte["timeout_s"]) == ("critical", 10.0)
     assert "worker.stopped" not in worker.evenements()

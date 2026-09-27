@@ -12,10 +12,9 @@ PIPELINE_COURT = """\
 ops:
   heartbeat_interval: 1s
   heartbeat_stale_after: 4s
-  watchdog_timeout: 6s
+  watchdog_timeout: 10s
 """
-"""Réglages courts des tests de niveau processus : un heartbeat par seconde ; watchdog à 6 s, juste au-dessus du
-rafraîchissement de 5 s (en dessous, un worker sain serait arrêté)."""
+"""Réglages courts des tests de niveau processus : un heartbeat par seconde ; watchdog au minimum accepté, 10 s."""
 
 
 @pytest.fixture
