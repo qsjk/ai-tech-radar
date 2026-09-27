@@ -5,7 +5,7 @@ import os
 import sys
 from collections.abc import Sequence
 
-from app.cli import validate_config
+from app.cli import health, validate_config
 from app.core.clock import SystemClock
 from app.core.logging import configure_logging
 
@@ -15,6 +15,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="Commandes d'exploitation (IX §56.4).")
     commands = parser.add_subparsers(dest="command", required=True)
     validate_config.register(commands)
+    health.register(commands)
     return parser
 
 
