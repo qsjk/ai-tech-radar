@@ -201,3 +201,9 @@ def test_config_du_depot_valide() -> None:
     assert {s.key for s in config.sources.sources} == {"claude-code-releases", "hn-mcp"}
     assert {t.slug for t in config.topics.topics} == {"anthropic", "claude-code", "mcp"}
     assert config.pipeline.ops.heartbeat_stale_after == timedelta(seconds=120)
+
+
+@pytest.mark.spec("T-CFG-02:schemas")
+def test_cle_de_source_hors_motif_refusee(tmp_path: Path) -> None:
+    (issue,) = probleme(ecrire(tmp_path, sources=SOURCES.replace("key: blog-a", "key: Blog_A")))
+    assert (issue.file, issue.key, issue.field) == ("sources.yaml", "Blog_A", "key")

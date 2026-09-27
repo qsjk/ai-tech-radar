@@ -24,7 +24,7 @@ TOPICS_FILE = "topics.yaml"
 ENTITIES_FILE = "entities.yaml"
 PIPELINE_FILE = "pipeline.yaml"
 
-SLUG = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
+SOURCE_KEY = r"^[a-z0-9-]+$"  # IV §16.2
 
 # ── Erreurs ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -149,7 +149,7 @@ KeywordEntry = Annotated[Keyword, BeforeValidator(_keyword)]
 class SourceSpec(_Model):
     """Entrée de `sources.yaml` (IV §16.2)."""
 
-    key: str = Field(pattern=SLUG)
+    key: str = Field(pattern=SOURCE_KEY)
     name: str = Field(min_length=1)
     type: str = Field(min_length=1)  # contrôlé par le registre des collectors au Sprint 2
     url: str = Field(min_length=1)
@@ -167,7 +167,7 @@ class SourcesFile(_Model):
 class TopicSpec(_Model):
     """Entrée de `topics.yaml` (IV §16.3)."""
 
-    slug: str = Field(pattern=SLUG)
+    slug: str = Field(min_length=1)  # IV §16.3 : unique, sans format imposé
     name: str = Field(min_length=1)
     description: str | None = None
     parent: str | None = None
