@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# radar-dev: the only entry point of Docker on the development machine (VIII §46.1, E22, ADR-0021).
+#
+# Fixed subcommands; no free argument is ever passed to docker. The only argument accepted, a service name, is checked
+# against a closed list. A subcommand or an argument outside the lists exits with code 2 and a message on stderr,
+# without running anything (T-CFG-11). Exit codes follow IX §56.3: 0 success, 1 failed operation, 2 invalid usage or
+# configuration; results on stdout, errors on stderr.
+set -euo pipefail
+
+# Dedicated development Compose project, fixed here: never "radar" (production) nor "radar-load" (load tests).
+readonly PROJECT="radar-dev"
+readonly SERVICES=(migrate app worker caddy)
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly ROOT
+readonly COMPOSE_FILE="${ROOT}/docker-compose.yml"
+readonly E2E_OVERRIDE="${ROOT}/docker-compose.test.yml"
+readonly E2E_TESTS="${ROOT}/tests/e2e"
+readonly ENV_FILE="${ROOT}/.env"
+
+usage() {
+  cat >&2 <<USAGE
+usage: scripts/radar-dev <command>
+
+commands:
+  up              build the images and start the development Compose (project ${PROJECT})
+  down            stop and remove its containers (volumes kept)
+  reset           fresh Compose: down with its volumes, then up
+  ps              list its containers
+  logs <service>  logs of one service: ${SERVICES[*]}
+  health          health detail, python -m app.cli health in app
+  test            local pytest suite, as CI stage 4
+  e2e             end-to-end tests against the Compose with docker-compose.test.yml
+USAGE
+}
+
+invalid() {
+  echo "radar-dev: $1" >&2
+  usage
+  exit 2
+}
+
+failed() {
+  echo "radar-dev: $1" >&2
+  exit 1
+}
+
+no_arguments() {
+  if [[ $# -gt 0 ]]; then
+    invalid "'${COMMAND}' takes no argument"
+  fi
+}
+
+check_service() {
+  local service
+  for service in "${SERVICES[@]}"; do
+    if [[ "$1" == "${service}" ]]; then
+      return 0
+    fi
+  done
+  invalid "unknown service '$1' (expected one of: ${SERVICES[*]})"
+}
+
+require_env() {
+  if [[ ! -f "${ENV_FILE}" ]]; then
+    echo "radar-dev: ${ENV_FILE} is missing: copy .env.example to .env and fill it in (never committed)" >&2
+    exit 2
+  fi
+}
+
+compose() {
+  docker compose --project-name "${PROJECT}" --project-directory "${ROOT}" \
+    --file "${COMPOSE_FILE}" --env-file "${ENV_FILE}" "$@" \
+    || failed "docker compose $1 failed"
+}
+
+compose_e2e() {
+  docker compose --project-name "${PROJECT}" --project-directory "${ROOT}" \
+    --file "${COMPOSE_FILE}" --file "${E2E_OVERRIDE}" --env-file "${ENV_FILE}" "$@" \
+    || failed "docker compose $1 failed (e2e)"
+}
+
+run_e2e() {
+  if [[ ! -f "${E2E_OVERRIDE}" || ! -d "${E2E_TESTS}" ]]; then
+    failed "e2e is not available yet: docker-compose.test.yml and tests/e2e/ arrive with T1.10"
+  fi
+  require_env
+  compose_e2e up --detach --build
+  local status=0
+  (cd "${ROOT}" && uv run pytest "${E2E_TESTS}") || status=$?
+  compose_e2e down --volumes
+  if [[ ${status} -ne 0 ]]; then
+    failed "e2e tests failed"
+  fi
+}
+
+if [[ $# -eq 0 ]]; then
+  invalid "missing command"
+fi
+COMMAND="$1"
+shift
+
+case "${COMMAND}" in
+  up)
+    no_arguments "$@"
+    require_env
+    compose up --detach --build
+    ;;
+  down)
+    no_arguments "$@"
+    require_env
+    compose down
+    ;;
+  reset)
+    no_arguments "$@"
+    require_env
+    compose down --volumes
+    compose up --detach --build
+    ;;
+  ps)
+    no_arguments "$@"
+    require_env
+    compose ps --all
+    ;;
+  logs)
+    if [[ $# -ne 1 ]]; then
+      invalid "'logs' takes exactly one service: ${SERVICES[*]}"
+    fi
+    check_service "$1"
+    require_env
+    compose logs --no-color "$1"
+    ;;
+  health)
+    no_arguments "$@"
+    require_env
+    compose exec -T app python -m app.cli health
+    ;;
+  test)
+    no_arguments "$@"
+    (cd "${ROOT}" && uv run pytest) || failed "tests failed"
+    ;;
+  e2e)
+    no_arguments "$@"
+    run_e2e
+    ;;
+  *)
+    invalid "unknown command '${COMMAND}'"
+    ;;
+esac

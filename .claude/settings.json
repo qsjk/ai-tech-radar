@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "includeCoAuthoredBy": false,
+  "permissions": {
+    "allow": [
+      "Bash(scripts/radar-dev:*)",
+      "Bash(./scripts/radar-dev:*)"
+    ],
+    "deny": [
+      "Bash(docker:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker-compose:*)",
+      "Bash(sudo docker:*)"
+    ]
+  }
+}
