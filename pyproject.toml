@@ -53,6 +53,8 @@ plugins = ["pydantic.mypy"]
 [tool.coverage.run]
 # Les écouteurs SQLAlchemy du moteur async s'exécutent dans des greenlets.
 concurrency = ["greenlet", "thread"]
+# Mesure aussi les sous-processus des tests de niveau processus (python -m app.worker).
+patch = ["subprocess"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
