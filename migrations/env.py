@@ -8,12 +8,16 @@
   separately.
 - `PRAGMA foreign_key_check` after `run_migrations()`, in that transaction, before the commit: a violation raises an
   exception and rolls everything back; the Alembic revision and the schema stay as they were before the run.
+- Logs: JSON on stdout with `service="migrate"` (VII §42.1), Alembic's own loggers included, when run by the `alembic`
+  command. A caller that passes `radar_db_path` in the configuration attributes (the tests) keeps its own logging.
 """
 
 import os
 
 from alembic import context
 
+from app.core.clock import SystemClock
+from app.core.logging import configure_logging
 from app.db.engine import create_migrate_engine
 from app.db.models import Base
 
@@ -29,6 +33,19 @@ def _db_path() -> str:
     if not path:
         raise RuntimeError("RADAR_DB_PATH missing: database path unknown (architecture.md P-01)")
     return str(path)
+
+
+def _configure_logging() -> None:
+    """JSON logs of the `migrate` service (VII §42.1); `migrate` receives no secret (VII §36.7)."""
+    if "radar_db_path" in context.config.attributes:
+        return
+    configure_logging(
+        service="migrate",
+        version=os.environ.get("RADAR_VERSION") or "dev",
+        level=os.environ.get("LOG_LEVEL") or "INFO",
+        clock=SystemClock(),
+        secrets=[],
+    )
 
 
 def run_migrations_online() -> None:
@@ -53,4 +70,5 @@ def run_migrations_online() -> None:
 
 if context.is_offline_mode():
     raise RuntimeError("offline mode (--sql) not supported: migrate runs against the database (III §10.5)")
+_configure_logging()
 run_migrations_online()

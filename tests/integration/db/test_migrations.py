@@ -1,7 +1,11 @@
 """Alembic migrations (III §10.5, docs/database.md §5): real chain and test chains outside the repository."""
 
+import json
+import os
 import shutil
 import sqlite3
+import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -14,7 +18,7 @@ from sqlalchemy import inspect, text
 
 from app.db.engine import create_migrate_engine
 from app.db.models import Base
-from tests.integration.db.conftest import MIGRATIONS, alembic_config
+from tests.integration.db.conftest import MIGRATIONS, ROOT, alembic_config
 
 
 def read(db_path: str, sql: str) -> list[tuple[object, ...]]:
@@ -59,6 +63,21 @@ def test_upgrade_head_from_an_empty_database(empty_db: str) -> None:
     assert set(columns) == {"key", "value", "updated_at"}
     assert all(not c["nullable"] for c in columns.values())
     assert all(c["default"] is None for c in columns.values())  # no SQL default (III §10.6)
+
+
+@pytest.mark.spec("T-DB-08")
+def test_alembic_command_upgrades_head_with_json_logs_of_migrate(empty_db: str) -> None:
+    """The `migrate` service command, `alembic upgrade head`: JSON logs on stdout, `service="migrate"` (VII §42.1)."""
+    alembic = os.path.join(os.path.dirname(sys.executable), "alembic")
+    env = {"PATH": os.environ["PATH"], "RADAR_DB_PATH": empty_db, "LOG_LEVEL": "INFO"}
+    result = subprocess.run(
+        [alembic, "upgrade", "head"], cwd=ROOT, env=env, capture_output=True, text=True, timeout=60, check=False
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    lines = [json.loads(line) for line in result.stdout.splitlines()]
+    assert lines and all(line["service"] == "migrate" and line["level"] == "info" for line in lines)
+    assert any(line["event"].startswith("Running upgrade  -> 0001") for line in lines)
+    assert db_revision(empty_db) == "0001"
 
 
 @pytest.mark.spec("T-DB-08")
