@@ -36,6 +36,8 @@ jobs:
         run: uv run ruff format --check
       - name: mypy (strict on app/)
         run: uv run mypy
+      - name: shellcheck (scripts/radar-dev)
+        run: uv run shellcheck scripts/radar-dev
 
   tests:
     name: "4 · Tests"
