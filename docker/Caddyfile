@@ -2,6 +2,9 @@
 {
 	# Quoted so that an empty ACME_EMAIL (optional, VII §36.7) yields an ACME account without contact, not a parse error.
 	email "{$ACME_EMAIL}"
+	# Never install the local CA (used for localhost in development) into the system trust store: the container's
+	# root filesystem is read-only and Caddy only writes to /data, /config and /tmp (architecture.md §4.3).
+	skip_install_trust
 	# log_credentials is NOT enabled: Authorization and Cookie stay masked in the logs (VII §42.3).
 }
 
