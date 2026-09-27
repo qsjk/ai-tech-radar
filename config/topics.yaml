@@ -1,0 +1,27 @@
+# Taxonomie — jeu de démonstration minimal (Sprint 1, décision Q-04).
+# Format : IV §16.3.
+topics:
+  - slug: anthropic
+    name: Anthropic
+    keywords:
+      - { term: "anthropic", weight: 3 }
+      - { term: 'claude (opus|sonnet|haiku)', regex: true, weight: 3 }
+      - "claude"
+    exclude:
+      - "claude monet"
+      - "claude debussy"
+
+  - slug: claude-code
+    name: Claude Code
+    parent: anthropic
+    description: CLI agentique de codage d'Anthropic
+    keywords:
+      - { term: "claude code", weight: 3 }
+      - { term: "claude-code", weight: 3 }
+      - "claude cli"
+
+  - slug: mcp
+    name: Model Context Protocol
+    keywords:
+      - { term: "model context protocol", weight: 3 }
+      - "mcp server"

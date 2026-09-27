@@ -1,0 +1,6 @@
+# Réglages du pipeline (IV §16.6). Optionnel : absent, chaque réglage prend son défaut.
+# Au Sprint 1, seule la section ops existe (VII §39.7) ; les autres arrivent avec leur étage (E6).
+ops:
+  heartbeat_interval: 30s
+  heartbeat_stale_after: 120s
+  watchdog_timeout: 300s

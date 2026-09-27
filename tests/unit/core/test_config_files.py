@@ -193,3 +193,11 @@ def test_pipeline_invalide_refuse_avec_le_meme_format(tmp_path: Path, contenu: s
         load_pipeline(tmp_path)
     (issue,) = info.value.issues
     assert (issue.file, issue.key, issue.field) == ("pipeline.yaml", "ops", champ)
+
+
+@pytest.mark.spec("T-CFG-01")
+def test_config_du_depot_valide() -> None:
+    config = load_config_files(Path(__file__).resolve().parents[3] / "config")
+    assert {s.key for s in config.sources.sources} == {"claude-code-releases", "hn-mcp"}
+    assert {t.slug for t in config.topics.topics} == {"anthropic", "claude-code", "mcp"}
+    assert config.pipeline.ops.heartbeat_stale_after == timedelta(seconds=120)
