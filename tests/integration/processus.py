@@ -6,6 +6,7 @@ import queue
 import subprocess
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 from tests.integration.db.conftest import RACINE
@@ -31,10 +32,8 @@ def entree(ligne: str) -> dict[str, Any]:
 class Processus:
     """Sous-processus ; ses logs JSON (stdout) sont lus par un thread et consultés avec délai."""
 
-    def __init__(self, args: list[str], env: dict[str, str]) -> None:
-        self.popen = subprocess.Popen(
-            args, cwd=RACINE, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
+    def __init__(self, args: list[str], env: dict[str, str], cwd: Path = RACINE) -> None:
+        self.popen = subprocess.Popen(args, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.logs: list[dict[str, Any]] = []
         self._lignes: queue.Queue[str | None] = queue.Queue()
         self._lecteur = threading.Thread(target=self._lire, daemon=True)
@@ -46,7 +45,8 @@ class Processus:
             self._lignes.put(ligne)
         self._lignes.put(None)
 
-    def attendre_log(self, event: str) -> dict[str, Any]:
+    def attendre_log(self, event: str, *, debut: bool = False) -> dict[str, Any]:
+        """Lit les logs jusqu'à `event` (ou, avec `debut`, un événement qui commence par `event`)."""
         echeance = time.monotonic() + DELAI
         while True:
             ligne = self._lignes.get(timeout=max(0.0, echeance - time.monotonic()))
@@ -54,7 +54,7 @@ class Processus:
                 raise AssertionError(f"fin du processus avant {event!r} : {self.logs}")
             log = entree(ligne)
             self.logs.append(log)
-            if log["event"] == event:
+            if log["event"] == event or (debut and str(log["event"]).startswith(event)):
                 return log
 
     def attendre_fin(self) -> int:

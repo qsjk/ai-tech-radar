@@ -1,4 +1,4 @@
-"""Base temporaire migrée à `head` et dossier `config/` de test, pour les tests du worker."""
+"""Base temporaire migrée à `head` et dossier `config/` de test, pour les tests du worker et de l'app."""
 
 import shutil
 from pathlib import Path
