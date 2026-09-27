@@ -34,13 +34,18 @@ de cadrage (`docs/sprints/sprint-00-cadrage.md`) sont citées par leur identifia
     `Entity` · `Event` · `Embedding` · `AIJob` · `Signal` · `EmergingCandidate` · `EmergingDecision` ·
     `UserPreference` · `ReadState` · `AlertLog` · `Setting` · `SystemState` ;
   - ni l'un ni l'autre n'a de défaut SQL : l'application fournit l'instant (§2.4).
-- **JSON** : colonne texte JSON (`JSON` côté SQLAlchemy, `TEXT` en SQLite), **validée par un schéma Pydantic à
-  l'écriture** (III §11.0). JSON1 est un prérequis vérifié au démarrage (III §10.1).
+- **JSON** : colonne texte JSON, **`JSONText` côté SQLAlchemy** (`app/db/types.py`), **`TEXT` en SQLite** ; jamais
+  `sqlalchemy.JSON`, dont la colonne déclarée `JSON` a une affinité NUMERIC (décision du 2026-09-26). Validée par un
+  schéma Pydantic à l'écriture (III §11.0). JSON1 est un prérequis vérifié au démarrage (III §10.1).
 - **`NULL` = inconnu ou absent.** Jamais de valeur inventée par défaut : un quota inconnu est `NULL`, pas `0`. Toute
   colonne est **non nulle par défaut** ; elle n'est nullable que si la spec le dit ou si `NULL` a un sens
   (III §11.0, I-03).
 - **Nommage SQL** : tables en `snake_case`, sauf `aijob`, gardé tel qu'il figure dans les requêtes de V-A
   (III §11.0, I-01).
+- **Contraintes et index nommés** : les métadonnées portent une convention de nommage (`NAMING_CONVENTION`,
+  `app/db/models.py`) — `pk_<table>`, `fk_<table>_<colonnes>_<table référencée>`, `uq_<table>_<colonnes>`,
+  `ix_<table>_<colonnes>`, `ck_<table>_<nom>`. Le mode batch d'Alembic en a besoin pour modifier une contrainte sous
+  SQLite (III §10.5 ; décision du 2026-09-26).
 - **Booléens** : `BOOLEAN` SQLAlchemy, stocké en `INTEGER` 0 / 1 par SQLite (la requête de V-B §28.2 compare
   `clustered_semantic = 0`).
 
@@ -974,7 +979,7 @@ VII §39.3). L'app les lit pour `/health`, `/api/health`, `/api/status` et le lu
 | Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
 |---|---|---|---|---|---|---|---|---|
 | `key` | `TEXT` | `String` | non | — | **PK** | | III §11.13 | 1 |
-| `value` | `TEXT` (JSON) | `JSON` | non | — | Pydantic (schéma par clé) | | III §11.13 | 1 |
+| `value` | `TEXT` (JSON) | `JSONText` | non | — | Pydantic (schéma par clé) | | III §11.13 | 1 |
 | `updated_at` | `TEXT` | `UTCDateTime` | non | — | | | III §11.13 | 1 |
 
 **Clés et schéma de leur valeur** — une clé n'est pas une migration : elle apparaît au sprint qui l'écrit.

@@ -4,6 +4,10 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+from alembic.config import Config
+
+RACINE = Path(__file__).resolve().parents[3]
+MIGRATIONS = RACINE / "migrations"
 
 
 @pytest.fixture
@@ -28,3 +32,11 @@ def raw_write_lock_free(db_path: str) -> bool:
         return False
     finally:
         conn.close()
+
+
+def alembic_config(db_path: str, script_location: Path = MIGRATIONS) -> Config:
+    """Configuration Alembic du dépôt, pointée sur une base de test et, au besoin, sur une chaîne de test."""
+    config = Config(str(RACINE / "alembic.ini"))
+    config.set_main_option("script_location", str(script_location))
+    config.attributes["radar_db_path"] = db_path
+    return config
