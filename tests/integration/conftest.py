@@ -1,4 +1,4 @@
-"""Base temporaire migrée à `head` et dossier `config/` de test, pour les tests du worker et de l'app."""
+"""Temporary database migrated to `head` and test `config/` directory, for the worker and app tests."""
 
 import shutil
 from pathlib import Path
@@ -6,19 +6,19 @@ from pathlib import Path
 import pytest
 from alembic import command
 
-from tests.integration.db.conftest import RACINE, alembic_config
+from tests.integration.db.conftest import ROOT, alembic_config
 
-PIPELINE_COURT = """\
+SHORT_PIPELINE = """\
 ops:
   heartbeat_interval: 1s
   heartbeat_stale_after: 4s
   watchdog_timeout: 10s
 """
-"""Réglages courts des tests de niveau processus : un heartbeat par seconde ; watchdog au minimum accepté, 10 s."""
+"""Short settings for process-level tests: one heartbeat per second; watchdog at the minimum accepted, 10 s."""
 
 
 @pytest.fixture
-def base_migree(tmp_path: Path) -> str:
+def migrated_db(tmp_path: Path) -> str:
     db_path = str(tmp_path / "radar.db")
     command.upgrade(alembic_config(db_path), "head")
     return db_path
@@ -26,8 +26,8 @@ def base_migree(tmp_path: Path) -> str:
 
 @pytest.fixture
 def config_dir(tmp_path: Path) -> Path:
-    """Copie des fichiers `config/` de démonstration, avec un `pipeline.yaml` aux réglages courts."""
+    """Copy of the demo `config/` files, with a `pipeline.yaml` holding short settings."""
     path = tmp_path / "config"
-    shutil.copytree(RACINE / "config", path)
-    (path / "pipeline.yaml").write_text(PIPELINE_COURT, encoding="utf-8")
+    shutil.copytree(ROOT / "config", path)
+    (path / "pipeline.yaml").write_text(SHORT_PIPELINE, encoding="utf-8")
     return path

@@ -1,4 +1,4 @@
-"""Configuration typée (VII §36.7, §42.4 niveau 1)."""
+"""Typed configuration (VII §36.7, §42.4 level 1)."""
 
 import pytest
 from pydantic import ValidationError
@@ -14,8 +14,8 @@ FAKE_RESTIC = "FAKE-restic-password-0005"
 
 
 @pytest.fixture(autouse=True)
-def _environnement_vide(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test hermétique : aucune variable déclarée par les modèles ne vient de l'environnement du poste ou de la CI."""
+def _empty_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hermetic test: no variable declared by the models comes from the environment of the machine or the CI."""
     for model in (AppSettings, WorkerSettings):
         for name in model.model_fields:
             monkeypatch.delenv(name.upper(), raising=False)
@@ -25,19 +25,19 @@ def _environnement_vide(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.parametrize(
     "url",
     [
-        "http://radar.example.com",  # http hors localhost
-        "ftp://radar.example.com",  # schéma
-        "https://radar.example.com/",  # slash final
-        "https://radar.example.com/radar",  # chemin
+        "http://radar.example.com",  # http outside localhost
+        "ftp://radar.example.com",  # scheme
+        "https://radar.example.com/",  # trailing slash
+        "https://radar.example.com/radar",  # path
         "https://radar.example.com:8443",  # port
-        "https://localhost:443",  # port, même par défaut
-        "https://moi@radar.example.com",  # identifiants
-        "https://radar.example.com?x=1",  # requête
-        "https://",  # hôte manquant
-        "radar.example.com",  # pas d'URL
+        "https://localhost:443",  # port, even the default one
+        "https://me@radar.example.com",  # credentials
+        "https://radar.example.com?x=1",  # query
+        "https://",  # missing host
+        "radar.example.com",  # not a URL
     ],
 )
-def test_dashboard_url_invalide_refusee(url: str) -> None:
+def test_invalid_dashboard_url_refused(url: str) -> None:
     with pytest.raises(ValidationError):
         AppSettings(radar_db_path=DB, dashboard_url=url)
     with pytest.raises(ValidationError):
@@ -45,25 +45,25 @@ def test_dashboard_url_invalide_refusee(url: str) -> None:
 
 
 @pytest.mark.spec("T-CFG-07")
-def test_http_localhost_admise_en_developpement_seulement() -> None:
+def test_http_localhost_allowed_in_development_only() -> None:
     assert (
         AppSettings(radar_db_path=DB, dashboard_url="http://localhost", app_env=AppEnv.DEVELOPMENT).dashboard_url
         == "http://localhost"
     )
     with pytest.raises(ValidationError):
-        AppSettings(radar_db_path=DB, dashboard_url="http://localhost")  # production par défaut
+        AppSettings(radar_db_path=DB, dashboard_url="http://localhost")  # production by default
     with pytest.raises(ValidationError):
         AppSettings(radar_db_path=DB, dashboard_url="http://localhost", app_env=AppEnv.TEST)
 
 
 @pytest.mark.spec("T-CFG-07")
 @pytest.mark.parametrize("url", ["https://radar.example.com", "https://localhost"])
-def test_dashboard_url_valide_acceptee(url: str) -> None:
+def test_valid_dashboard_url_accepted(url: str) -> None:
     assert AppSettings(radar_db_path=DB, dashboard_url=url).dashboard_url == url
 
 
 @pytest.mark.spec("T-CFG-07")
-def test_dashboard_url_lue_dans_l_environnement(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dashboard_url_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RADAR_DB_PATH", DB)
     monkeypatch.setenv("DASHBOARD_URL", "https://radar.example.com/")
     with pytest.raises(ValidationError):
@@ -74,7 +74,7 @@ def test_dashboard_url_lue_dans_l_environnement(monkeypatch: pytest.MonkeyPatch)
 
 
 @pytest.mark.spec("T-SEC-02")
-def test_representation_des_secrets_masquee() -> None:
+def test_secret_representation_masked() -> None:
     settings = WorkerSettings(
         radar_db_path=DB,
         dashboard_url="https://radar.example.com",
@@ -92,7 +92,7 @@ def test_representation_des_secrets_masquee() -> None:
 
 
 @pytest.mark.spec("T-SEC-02")
-def test_app_ne_declare_aucun_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_app_declares_no_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", FAKE_GITHUB)
     settings = AppSettings(radar_db_path=DB, dashboard_url="https://radar.example.com")
     assert set(AppSettings.model_fields) == {"radar_db_path", "dashboard_url", "app_env", "log_level", "radar_version"}
@@ -101,7 +101,7 @@ def test_app_ne_declare_aucun_secret(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.spec("T-SEC-02")
-def test_variable_vide_vaut_absente(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_empty_variable_counts_as_absent(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "")
     settings = WorkerSettings(
         radar_db_path=DB,
@@ -111,8 +111,8 @@ def test_variable_vide_vaut_absente(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.github_token is None
 
 
-def test_radar_db_path_obligatoire_et_lue_dans_l_environnement(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_radar_db_path_required_and_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(ValidationError):
         AppSettings(dashboard_url="https://radar.example.com")
-    monkeypatch.setenv("RADAR_DB_PATH", "/tmp/autre.db")
-    assert AppSettings(dashboard_url="https://radar.example.com").radar_db_path == "/tmp/autre.db"
+    monkeypatch.setenv("RADAR_DB_PATH", "/tmp/other.db")
+    assert AppSettings(dashboard_url="https://radar.example.com").radar_db_path == "/tmp/other.db"

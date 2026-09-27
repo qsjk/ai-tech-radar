@@ -1,6 +1,6 @@
-"""Configuration commune des tests.
+"""Shared test configuration.
 
-Le blocage réseau de toute la session pytest (VIII §50.1) est posé par `pytest-socket`, via les options de
-`[tool.pytest.ini_options]` dans `pyproject.toml` : seules les connexions vers 127.0.0.1 et ::1, et les sockets Unix,
-sont permises. Aucun test n'appelle Internet.
+Network blocking for the whole pytest session (VIII §50.1) is set by `pytest-socket`, through the options of
+`[tool.pytest.ini_options]` in `pyproject.toml`: only connections to 127.0.0.1 and ::1, and Unix sockets, are allowed.
+No test calls the Internet.
 """

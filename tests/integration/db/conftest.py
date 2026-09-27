@@ -1,4 +1,4 @@
-"""Base SQLite temporaire, sur fichier et en WAL (VIII §50.1 : jamais `:memory:`)."""
+"""Temporary SQLite database, on file and in WAL mode (VIII §50.1: never `:memory:`)."""
 
 import sqlite3
 from pathlib import Path
@@ -6,13 +6,13 @@ from pathlib import Path
 import pytest
 from alembic.config import Config
 
-RACINE = Path(__file__).resolve().parents[3]
-MIGRATIONS = RACINE / "migrations"
+ROOT = Path(__file__).resolve().parents[3]
+MIGRATIONS = ROOT / "migrations"
 
 
 @pytest.fixture
 def db_path(tmp_path: Path) -> str:
-    """Fichier SQLite temporaire, en WAL, avec une table de test `probe` (hors schéma applicatif)."""
+    """Temporary SQLite file, in WAL mode, with a `probe` test table (outside the application schema)."""
     path = tmp_path / "radar.db"
     conn = sqlite3.connect(path, isolation_level=None)
     conn.execute("PRAGMA journal_mode=WAL")
@@ -22,7 +22,7 @@ def db_path(tmp_path: Path) -> str:
 
 
 def raw_write_lock_free(db_path: str) -> bool:
-    """Sonde indépendante : un autre client obtient-il le verrou d'écriture sans attendre ?"""
+    """Independent probe: does another client get the write lock without waiting?"""
     conn = sqlite3.connect(db_path, timeout=0, isolation_level=None)
     try:
         conn.execute("BEGIN IMMEDIATE")
@@ -35,8 +35,8 @@ def raw_write_lock_free(db_path: str) -> bool:
 
 
 def alembic_config(db_path: str, script_location: Path = MIGRATIONS) -> Config:
-    """Configuration Alembic du dépôt, pointée sur une base de test et, au besoin, sur une chaîne de test."""
-    config = Config(str(RACINE / "alembic.ini"))
+    """Alembic configuration of the repository, pointed at a test database and, if needed, at a test chain."""
+    config = Config(str(ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(script_location))
     config.attributes["radar_db_path"] = db_path
     return config

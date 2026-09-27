@@ -1,4 +1,4 @@
-"""Module de santé (VII §40) : statut calculé à l'appel, âge du heartbeat par la `Clock`, lecture bornée à 2 s."""
+"""Health module (VII §40): status computed at call time, heartbeat age from the `Clock`, read bounded to 2 s."""
 
 import asyncio
 import sqlite3
@@ -13,20 +13,20 @@ from app.ops.health import READ_TIMEOUT, HealthChecker, HealthReport, StateSnaps
 from app.ops.heartbeat import Heartbeat
 from tests.fakes.clock import ManualClock
 
-DEBUT = datetime(2026, 9, 27, 8, 0, tzinfo=UTC)
-PERIME_APRES = timedelta(seconds=120)
+START = datetime(2026, 9, 27, 8, 0, tzinfo=UTC)
+STALE_AFTER = timedelta(seconds=120)
 
 
-async def verifier(db_path: str, clock: ManualClock, **options: object) -> HealthReport:
+async def check(db_path: str, clock: ManualClock, **options: object) -> HealthReport:
     db = Database(create_engine(db_path), clock)
     try:
         checker = HealthChecker(
             db,
             clock,
             db_path=db_path,
-            heartbeat_stale_after=PERIME_APRES,
+            heartbeat_stale_after=STALE_AFTER,
             version="abc1234",
-            started_at=DEBUT,
+            started_at=START,
             **options,  # type: ignore[arg-type]
         )
         return await checker.check()
@@ -34,7 +34,7 @@ async def verifier(db_path: str, clock: ManualClock, **options: object) -> Healt
         await db.dispose()
 
 
-async def ecrire_heartbeat(db_path: str, clock: ManualClock) -> None:
+async def write_heartbeat(db_path: str, clock: ManualClock) -> None:
     db = Database(create_engine(db_path), clock)
     try:
         await Heartbeat(db, clock, timedelta(seconds=30), version="w-1", pid=4242).beat()
@@ -43,24 +43,24 @@ async def ecrire_heartbeat(db_path: str, clock: ManualClock) -> None:
 
 
 @pytest.mark.spec("T-OPS-02")
-def test_heartbeat_frais_ok_avec_le_detail(base_migree: str) -> None:
+def test_fresh_heartbeat_ok_with_the_detail(migrated_db: str) -> None:
     async def scenario() -> HealthReport:
-        clock = ManualClock(DEBUT)
-        await ecrire_heartbeat(base_migree, clock)
+        clock = ManualClock(START)
+        await write_heartbeat(migrated_db, clock)
         clock.advance(timedelta(seconds=12))
-        return await verifier(base_migree, clock)
+        return await check(migrated_db, clock)
 
-    rapport = asyncio.run(scenario())
-    assert (rapport.status, rapport.http_code, rapport.public()) == (Status.OK, 200, {"status": "ok"})
-    detail = rapport.detail
+    report = asyncio.run(scenario())
+    assert (report.status, report.http_code, report.public()) == (Status.OK, 200, {"status": "ok"})
+    detail = report.detail
     assert detail["checked_at"] == "2026-09-27T08:00:12Z"
     assert detail["version"] == "abc1234"
     assert detail["conditions"] == []
-    base, worker, app = (detail["components"][nom] for nom in ("database", "worker", "app"))
-    assert base["status"] == "ok"
-    assert base["schema_revision"] == "0001"
-    assert base["db_bytes"] > 0
-    assert base["wal_bytes"] >= 0
+    database, worker, app = (detail["components"][name] for name in ("database", "worker", "app"))
+    assert database["status"] == "ok"
+    assert database["schema_revision"] == "0001"
+    assert database["db_bytes"] > 0
+    assert database["wal_bytes"] >= 0
     assert worker == {
         "status": "ok",
         "heartbeat_at": "2026-09-27T08:00:00Z",
@@ -72,88 +72,88 @@ def test_heartbeat_frais_ok_avec_le_detail(base_migree: str) -> None:
 
 
 @pytest.mark.spec("T-OPS-02")
-def test_age_calcule_au_moment_de_l_appel(base_migree: str) -> None:
-    """Même heartbeat en base : `ok` à 120 s, `down` à 121 s ; seule l'horloge de l'appel a changé."""
+def test_age_computed_at_call_time(migrated_db: str) -> None:
+    """Same heartbeat in the database: `ok` at 120 s, `down` at 121 s; only the call-time clock changed."""
 
     async def scenario() -> tuple[HealthReport, HealthReport]:
-        clock = ManualClock(DEBUT)
-        await ecrire_heartbeat(base_migree, clock)
-        clock.advance(PERIME_APRES)
-        a_la_limite = await verifier(base_migree, clock)
+        clock = ManualClock(START)
+        await write_heartbeat(migrated_db, clock)
+        clock.advance(STALE_AFTER)
+        at_limit = await check(migrated_db, clock)
         clock.advance(timedelta(seconds=1))
-        return a_la_limite, await verifier(base_migree, clock)
+        return at_limit, await check(migrated_db, clock)
 
-    a_la_limite, perime = asyncio.run(scenario())
-    assert (a_la_limite.status, a_la_limite.http_code) == (Status.OK, 200)
-    assert (perime.status, perime.http_code, perime.public()) == (Status.DOWN, 503, {"status": "down"})
-    assert perime.detail["components"]["worker"]["status"] == "down"
-    assert perime.detail["components"]["worker"]["heartbeat_age_s"] == 121
-    assert perime.detail["components"]["database"]["status"] == "ok"
-
-
-@pytest.mark.spec("T-OPS-02")
-def test_heartbeat_absent_down(base_migree: str) -> None:
-    rapport = asyncio.run(verifier(base_migree, ManualClock(DEBUT)))
-    assert (rapport.status, rapport.http_code) == (Status.DOWN, 503)
-    assert rapport.detail["components"]["worker"] == {"status": "down", "heartbeat_at": None, "heartbeat_age_s": None}
+    at_limit, stale = asyncio.run(scenario())
+    assert (at_limit.status, at_limit.http_code) == (Status.OK, 200)
+    assert (stale.status, stale.http_code, stale.public()) == (Status.DOWN, 503, {"status": "down"})
+    assert stale.detail["components"]["worker"]["status"] == "down"
+    assert stale.detail["components"]["worker"]["heartbeat_age_s"] == 121
+    assert stale.detail["components"]["database"]["status"] == "ok"
 
 
 @pytest.mark.spec("T-OPS-02")
-def test_heartbeat_illisible_down(base_migree: str) -> None:
-    async def lecture(db: Database) -> StateSnapshot:
-        return StateSnapshot(schema_revision="0001", heartbeat={"at": "hier"})
+def test_missing_heartbeat_down(migrated_db: str) -> None:
+    report = asyncio.run(check(migrated_db, ManualClock(START)))
+    assert (report.status, report.http_code) == (Status.DOWN, 503)
+    assert report.detail["components"]["worker"] == {"status": "down", "heartbeat_at": None, "heartbeat_age_s": None}
 
-    rapport = asyncio.run(verifier(base_migree, ManualClock(DEBUT), reader=lecture))
-    assert rapport.status is Status.DOWN
-    assert rapport.detail["components"]["worker"]["status"] == "down"
+
+@pytest.mark.spec("T-OPS-02")
+def test_unreadable_heartbeat_down(migrated_db: str) -> None:
+    async def read(db: Database) -> StateSnapshot:
+        return StateSnapshot(schema_revision="0001", heartbeat={"at": "yesterday"})
+
+    report = asyncio.run(check(migrated_db, ManualClock(START), reader=read))
+    assert report.status is Status.DOWN
+    assert report.detail["components"]["worker"]["status"] == "down"
 
 
 @pytest.mark.spec("T-OPS-03")
-def test_base_inaccessible_down(base_migree: str) -> None:
-    """Erreur de SQLite à l'ouverture, injectée : c'est ce que lève le pilote quand le fichier est inaccessible."""
+def test_unreachable_database_down(migrated_db: str) -> None:
+    """SQLite error on open, injected: it is what the driver raises when the file is unreachable."""
 
-    async def lecture(db: Database) -> StateSnapshot:
+    async def read(db: Database) -> StateSnapshot:
         raise OperationalError(
             "SELECT version_num FROM alembic_version", {}, sqlite3.OperationalError("unable to open database file")
         )
 
-    rapport = asyncio.run(verifier(base_migree, ManualClock(DEBUT), reader=lecture))
-    assert (rapport.status, rapport.http_code, rapport.public()) == (Status.DOWN, 503, {"status": "down"})
-    assert rapport.detail["components"]["database"] == {"status": "down"}
+    report = asyncio.run(check(migrated_db, ManualClock(START), reader=read))
+    assert (report.status, report.http_code, report.public()) == (Status.DOWN, 503, {"status": "down"})
+    assert report.detail["components"]["database"] == {"status": "down"}
 
 
 @pytest.mark.spec("T-OPS-03")
-def test_lecture_en_echec_down(base_migree: str) -> None:
-    async def lecture(db: Database) -> StateSnapshot:
+def test_failed_read_down(migrated_db: str) -> None:
+    async def read(db: Database) -> StateSnapshot:
         raise OSError("disk I/O error")
 
-    rapport = asyncio.run(verifier(base_migree, ManualClock(DEBUT), reader=lecture))
-    assert (rapport.status, rapport.http_code) == (Status.DOWN, 503)
+    report = asyncio.run(check(migrated_db, ManualClock(START), reader=read))
+    assert (report.status, report.http_code) == (Status.DOWN, 503)
 
 
 @pytest.mark.spec("T-OPS-03")
-def test_lecture_au_dela_du_delai_down(base_migree: str) -> None:
-    """Lecture qui ne rend jamais la main ; délai injecté à 0 pour ne rien attendre."""
+def test_read_beyond_the_timeout_down(migrated_db: str) -> None:
+    """A read that never yields back; timeout injected at 0 so nothing is awaited."""
 
-    async def lecture(db: Database) -> StateSnapshot:
+    async def read(db: Database) -> StateSnapshot:
         await asyncio.Event().wait()
-        raise AssertionError("inatteignable")
+        raise AssertionError("unreachable")
 
-    rapport = asyncio.run(verifier(base_migree, ManualClock(DEBUT), reader=lecture, read_timeout=0))
-    assert (rapport.status, rapport.http_code) == (Status.DOWN, 503)
-    assert rapport.detail["components"]["database"] == {"status": "down"}
+    report = asyncio.run(check(migrated_db, ManualClock(START), reader=read, read_timeout=0))
+    assert (report.status, report.http_code) == (Status.DOWN, 503)
+    assert report.detail["components"]["database"] == {"status": "down"}
 
 
 @pytest.mark.spec("T-OPS-03")
-def test_delai_de_lecture_de_2_s_par_defaut(base_migree: str) -> None:
+def test_read_timeout_of_2_s_by_default(migrated_db: str) -> None:
     assert READ_TIMEOUT == 2.0
     checker = HealthChecker(
-        Database(create_engine(base_migree), ManualClock(DEBUT)),
-        ManualClock(DEBUT),
-        db_path=base_migree,
-        heartbeat_stale_after=PERIME_APRES,
+        Database(create_engine(migrated_db), ManualClock(START)),
+        ManualClock(START),
+        db_path=migrated_db,
+        heartbeat_stale_after=STALE_AFTER,
         version="v",
-        started_at=DEBUT,
+        started_at=START,
     )
     assert checker.read_timeout == 2.0
     asyncio.run(checker.db.dispose())

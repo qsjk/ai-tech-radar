@@ -1,4 +1,4 @@
-"""Migrations Alembic (III §10.5, docs/database.md §5) : chaîne réelle et chaînes de test hors du dépôt."""
+"""Alembic migrations (III §10.5, docs/database.md §5): real chain and test chains outside the repository."""
 
 import shutil
 import sqlite3
@@ -17,7 +17,7 @@ from app.db.models import Base
 from tests.integration.db.conftest import MIGRATIONS, alembic_config
 
 
-def lire(db_path: str, sql: str) -> list[tuple[object, ...]]:
+def read(db_path: str, sql: str) -> list[tuple[object, ...]]:
     conn = sqlite3.connect(db_path)
     try:
         return conn.execute(sql).fetchall()
@@ -25,59 +25,59 @@ def lire(db_path: str, sql: str) -> list[tuple[object, ...]]:
         conn.close()
 
 
-def revision_en_base(db_path: str) -> str | None:
-    tables = {nom for (nom,) in lire(db_path, "SELECT name FROM sqlite_master WHERE type = 'table'")}
+def db_revision(db_path: str) -> str | None:
+    tables = {name for (name,) in read(db_path, "SELECT name FROM sqlite_master WHERE type = 'table'")}
     if "alembic_version" not in tables:
         return None
-    lignes = lire(db_path, "SELECT version_num FROM alembic_version")
-    return str(lignes[0][0]) if lignes else None
+    rows = read(db_path, "SELECT version_num FROM alembic_version")
+    return str(rows[0][0]) if rows else None
 
 
 def schema(db_path: str) -> list[tuple[object, ...]]:
-    return lire(db_path, "SELECT type, name, sql FROM sqlite_master ORDER BY type, name")
+    return read(db_path, "SELECT type, name, sql FROM sqlite_master ORDER BY type, name")
 
 
 @pytest.fixture
-def base_vide(tmp_path: Path) -> str:
+def empty_db(tmp_path: Path) -> str:
     return str(tmp_path / "radar.db")
 
 
-# ── Chaîne réelle ─────────────────────────────────────────────────────────────────────────────────────────────────
+# ── Real chain ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.spec("T-DB-08")
-def test_upgrade_head_depuis_une_base_vide(base_vide: str) -> None:
-    command.upgrade(alembic_config(base_vide), "head")
-    head = ScriptDirectory.from_config(alembic_config(base_vide)).get_current_head()
-    assert revision_en_base(base_vide) == head
-    engine = create_migrate_engine(base_vide)
+def test_upgrade_head_from_an_empty_database(empty_db: str) -> None:
+    command.upgrade(alembic_config(empty_db), "head")
+    head = ScriptDirectory.from_config(alembic_config(empty_db)).get_current_head()
+    assert db_revision(empty_db) == head
+    engine = create_migrate_engine(empty_db)
     try:
         with engine.connect() as conn:
-            colonnes = {c["name"]: c for c in inspect(conn).get_columns("system_state")}
+            columns = {c["name"]: c for c in inspect(conn).get_columns("system_state")}
     finally:
         engine.dispose()
-    assert set(colonnes) == {"key", "value", "updated_at"}
-    assert all(not c["nullable"] for c in colonnes.values())
-    assert all(c["default"] is None for c in colonnes.values())  # aucun défaut SQL (III §10.6)
+    assert set(columns) == {"key", "value", "updated_at"}
+    assert all(not c["nullable"] for c in columns.values())
+    assert all(c["default"] is None for c in columns.values())  # no SQL default (III §10.6)
 
 
 @pytest.mark.spec("T-DB-08")
-def test_chaque_migration_a_un_downgrade_teste(base_vide: str) -> None:
-    config = alembic_config(base_vide)
+def test_every_migration_has_a_tested_downgrade(empty_db: str) -> None:
+    config = alembic_config(empty_db)
     script = ScriptDirectory.from_config(config)
-    revisions = list(script.walk_revisions())  # de head vers la base
+    revisions = list(script.walk_revisions())  # from head down to base
     command.upgrade(config, "head")
     for revision in revisions:
         assert callable(getattr(revision.module, "downgrade", None)), revision.revision
         command.downgrade(config, "-1")
-        assert revision_en_base(base_vide) == revision.down_revision
-    assert "system_state" not in {nom for (nom,) in lire(base_vide, "SELECT name FROM sqlite_master")}
+        assert db_revision(empty_db) == revision.down_revision
+    assert "system_state" not in {name for (name,) in read(empty_db, "SELECT name FROM sqlite_master")}
 
 
 @pytest.mark.spec("T-DB-08")
-def test_modele_et_migrations_concordent(base_vide: str) -> None:
-    command.upgrade(alembic_config(base_vide), "head")
-    engine = create_migrate_engine(base_vide)
+def test_model_and_migrations_match(empty_db: str) -> None:
+    command.upgrade(alembic_config(empty_db), "head")
+    engine = create_migrate_engine(empty_db)
     try:
         with engine.connect() as conn:
             differences = compare_metadata(MigrationContext.configure(conn, opts={"compare_type": True}), Base.metadata)
@@ -87,17 +87,17 @@ def test_modele_et_migrations_concordent(base_vide: str) -> None:
 
 
 @pytest.mark.spec("T-DB-13:pragma")
-def test_connexion_de_migrate_foreign_keys_off_et_pragma(base_vide: str) -> None:
-    engine = create_migrate_engine(base_vide)
+def test_migrate_connection_foreign_keys_off_and_pragmas(empty_db: str) -> None:
+    engine = create_migrate_engine(empty_db)
     try:
         with engine.connect() as conn:
-            lus = {
-                nom: conn.execute(text(f"PRAGMA {nom}")).scalar_one()
-                for nom in ("foreign_keys", "journal_mode", "synchronous", "busy_timeout", "journal_size_limit")
+            values = {
+                name: conn.execute(text(f"PRAGMA {name}")).scalar_one()
+                for name in ("foreign_keys", "journal_mode", "synchronous", "busy_timeout", "journal_size_limit")
             }
     finally:
         engine.dispose()
-    assert lus == {
+    assert values == {
         "foreign_keys": 0,
         "journal_mode": "wal",
         "synchronous": 1,
@@ -106,9 +106,9 @@ def test_connexion_de_migrate_foreign_keys_off_et_pragma(base_vide: str) -> None
     }
 
 
-# ── Chaînes de test, hors du dépôt ─────────────────────────────────────────────────────────────────────────────────
+# ── Test chains, outside the repository ───────────────────────────────────────────────────────────────────────────────
 
-ENTETE = """from alembic import op
+HEADER = """from alembic import op
 import sqlalchemy as sa
 
 revision = "{revision}"
@@ -120,39 +120,39 @@ depends_on = None
 
 
 @pytest.fixture
-def chaine_de_test(tmp_path: Path) -> Callable[[dict[str, str]], Path]:
-    """Crée un dossier de migrations de test, avec le vrai `env.py`, et les migrations données (révision → corps)."""
+def test_chain(tmp_path: Path) -> Callable[[dict[str, str]], Path]:
+    """Create a test migrations directory, with the real `env.py`, and the given migrations (revision → body)."""
 
-    def creer(migrations: dict[str, str]) -> Path:
-        dossier = tmp_path / "migrations_test"
-        (dossier / "versions").mkdir(parents=True)
-        shutil.copy(MIGRATIONS / "env.py", dossier / "env.py")
-        shutil.copy(MIGRATIONS / "script.py.mako", dossier / "script.py.mako")
-        precedente: str | None = None
-        for revision, corps in migrations.items():
-            entete = ENTETE.format(revision=revision, down=repr(precedente))
-            (dossier / "versions" / f"{revision}.py").write_text(entete + corps + "\n\ndef downgrade():\n    pass\n")
-            precedente = revision
-        return dossier
+    def create(migrations: dict[str, str]) -> Path:
+        directory = tmp_path / "migrations_test"
+        (directory / "versions").mkdir(parents=True)
+        shutil.copy(MIGRATIONS / "env.py", directory / "env.py")
+        shutil.copy(MIGRATIONS / "script.py.mako", directory / "script.py.mako")
+        previous: str | None = None
+        for revision, body in migrations.items():
+            header = HEADER.format(revision=revision, down=repr(previous))
+            (directory / "versions" / f"{revision}.py").write_text(header + body + "\n\ndef downgrade():\n    pass\n")
+            previous = revision
+        return directory
 
-    return creer
+    return create
 
 
 @pytest.mark.spec("T-DB-13:pragma")
-def test_pragma_vus_pendant_une_execution_alembic(base_vide: str, chaine_de_test: Callable[..., Path]) -> None:
-    dossier = chaine_de_test(
+def test_pragmas_seen_during_an_alembic_run(empty_db: str, test_chain: Callable[..., Path]) -> None:
+    directory = test_chain(
         {
             "p1": """def upgrade():
     bind = op.get_bind()
-    op.execute("CREATE TABLE pragma_vu (nom TEXT PRIMARY KEY, valeur TEXT NOT NULL)")
-    for nom in ("foreign_keys", "journal_mode", "synchronous"):
-        valeur = bind.exec_driver_sql(f"PRAGMA {nom}").scalar()
-        bind.exec_driver_sql("INSERT INTO pragma_vu VALUES (?, ?)", (nom, str(valeur)))
+    op.execute("CREATE TABLE pragma_seen (name TEXT PRIMARY KEY, value TEXT NOT NULL)")
+    for name in ("foreign_keys", "journal_mode", "synchronous"):
+        value = bind.exec_driver_sql(f"PRAGMA {name}").scalar()
+        bind.exec_driver_sql("INSERT INTO pragma_seen VALUES (?, ?)", (name, str(value)))
 """
         }
     )
-    command.upgrade(alembic_config(base_vide, dossier), "head")
-    assert dict(lire(base_vide, "SELECT nom, valeur FROM pragma_vu")) == {
+    command.upgrade(alembic_config(empty_db, directory), "head")
+    assert dict(read(empty_db, "SELECT name, value FROM pragma_seen")) == {
         "foreign_keys": "0",
         "journal_mode": "wal",
         "synchronous": "1",
@@ -160,8 +160,8 @@ def test_pragma_vus_pendant_une_execution_alembic(base_vide: str, chaine_de_test
 
 
 @pytest.mark.spec("T-DB-13:check")
-def test_violation_annule_toute_l_execution(base_vide: str, chaine_de_test: Callable[..., Path]) -> None:
-    dossier = chaine_de_test(
+def test_violation_rolls_back_the_whole_run(empty_db: str, test_chain: Callable[..., Path]) -> None:
+    directory = test_chain(
         {
             "m0": """def upgrade():
     op.create_table("t0", sa.Column("id", sa.Integer, primary_key=True))
@@ -175,18 +175,18 @@ def test_violation_annule_toute_l_execution(base_vide: str, chaine_de_test: Call
     )
 """,
             "m2": """def upgrade():
-    # foreign_keys=OFF : l'insertion passe ; seul le contrôle de fin d'exécution la détecte.
+    # foreign_keys=OFF: the insert goes through; only the end-of-run check detects it.
     op.execute("INSERT INTO child (id, parent_id) VALUES (1, 999)")
 """,
         }
     )
-    config = alembic_config(base_vide, dossier)
+    config = alembic_config(empty_db, directory)
     command.upgrade(config, "m0")
-    avant = schema(base_vide)
-    assert revision_en_base(base_vide) == "m0"
+    before = schema(empty_db)
+    assert db_revision(empty_db) == "m0"
 
     with pytest.raises(Exception, match="foreign key violations"):
-        command.upgrade(config, "head")  # m1 puis m2, dans une seule transaction
+        command.upgrade(config, "head")  # m1 then m2, in a single transaction
 
-    assert revision_en_base(base_vide) == "m0"  # révision d'avant l'exécution
-    assert schema(base_vide) == avant  # ni `parent` ni `child` : m1 est annulée avec m2
+    assert db_revision(empty_db) == "m0"  # revision from before the run
+    assert schema(empty_db) == before  # neither `parent` nor `child`: m1 is rolled back with m2
