@@ -6,12 +6,9 @@ chaque attente est bornée (lecture des logs avec délai, `wait(timeout=…)`), 
 
 import json
 import os
-import queue
 import signal
 import sqlite3
-import subprocess
 import sys
-import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -20,10 +17,7 @@ from typing import Any
 import pytest
 
 from app.ops.heartbeat import HEARTBEAT_KEY
-from tests.integration.db.conftest import RACINE
-
-DELAI = 30.0
-"""Borne de chaque attente, en secondes : un dépassement fait échouer le test, il ne le bloque pas."""
+from tests.integration.processus import Processus, variables_coverage
 
 # Rend inerte, dans le sous-processus, le heartbeat : la boucle se fige, le watchdog doit arrêter le processus.
 GEL_DE_LA_BOUCLE = """\
@@ -50,58 +44,8 @@ def environnement(db_path: str, **variables: str) -> dict[str, str]:
         "SMTP_PASSWORD": "FAKE-smtp-password",
     }
     env.update(variables)
-    # Variables de coverage : mesure du sous-processus, sans effet sur le worker.
-    env.update({name: value for name, value in os.environ.items() if name.startswith("COVERAGE_")})
+    env.update(variables_coverage())
     return {name: value for name, value in env.items() if value}
-
-
-class Processus:
-    """Sous-processus du worker ; ses logs JSON (stdout) sont lus par un thread et consultés avec délai."""
-
-    def __init__(self, args: list[str], env: dict[str, str]) -> None:
-        self.popen = subprocess.Popen(
-            args, cwd=RACINE, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        self.logs: list[dict[str, Any]] = []
-        self._lignes: queue.Queue[str | None] = queue.Queue()
-        self._lecteur = threading.Thread(target=self._lire, daemon=True)
-        self._lecteur.start()
-
-    def _lire(self) -> None:
-        assert self.popen.stdout is not None
-        for ligne in self.popen.stdout:
-            self._lignes.put(ligne)
-        self._lignes.put(None)
-
-    def attendre_log(self, event: str) -> dict[str, Any]:
-        echeance = time.monotonic() + DELAI
-        while True:
-            ligne = self._lignes.get(timeout=max(0.0, echeance - time.monotonic()))
-            if ligne is None:
-                raise AssertionError(f"fin du processus avant {event!r} : {self.logs}")
-            entree = json.loads(ligne)
-            self.logs.append(entree)
-            if entree["event"] == event:
-                return entree
-
-    def attendre_fin(self) -> int:
-        code = self.popen.wait(timeout=DELAI)
-        self._lecteur.join(timeout=DELAI)
-        while (ligne := self._lignes.get_nowait() if not self._lignes.empty() else None) is not None:
-            self.logs.append(json.loads(ligne))
-        return code
-
-    def evenements(self) -> list[str]:
-        """Événements du worker, dans l'ordre (les logs des bibliothèques, Alembic par exemple, sont écartés)."""
-        return [str(entree["event"]) for entree in self.logs if str(entree["event"]).startswith("worker.")]
-
-    def arreter(self) -> None:
-        if self.popen.poll() is None:
-            self.popen.kill()
-            self.popen.wait(timeout=DELAI)
-        for flux in (self.popen.stdout, self.popen.stderr):
-            if flux is not None:
-                flux.close()
 
 
 @pytest.fixture
