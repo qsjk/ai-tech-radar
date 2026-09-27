@@ -51,7 +51,16 @@ Une tâche n'est terminée que si la CI est verte et que les identifiants de tes
 - **Jamais de push sur `main`**. **Jamais de réécriture** d'un historique déjà poussé : les corrections de revue
   sont de nouveaux commits sur la même branche.
 - **S'arrêter après l'ouverture de la PR** (ou après le push d'une reprise). **Ne jamais fusionner.**
-- **Tout en français** : commits, PR, documents, commentaires de code destinés au lecteur du dépôt.
+- **Langue** (décision du propriétaire du 2026-09-27, #96) : la documentation et les échanges en français, le code
+  en anglais.
+  - **En français** : spec (`SPEC.md`, `docs/spec/`), documents techniques (`docs/`), ADR, `README.md`, `CLAUDE.md`,
+    issues, PR, commentaires de revue et **messages de commit**.
+  - **En anglais** : tout le code et ce qui l'accompagne : noms de modules, fichiers, classes, fonctions, méthodes,
+    variables, fixtures et tests ; commentaires et docstrings ; messages d'erreur, sorties des commandes `app.cli`,
+    textes des logs ; commentaires des fichiers de configuration et d'outillage (`config/*.yaml`, `pyproject.toml`,
+    `alembic.ini`, `.github/workflows/*.yml`, `.gitignore`, `.dockerignore`, `migrations/`).
+  - **Inchangés** : les identifiants de la spec (`T-DB-07`, `VIII §50.1`…), cités tels quels dans le code ; les noms
+    d'événements de log, déjà en anglais.
 - **Aucune signature** dans les commits et les PR : pas de ligne `Co-Authored-By`, pas de mention de l'outil qui les
   a rédigés, pas de lien de session.
 - **Écarts de spec** rencontrés en cours de tâche : listés dans la description de la PR, avec les passages en cause,
