@@ -1,0 +1,114 @@
+# Production Compose (VII §36.5, docs/architecture.md §4.1). Hardening applies to every service (VII §43.2, P-10):
+# non-root user, read-only root filesystem with /tmp in tmpfs, cap_drop: ALL without cap_add, no-new-privileges.
+# Only caddy publishes ports; variables are distributed per service (VII §36.7); the Docker socket is never mounted.
+name: radar
+
+x-backend: &backend
+  image: radar-backend:${RADAR_VERSION:-dev}
+  build: { context: ., dockerfile: docker/backend.Dockerfile }
+  user: "10001:10001"                      # fixed uid/gid (P-02)
+  read_only: true                          # from Sprint 1 (CF-03, VIII decision 4)
+  tmpfs: [/tmp]                            # only writable place besides /data
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  volumes: [radar_data:/data]              # named volume, never a bind mount (IX decision 26)
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+services:
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      TZ: UTC
+      RADAR_DB_PATH: /data/radar.db        # only source of the database path (P-01)
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+    network_mode: none
+    restart: "no"
+
+  app:
+    <<: *backend
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000",
+              "--workers", "1", "--no-access-log"]
+    environment:                           # no secret (VII §36.7)
+      TZ: UTC
+      RADAR_DB_PATH: /data/radar.db
+      APP_ENV: "${APP_ENV:-production}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      DASHBOARD_URL: "${DASHBOARD_URL}"
+      RADAR_VERSION: "${RADAR_VERSION:-dev}"
+    expose: ["8000"]
+    networks: [edge]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    restart: unless-stopped
+
+  worker:
+    <<: *backend
+    command: ["python", "-m", "app.worker"]
+    environment:                           # worker variables of VII §36.7, one by one (no ACME_EMAIL, A-05)
+      TZ: UTC
+      RADAR_DB_PATH: /data/radar.db
+      APP_ENV: "${APP_ENV:-production}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      RADAR_VERSION: "${RADAR_VERSION:-dev}"
+      HTTP_CONTACT: "${HTTP_CONTACT}"
+      DASHBOARD_URL: "${DASHBOARD_URL}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      RESTIC_REPOSITORY: "${RESTIC_REPOSITORY:-}"
+      RESTIC_PASSWORD: "${RESTIC_PASSWORD:-}"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+      LLM_BASE_URL: "${LLM_BASE_URL:-}"
+      LLM_API_KEY: "${LLM_API_KEY:-}"
+      LLM_MODEL: "${LLM_MODEL:-}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+      ALERT_EMAIL_TO: "${ALERT_EMAIL_TO:-}"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-}"
+    networks: [egress]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  caddy:
+    image: radar-caddy:${RADAR_VERSION:-dev}
+    build: { context: ., dockerfile: docker/caddy.Dockerfile }
+    user: "10001:10001"                    # non-root from Sprint 1 (P-10)
+    read_only: true
+    tmpfs: [/tmp]
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      DASHBOARD_URL: "${DASHBOARD_URL}"
+      DASHBOARD_USER: "${DASHBOARD_USER}"
+      DASHBOARD_PASSWORD_HASH: "${DASHBOARD_PASSWORD_HASH}"
+      ACME_EMAIL: "${ACME_EMAIL:-}"
+    volumes: [caddy_data:/data, caddy_config:/config]
+    networks: [edge, public]
+    cap_drop: [ALL]                        # no cap_add: 80 and 443 bound thanks to
+                                           # net.ipv4.ip_unprivileged_port_start=0 (Docker >= 20.10)
+    security_opt: ["no-new-privileges:true"]
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
+    restart: unless-stopped
+
+  gateway:
+    profiles: [gateway]
+    # The LLM gateway is chosen in Sprint 6 (ADR-0007); its image, pinned by tag and digest, and its hardening come
+    # with that choice (A-06). Placeholder name until then.
+    image: radar-gateway-not-chosen:sprint-6
+    networks: [egress]
+    restart: unless-stopped
+
+networks:
+  edge: { internal: true }
+  public: {}
+  egress: {}
+
+volumes:
+  radar_data: { driver: local }
+  caddy_data: {}
+  caddy_config: {}

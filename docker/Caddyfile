@@ -1,0 +1,56 @@
+# Caddyfile (VII §37.3). Only entry point; /health is the only public route.
+{
+	# Quoted so that an empty ACME_EMAIL (optional, VII §36.7) yields an ACME account without contact, not a parse error.
+	email "{$ACME_EMAIL}"
+	# Never install the local CA (used for localhost in development) into the system trust store: the container's
+	# root filesystem is read-only and Caddy only writes to /data, /config and /tmp (architecture.md §4.3).
+	skip_install_trust
+	# log_credentials is NOT enabled: Authorization and Cookie stay masked in the logs (VII §42.3).
+}
+
+{$DASHBOARD_URL} {
+	encode zstd gzip
+
+	log {
+		output stdout
+		format json
+	}
+	log_skip /health
+
+	header {
+		Content-Security-Policy "default-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		X-Content-Type-Options "nosniff"
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	# Public: minimal status only.
+	handle /health {
+		reverse_proxy app:8000
+	}
+
+	# Everything else: authenticated.
+	handle {
+		basic_auth {
+			{$DASHBOARD_USER} {$DASHBOARD_PASSWORD_HASH}
+		}
+
+		handle /api/* {
+			request_body {
+				max_size 1MB
+			}
+			reverse_proxy app:8000
+		}
+
+		handle {
+			root * /srv
+			@assets path /assets/*
+			header @assets Cache-Control "public, max-age=31536000, immutable"
+			header /index.html Cache-Control "no-cache"
+			try_files {path} /index.html
+			file_server
+		}
+	}
+}
