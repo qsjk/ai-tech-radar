@@ -185,7 +185,7 @@ def test_violation_annule_toute_l_execution(base_vide: str, chaine_de_test: Call
     avant = schema(base_vide)
     assert revision_en_base(base_vide) == "m0"
 
-    with pytest.raises(Exception, match="violations de clés étrangères"):
+    with pytest.raises(Exception, match="foreign key violations"):
         command.upgrade(config, "head")  # m1 puis m2, dans une seule transaction
 
     assert revision_en_base(base_vide) == "m0"  # révision d'avant l'exécution

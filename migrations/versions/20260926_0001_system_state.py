@@ -1,11 +1,11 @@
-"""Table system_state (docs/database.md §3.19), seule table du Sprint 1.
+"""system_state table (docs/database.md §3.19), the only table of Sprint 1.
 
-Révision : 0001
-Précédente : aucune
-Créée le : 2026-09-26
+Revision: 0001
+Revises: none
+Created: 2026-09-26
 
-Réversibilité (VII §36.9) : `downgrade` fourni, il supprime la table.
-Aucun défaut SQL : `updated_at` est fourni par l'application, via la `Clock` (III §10.6).
+Reversibility (VII §36.9): `downgrade` provided, it drops the table.
+No SQL default: `updated_at` is provided by the application, through the `Clock` (III §10.6).
 """
 
 from collections.abc import Sequence
