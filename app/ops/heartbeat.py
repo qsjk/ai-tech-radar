@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import Clock
 from app.db.models import SystemState
-from app.db.session import Database
+from app.db.session import Database, DatabaseLockedError
 
 HEARTBEAT_KEY = "worker_heartbeat"
 
@@ -63,7 +63,15 @@ class Heartbeat:
         self.beats += 1
 
     async def run(self) -> None:
-        """Tâche permanente : un heartbeat toutes les `interval`. Le premier est écrit au boot, par `beat()`."""
+        """Tâche permanente : un heartbeat toutes les `interval`. Le premier est écrit au boot, par `beat()`.
+
+        Un verrou prolongé (`DatabaseLockedError`, déjà compté par `db_locked`) ne tue pas la tâche : le tour est
+        sauté et le heartbeat suivant réessaie ; si les échecs persistent, le heartbeat vieillit et `/health` le
+        signale. Toute autre exception reste fatale (supervision fail-fast).
+        """
         while True:
             await self.clock.sleep(self.interval.total_seconds())
-            await self.beat()
+            try:
+                await self.beat()
+            except DatabaseLockedError as error:
+                log.warning("worker.heartbeat.skipped", reason=str(error))
