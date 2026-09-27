@@ -1,5 +1,5 @@
-# Réglages du pipeline (IV §16.6). Optionnel : absent, chaque réglage prend son défaut.
-# Au Sprint 1, seule la section ops existe (VII §39.7) ; les autres arrivent avec leur étage (E6).
+# Pipeline settings (IV §16.6). Optional: when missing, each setting takes its default.
+# In Sprint 1, only the ops section exists (VII §39.7); the others come with their stage (E6).
 ops:
   heartbeat_interval: 30s
   heartbeat_stale_after: 120s

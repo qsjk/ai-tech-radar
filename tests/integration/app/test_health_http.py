@@ -1,7 +1,7 @@
-"""`/health`, `/api/health` et documentation, par le client de test (VII §40, T-SEC-05).
+"""`/health`, `/api/health` and documentation, through the test client (VII §40, T-SEC-05).
 
-L'horloge est une `ManualClock` injectée : l'âge du heartbeat se règle sans attendre. Le délai de lecture et la base
-inaccessible passent par une lecture injectée, sans sleep.
+The clock is an injected `ManualClock`: the heartbeat age is set without waiting. The read timeout and the unreachable
+database go through an injected read, without sleep.
 """
 
 import asyncio
@@ -25,23 +25,23 @@ from app.ops.health import HealthReport, StateSnapshot, Status
 from app.ops.heartbeat import HEARTBEAT_KEY
 from tests.fakes.clock import ManualClock
 
-DEBUT = datetime(2026, 9, 27, 8, 0, tzinfo=UTC)
-PERIME_APRES = timedelta(seconds=4)  # `pipeline.yaml` de test (tests/integration/conftest.py)
+START = datetime(2026, 9, 27, 8, 0, tzinfo=UTC)
+STALE_AFTER = timedelta(seconds=4)  # test `pipeline.yaml` (tests/integration/conftest.py)
 
 
-def reglages(db_path: str, app_env: AppEnv = AppEnv.PRODUCTION) -> AppSettings:
+def settings(db_path: str, app_env: AppEnv = AppEnv.PRODUCTION) -> AppSettings:
     return AppSettings(
         radar_db_path=db_path, dashboard_url="https://radar.example.com", app_env=app_env, radar_version="abc1234"
     )
 
 
-def ecrire_heartbeat(db_path: str, at: datetime) -> None:
-    valeur = {"at": at.isoformat(), "started_at": at.isoformat(), "version": "w-1", "pid": 4242}
+def write_heartbeat(db_path: str, at: datetime) -> None:
+    value = {"at": at.isoformat(), "started_at": at.isoformat(), "version": "w-1", "pid": 4242}
     conn = sqlite3.connect(db_path)
     try:
         conn.execute(
             "INSERT OR REPLACE INTO system_state (key, value, updated_at) VALUES (?, ?, ?)",
-            (HEARTBEAT_KEY, json.dumps(valeur), at.isoformat()),
+            (HEARTBEAT_KEY, json.dumps(value), at.isoformat()),
         )
         conn.commit()
     finally:
@@ -50,83 +50,83 @@ def ecrire_heartbeat(db_path: str, at: datetime) -> None:
 
 @pytest.fixture
 def clock() -> ManualClock:
-    return ManualClock(DEBUT)
+    return ManualClock(START)
 
 
 @pytest.fixture
-def client(base_migree: str, config_dir: Path, clock: ManualClock) -> Iterator[TestClient]:
-    with TestClient(create_app(reglages(base_migree), clock=clock, config_dir=config_dir)) as client:
+def client(migrated_db: str, config_dir: Path, clock: ManualClock) -> Iterator[TestClient]:
+    with TestClient(create_app(settings(migrated_db), clock=clock, config_dir=config_dir)) as client:
         yield client
 
 
 @pytest.mark.spec("T-OPS-01")
-def test_health_ok_statut_seul(client: TestClient, base_migree: str, clock: ManualClock) -> None:
-    ecrire_heartbeat(base_migree, DEBUT)
+def test_health_ok_status_only(client: TestClient, migrated_db: str, clock: ManualClock) -> None:
+    write_heartbeat(migrated_db, START)
     clock.advance(timedelta(seconds=2))
-    reponse = client.get("/health")
-    assert reponse.status_code == 200
-    assert reponse.json() == {"status": "ok"}
-    # Aucune information interne : ni version, ni composant, ni horodatage, dans le corps comme dans les en-têtes.
-    assert reponse.content == b'{"status":"ok"}'
-    assert "abc1234" not in str(reponse.headers)
-    assert "2026" not in str(reponse.headers).replace(reponse.headers.get("date", ""), "")
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    # No internal information: no version, component or timestamp, in the body as in the headers.
+    assert response.content == b'{"status":"ok"}'
+    assert "abc1234" not in str(response.headers)
+    assert "2026" not in str(response.headers).replace(response.headers.get("date", ""), "")
 
 
 @pytest.mark.spec("T-OPS-01")
-def test_health_down_503_statut_seul(client: TestClient) -> None:
-    reponse = client.get("/health")  # aucun heartbeat : worker mort
-    assert reponse.status_code == 503
-    assert reponse.content == b'{"status":"down"}'
+def test_health_down_503_status_only(client: TestClient) -> None:
+    response = client.get("/health")  # no heartbeat: dead worker
+    assert response.status_code == 503
+    assert response.content == b'{"status":"down"}'
 
 
 @pytest.mark.spec("T-OPS-01")
 def test_health_degraded_200(client: TestClient) -> None:
-    """Aucune condition n'existe encore (VII §39.5) : l'état `degraded` est injecté pour vérifier son code HTTP."""
+    """No condition exists yet (VII §39.5): the `degraded` state is injected to check its HTTP code."""
 
     async def degrade() -> HealthReport:
         return HealthReport(Status.DEGRADED, {"status": "degraded", "version": "abc1234"})
 
     client.app.state.health.check = degrade  # type: ignore[attr-defined]
-    reponse = client.get("/health")
-    assert reponse.status_code == 200
-    assert reponse.content == b'{"status":"degraded"}'
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.content == b'{"status":"degraded"}'
 
 
 @pytest.mark.spec("T-OPS-02")
-def test_heartbeat_perime_503(client: TestClient, base_migree: str, clock: ManualClock) -> None:
-    ecrire_heartbeat(base_migree, DEBUT)
-    clock.advance(PERIME_APRES)
+def test_stale_heartbeat_503(client: TestClient, migrated_db: str, clock: ManualClock) -> None:
+    write_heartbeat(migrated_db, START)
+    clock.advance(STALE_AFTER)
     assert client.get("/health").status_code == 200
     clock.advance(timedelta(seconds=1))
-    reponse = client.get("/health")
-    assert (reponse.status_code, reponse.json()) == (503, {"status": "down"})
+    response = client.get("/health")
+    assert (response.status_code, response.json()) == (503, {"status": "down"})
 
 
 @pytest.mark.spec("T-OPS-03")
-@pytest.mark.parametrize("cas", ["erreur", "delai"])
-def test_base_inaccessible_ou_lecture_trop_longue_503(base_migree: str, config_dir: Path, cas: str) -> None:
-    async def lecture(db: Database) -> StateSnapshot:
-        if cas == "erreur":
+@pytest.mark.parametrize("case", ["error", "timeout"])
+def test_unreachable_database_or_read_too_long_503(migrated_db: str, config_dir: Path, case: str) -> None:
+    async def read(db: Database) -> StateSnapshot:
+        if case == "error":
             raise sqlite3.OperationalError("unable to open database file")
-        await asyncio.Event().wait()  # ne rend jamais la main ; le délai injecté à 0 l'interrompt
-        raise AssertionError("inatteignable")
+        await asyncio.Event().wait()  # never yields back; the timeout injected at 0 interrupts it
+        raise AssertionError("unreachable")
 
-    app = create_app(reglages(base_migree), clock=ManualClock(DEBUT), config_dir=config_dir, reader=lecture)
+    app = create_app(settings(migrated_db), clock=ManualClock(START), config_dir=config_dir, reader=read)
     with TestClient(app) as client:
         client.app.state.health.read_timeout = 0  # type: ignore[attr-defined]
-        reponse = client.get("/health")
+        response = client.get("/health")
         detail = client.get("/api/health").json()
-    assert (reponse.status_code, reponse.content) == (503, b'{"status":"down"}')
+    assert (response.status_code, response.content) == (503, b'{"status":"down"}')
     assert detail["components"]["database"] == {"status": "down"}
 
 
 @pytest.mark.spec("T-OPS-02")
-def test_api_health_detail(client: TestClient, base_migree: str, clock: ManualClock) -> None:
-    ecrire_heartbeat(base_migree, DEBUT)
+def test_api_health_detail(client: TestClient, migrated_db: str, clock: ManualClock) -> None:
+    write_heartbeat(migrated_db, START)
     clock.advance(timedelta(seconds=3))
-    reponse = client.get("/api/health")
-    assert reponse.status_code == 200
-    detail: dict[str, Any] = reponse.json()
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    detail: dict[str, Any] = response.json()
     assert detail["status"] == "ok"
     assert detail["version"] == "abc1234"
     assert detail["checked_at"] == "2026-09-27T08:00:03Z"
@@ -138,39 +138,39 @@ def test_api_health_detail(client: TestClient, base_migree: str, clock: ManualCl
 
 
 @pytest.mark.spec("T-SEC-05")
-def test_documentation_absente_en_production(client: TestClient) -> None:
-    for chemin in ("/docs", "/redoc", "/openapi.json"):
-        assert client.get(chemin).status_code == 404
+def test_documentation_absent_in_production(client: TestClient) -> None:
+    for path in ("/docs", "/redoc", "/openapi.json"):
+        assert client.get(path).status_code == 404
 
 
 @pytest.mark.spec("T-SEC-05")
-def test_documentation_absente_par_defaut(base_migree: str, config_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_documentation_absent_by_default(migrated_db: str, config_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("APP_ENV", raising=False)
-    settings = AppSettings(radar_db_path=base_migree, dashboard_url="https://radar.example.com")
-    assert settings.app_env is AppEnv.PRODUCTION
-    with TestClient(create_app(settings, clock=ManualClock(DEBUT), config_dir=config_dir)) as client:
-        for chemin in ("/docs", "/redoc", "/openapi.json"):
-            assert client.get(chemin).status_code == 404
+    default_settings = AppSettings(radar_db_path=migrated_db, dashboard_url="https://radar.example.com")
+    assert default_settings.app_env is AppEnv.PRODUCTION
+    with TestClient(create_app(default_settings, clock=ManualClock(START), config_dir=config_dir)) as client:
+        for path in ("/docs", "/redoc", "/openapi.json"):
+            assert client.get(path).status_code == 404
 
 
 @pytest.mark.spec("T-SEC-05")
-def test_documentation_presente_en_development(base_migree: str, config_dir: Path) -> None:
-    app = create_app(reglages(base_migree, AppEnv.DEVELOPMENT), clock=ManualClock(DEBUT), config_dir=config_dir)
+def test_documentation_present_in_development(migrated_db: str, config_dir: Path) -> None:
+    app = create_app(settings(migrated_db, AppEnv.DEVELOPMENT), clock=ManualClock(START), config_dir=config_dir)
     with TestClient(app) as client:
-        for chemin in ("/docs", "/redoc", "/openapi.json"):
-            assert client.get(chemin).status_code == 200
+        for path in ("/docs", "/redoc", "/openapi.json"):
+            assert client.get(path).status_code == 200
 
 
 @pytest.mark.spec("T-DB-01")
-def test_prerequis_absent_refus_au_demarrage(base_migree: str, config_dir: Path) -> None:
-    async def prerequis_absent(engine: AsyncEngine) -> None:
-        raise PrerequisiteError("SQLite 3.34.1 < 3.35 requis")
+def test_missing_prerequisite_refused_at_startup(migrated_db: str, config_dir: Path) -> None:
+    async def missing_prerequisite(engine: AsyncEngine) -> None:
+        raise PrerequisiteError("SQLite 3.34.1 < 3.35 required")
 
     app = create_app(
-        reglages(base_migree), clock=ManualClock(DEBUT), config_dir=config_dir, prerequisites=prerequis_absent
+        settings(migrated_db), clock=ManualClock(START), config_dir=config_dir, prerequisites=missing_prerequisite
     )
     with capture_logs() as logs, pytest.raises(StartupRefused), TestClient(app):
         pass
     assert [(e["event"], e["log_level"], e["reason"]) for e in logs] == [
-        ("app.refused", "critical", "SQLite 3.34.1 < 3.35 requis")
+        ("app.refused", "critical", "SQLite 3.34.1 < 3.35 required")
     ]

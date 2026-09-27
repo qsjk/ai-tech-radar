@@ -1,9 +1,9 @@
-# Secrets : jamais dans une image (VIII §46.2, VII §43.4)
+# Secrets: never in an image (VIII §46.2, VII §43.4)
 .env
 .env.*
 !.env.example
 
-# Dépôt, environnements et caches locaux
+# Repository, environments and local caches
 .git/
 .github/
 .claude/
@@ -22,6 +22,6 @@ node_modules/
 frontend/node_modules/
 frontend/dist/
 
-# Documentation et tests : hors des images
+# Documentation and tests: kept out of the images
 docs/
 tests/

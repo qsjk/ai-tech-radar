@@ -1,1 +1,1 @@
-"""AI Tech Radar : code applicatif (VIII §46.1)."""
+"""AI Tech Radar: application code (VIII §46.1)."""

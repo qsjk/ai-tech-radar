@@ -1,9 +1,9 @@
-# Secrets et configuration locale : jamais dans Git (VIII §46.2, VII §43.4)
+# Secrets and local configuration: never in Git (VIII §46.2, VII §43.4)
 .env
 .env.*
 !.env.example
 
-# Python et outillage
+# Python and tooling
 .venv/
 __pycache__/
 *.py[cod]
@@ -17,9 +17,9 @@ dist/
 build/
 *.egg-info/
 
-# Frontend (à partir du Sprint 1, T1.8)
+# Frontend (from Sprint 1, T1.8)
 node_modules/
 frontend/dist/
 
-# Réglages personnels de l'agent (les réglages de projet, eux, sont versionnés : T1.9)
+# Personal agent settings (project settings, for their part, are versioned: T1.9)
 .claude/settings.local.json

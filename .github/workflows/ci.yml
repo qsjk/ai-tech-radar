@@ -1,5 +1,6 @@
-# CI minimale du Sprint 1 (T1.1) : étapes 1 (statique) et 4 (tests) de VIII §49.2.
-# Complétée jusqu'aux six étapes par T1.11 (VIII §49, docs/architecture.md §5.1).
+# Minimal Sprint 1 CI (T1.1): stages 1 (static) and 4 (tests) of VIII §49.2.
+# Completed up to the six stages by T1.11 (VIII §49, docs/architecture.md §5.1).
+# Job names keep the stage names of VIII §49.2 and docs/architecture.md §5.1, as displayed in the checks.
 name: ci
 
 on:
@@ -27,13 +28,13 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           python-version: ${{ env.PYTHON_VERSION }}
-      - name: Dépendances (uv.lock)
+      - name: Dependencies (uv.lock)
         run: uv sync --locked
       - name: ruff check
         run: uv run ruff check
       - name: ruff format --check
         run: uv run ruff format --check
-      - name: mypy (strict sur app/)
+      - name: mypy (strict on app/)
         run: uv run mypy
 
   tests:
@@ -46,7 +47,7 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           python-version: ${{ env.PYTHON_VERSION }}
-      - name: Dépendances (uv.lock)
+      - name: Dependencies (uv.lock)
         run: uv sync --locked
-      - name: pytest (réseau bloqué, VIII §50.1), couverture de app/ dans le résumé du job
+      - name: pytest (network blocked, VIII §50.1), app/ coverage in the job summary
         run: uv run pytest --cov-report=markdown-append:"$GITHUB_STEP_SUMMARY"

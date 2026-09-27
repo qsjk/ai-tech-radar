@@ -1,4 +1,4 @@
-"""Logs JSON et nettoyage des secrets (VII §42.1, §42.4 niveaux 1 et 3)."""
+"""JSON logs and secret redaction (VII §42.1, §42.4 levels 1 and 3)."""
 
 import io
 import json
@@ -23,8 +23,8 @@ FAKES = (FAKE_GITHUB, FAKE_LLM, FAKE_TELEGRAM, FAKE_SMTP, FAKE_RESTIC)
 
 
 @pytest.fixture
-def journal() -> Iterator[io.StringIO]:
-    """Configure les logs comme le ferait le worker, avec des secrets factices, et capture la sortie."""
+def log_stream() -> Iterator[io.StringIO]:
+    """Configure logging as the worker would, with fake secrets, and capture the output."""
     settings = WorkerSettings(
         radar_db_path=DB,
         dashboard_url="https://radar.example.com",
@@ -52,45 +52,45 @@ def journal() -> Iterator[io.StringIO]:
     structlog.reset_defaults()
 
 
-def lignes(stream: io.StringIO) -> list[dict[str, object]]:
+def lines(stream: io.StringIO) -> list[dict[str, object]]:
     return [json.loads(line) for line in stream.getvalue().splitlines()]
 
 
-def test_rendu_json_avec_les_champs_communs(journal: io.StringIO) -> None:
+def test_json_rendering_with_the_common_fields(log_stream: io.StringIO) -> None:
     structlog.get_logger().info("worker.started")
-    (ligne,) = lignes(journal)
-    assert ligne["event"] == "worker.started"
-    assert ligne["level"] == "info"
-    assert ligne["service"] == "worker"
-    assert ligne["version"] == "abc1234"
-    assert ligne["ts"] == "2026-09-24T08:00:00.000+00:00"
+    (line,) = lines(log_stream)
+    assert line["event"] == "worker.started"
+    assert line["level"] == "info"
+    assert line["service"] == "worker"
+    assert line["version"] == "abc1234"
+    assert line["ts"] == "2026-09-24T08:00:00.000+00:00"
 
 
 @pytest.mark.spec("T-SEC-01:logs")
-def test_aucun_secret_factice_dans_les_logs_captures(journal: io.StringIO) -> None:
+def test_no_fake_secret_in_the_captured_logs(log_stream: io.StringIO) -> None:
     log = structlog.get_logger()
-    log.warning("collector.run.failed", error=f"401 Unauthorized, token {FAKE_GITHUB}", detail={"cle": FAKE_LLM})
-    log.error(f"alerte : https://api.telegram.org/bot{FAKE_TELEGRAM}/sendMessage")
+    log.warning("collector.run.failed", error=f"401 Unauthorized, token {FAKE_GITHUB}", detail={"key": FAKE_LLM})
+    log.error(f"alert: https://api.telegram.org/bot{FAKE_TELEGRAM}/sendMessage")
     try:
-        raise RuntimeError(f"SMTP AUTH refusée pour le mot de passe {FAKE_SMTP}")
+        raise RuntimeError(f"SMTP AUTH refused for password {FAKE_SMTP}")
     except RuntimeError:
         log.exception("alert.send.failed")
     try:
-        raise OSError(f"restic : échec avec {FAKE_RESTIC}")
+        raise OSError(f"restic: failed with {FAKE_RESTIC}")
     except OSError:
-        logging.getLogger("httpx").exception("bibliothèque : https://api.telegram.org/bot%s/getMe", FAKE_TELEGRAM)
+        logging.getLogger("httpx").exception("library: https://api.telegram.org/bot%s/getMe", FAKE_TELEGRAM)
 
-    sortie = journal.getvalue()
-    assert len(lignes(journal)) == 4
+    output = log_stream.getvalue()
+    assert len(lines(log_stream)) == 4
     for fake in FAKES:
-        assert fake not in sortie
-    assert MASK in sortie
-    assert "RuntimeError" in sortie and "OSError" in sortie  # les traces sont présentes, nettoyées
+        assert fake not in output
+    assert MASK in output
+    assert "RuntimeError" in output and "OSError" in output  # tracebacks are present, redacted
 
 
 @pytest.mark.spec("T-SEC-02")
 @pytest.mark.parametrize(
-    "cle",
+    "key",
     [
         *SENSITIVE_SUFFIXES,
         "Authorization",
@@ -102,21 +102,21 @@ def test_aucun_secret_factice_dans_les_logs_captures(journal: io.StringIO) -> No
         "smtp_password",
     ],
 )
-def test_cles_sensibles_masquees(cle: str) -> None:
-    event = SecretRedactor([])(None, "info", {"event": "http.request", cle: "valeur-quelconque"})
-    assert event[cle] == MASK
+def test_sensitive_keys_masked(key: str) -> None:
+    event = SecretRedactor([])(None, "info", {"event": "http.request", key: "any-value"})
+    assert event[key] == MASK
     assert event["event"] == "http.request"
 
 
 @pytest.mark.spec("T-SEC-02")
-@pytest.mark.parametrize("cle", ["prompt_tokens", "token_count"])
-def test_cles_proches_non_masquees(cle: str) -> None:
-    event = SecretRedactor([])(None, "info", {"event": "llm.call", cle: 1234})
-    assert event[cle] == 1234
+@pytest.mark.parametrize("key", ["prompt_tokens", "token_count"])
+def test_similar_keys_not_masked(key: str) -> None:
+    event = SecretRedactor([])(None, "info", {"event": "llm.call", key: 1234})
+    assert event[key] == 1234
 
 
 @pytest.mark.spec("T-SEC-02")
-def test_cles_sensibles_masquees_en_profondeur() -> None:
+def test_sensitive_keys_masked_in_depth() -> None:
     event = SecretRedactor([])(
         None, "info", {"event": "x", "headers": {"authorization": "Bearer abc", "accept": "*/*"}}
     )
@@ -124,6 +124,6 @@ def test_cles_sensibles_masquees_en_profondeur() -> None:
 
 
 @pytest.mark.spec("T-SEC-02")
-def test_cle_non_textuelle_dans_un_dict_imbrique() -> None:
-    event = SecretRedactor(["FAKE-x"])(None, "info", {"event": "x", "par_statut": {200: "ok FAKE-x", 401: "refusé"}})
-    assert event["par_statut"] == {"200": f"ok {MASK}", "401": "refusé"}
+def test_non_text_key_in_a_nested_dict() -> None:
+    event = SecretRedactor(["FAKE-x"])(None, "info", {"event": "x", "by_status": {200: "ok FAKE-x", 401: "refused"}})
+    assert event["by_status"] == {"200": f"ok {MASK}", "401": "refused"}

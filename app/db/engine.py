@@ -1,7 +1,7 @@
-"""Moteur SQLite asynchrone d'un processus (docs/database.md §2.2, §2.3 ; III §10.2, §10.3).
+"""Asynchronous SQLite engine of a process (docs/database.md §2.2, §2.3; III §10.2, §10.3).
 
-Recette validée en T0.3 (V-03) : l'écouteur `connect` désactive le `BEGIN` implicite du pilote et applique les PRAGMA ;
-l'écouteur `begin` émet `BEGIN IMMEDIATE` pour une écriture, `BEGIN DEFERRED` pour une lecture seule.
+Recipe validated in T0.3 (V-03): the `connect` listener disables the driver's implicit `BEGIN` and applies the PRAGMAs;
+the `begin` listener emits `BEGIN IMMEDIATE` for a write, `BEGIN DEFERRED` for a read-only transaction.
 """
 
 from typing import Any
@@ -12,21 +12,21 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import ConnectionPoolEntry
 
-# Option d'exécution qui marque une connexion en lecture seule : son `begin` émet `BEGIN DEFERRED`.
+# Execution option that marks a connection as read-only: its `begin` emits `BEGIN DEFERRED`.
 READ_ONLY_OPTION = "radar_read_only"
 
 DEFAULT_BUSY_TIMEOUT_MS = 5000  # III §10.2
-DEFAULT_JOURNAL_SIZE_LIMIT = 67_108_864  # 64 Mo, valeur initiale (III §10.2)
+DEFAULT_JOURNAL_SIZE_LIMIT = 67_108_864  # 64 MiB, initial value (III §10.2)
 
 
 def database_url(db_path: str) -> str:
-    """URL du moteur applicatif, construite à partir de `RADAR_DB_PATH` (architecture.md P-01)."""
+    """URL of the application engine, built from `RADAR_DB_PATH` (architecture.md P-01)."""
     return f"sqlite+aiosqlite:///{db_path}"
 
 
 def connection_pragmas(*, busy_timeout_ms: int, journal_size_limit: int, foreign_keys: bool = True) -> list[str]:
-    """PRAGMA de chaque connexion (III §10.2). `foreign_keys` vaut `ON` pour `app` et `worker` ; seule la connexion de
-    `migrate` le pose à `OFF` (III §10.5, `docs/database.md` §5)."""
+    """PRAGMAs of every connection (III §10.2). `foreign_keys` is `ON` for `app` and `worker`; only the `migrate`
+    connection sets it `OFF` (III §10.5, `docs/database.md` §5)."""
     return [
         "PRAGMA journal_mode=WAL",
         "PRAGMA synchronous=NORMAL",
@@ -42,13 +42,13 @@ def create_engine(
     busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
     journal_size_limit: int = DEFAULT_JOURNAL_SIZE_LIMIT,
 ) -> AsyncEngine:
-    """Crée le moteur du processus : un par processus, avec son pool (III §10.3)."""
+    """Create the process engine: one per process, with its pool (III §10.3)."""
     engine = create_async_engine(database_url(db_path))
     pragmas = connection_pragmas(busy_timeout_ms=busy_timeout_ms, journal_size_limit=journal_size_limit)
 
     @event.listens_for(engine.sync_engine, "connect")
     def _on_connect(dbapi_connection: Any, connection_record: ConnectionPoolEntry) -> None:
-        dbapi_connection.isolation_level = None  # le pilote n'émet plus de BEGIN
+        dbapi_connection.isolation_level = None  # the driver no longer emits BEGIN
         cursor = dbapi_connection.cursor()
         for pragma in pragmas:
             cursor.execute(pragma)
@@ -63,7 +63,7 @@ def create_engine(
 
 
 def migrate_database_url(db_path: str) -> str:
-    """URL du moteur synchrone de `migrate`, construite à partir de `RADAR_DB_PATH` (architecture.md P-01)."""
+    """URL of the synchronous `migrate` engine, built from `RADAR_DB_PATH` (architecture.md P-01)."""
     return f"sqlite:///{db_path}"
 
 
@@ -73,11 +73,11 @@ def create_migrate_engine(
     busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
     journal_size_limit: int = DEFAULT_JOURNAL_SIZE_LIMIT,
 ) -> Engine:
-    """Moteur synchrone propre à `migrate` (docs/database.md §5, III §10.5).
+    """Synchronous engine dedicated to `migrate` (docs/database.md §5, III §10.5).
 
-    Même technique que le moteur applicatif : `isolation_level = None` et PRAGMA posés sur la connexion DBAPI, donc
-    hors de toute transaction, puis `BEGIN IMMEDIATE` émis par l'écouteur `begin`. Seule différence :
-    `foreign_keys=OFF`, pour qu'une reconstruction de table en mode batch ne déclenche aucune cascade.
+    Same technique as the application engine: `isolation_level = None` and PRAGMAs set on the DBAPI connection, hence
+    outside any transaction, then `BEGIN IMMEDIATE` emitted by the `begin` listener. Only difference:
+    `foreign_keys=OFF`, so that a batch-mode table rebuild triggers no cascade.
     """
     engine = create_sync_engine(migrate_database_url(db_path))
     pragmas = connection_pragmas(
@@ -86,8 +86,8 @@ def create_migrate_engine(
 
     @event.listens_for(engine, "connect")
     def _on_connect(dbapi_connection: Any, connection_record: ConnectionPoolEntry) -> None:
-        dbapi_connection.isolation_level = None  # pysqlite n'ouvre plus de transaction implicite
-        cursor = dbapi_connection.cursor()  # PRAGMA exécutés hors transaction
+        dbapi_connection.isolation_level = None  # pysqlite no longer opens an implicit transaction
+        cursor = dbapi_connection.cursor()  # PRAGMAs run outside any transaction
         for pragma in pragmas:
             cursor.execute(pragma)
         cursor.close()

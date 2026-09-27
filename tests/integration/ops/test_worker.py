@@ -1,7 +1,7 @@
-"""Worker en processus (VII §36.6) : séquence de boot, supervision fail-fast, arrêt, avec une horloge pas à pas.
+"""In-process worker (VII §36.6): boot sequence, fail-fast supervision, stop, with a stepped clock.
 
-Les signaux ne sont pas installés (`handle_signals=False`) et l'action du watchdog est une espionne : le processus de
-pytest n'est jamais arrêté. Les comportements de niveau processus sont dans `test_worker_processus.py`.
+Signals are not installed (`handle_signals=False`) and the watchdog action is a spy: the pytest process is never
+stopped. Process-level behaviours are in `test_worker_process.py`.
 """
 
 import asyncio
@@ -20,10 +20,10 @@ from app.ops.heartbeat import HEARTBEAT_KEY
 from app.worker import Worker
 from tests.fakes.clock import SteppedClock
 
-DEBUT = datetime(2026, 9, 27, 8, 0, tzinfo=UTC)
+START = datetime(2026, 9, 27, 8, 0, tzinfo=UTC)
 
 
-def reglages(db_path: str) -> WorkerSettings:
+def settings(db_path: str) -> WorkerSettings:
     return WorkerSettings(
         radar_db_path=db_path,
         dashboard_url="https://radar.example.com",
@@ -42,49 +42,49 @@ def heartbeats(db_path: str) -> int:
         conn.close()
 
 
-def evenements(logs: list[dict[str, Any]]) -> list[str]:
+def events(logs: list[dict[str, Any]]) -> list[str]:
     return [str(entry["event"]) for entry in logs]
 
 
-class Espion:
+class Spy:
     def __init__(self) -> None:
-        self.appels = 0
+        self.calls = 0
 
     def __call__(self) -> None:
-        self.appels += 1
+        self.calls += 1
 
 
 def worker(db_path: str, config_dir: Path, clock: SteppedClock, **options: Any) -> Worker:
     return Worker(
-        reglages(db_path),
+        settings(db_path),
         clock=clock,
         config_dir=config_dir,
-        on_watchdog_timeout=options.pop("on_watchdog_timeout", Espion()),
+        on_watchdog_timeout=options.pop("on_watchdog_timeout", Spy()),
         handle_signals=False,
         **options,
     )
 
 
-async def demarre(tache: asyncio.Task[int], logs: list[dict[str, Any]]) -> None:
-    """Attend `worker.started`, sans sleep : la boucle cède la main jusqu'au log (ou jusqu'à la fin de la tâche)."""
-    while "worker.started" not in evenements(logs) and not tache.done():
+async def started(task: asyncio.Task[int], logs: list[dict[str, Any]]) -> None:
+    """Wait for `worker.started`, without sleep: the loop yields until the log (or until the task ends)."""
+    while "worker.started" not in events(logs) and not task.done():
         await asyncio.sleep(0.01)
 
 
 @pytest.mark.spec("T-OPS-10:verifications")
 @pytest.mark.spec("T-OPS-10:heartbeat")
-def test_ordre_verifications_puis_heartbeat_puis_demarrage(base_migree: str, config_dir: Path) -> None:
+def test_order_checks_then_heartbeat_then_start(migrated_db: str, config_dir: Path) -> None:
     async def scenario() -> int:
-        w = worker(base_migree, config_dir, SteppedClock(DEBUT))
-        tache = asyncio.create_task(w.run())
-        await demarre(tache, logs)
-        assert heartbeats(base_migree) == 1
+        w = worker(migrated_db, config_dir, SteppedClock(START))
+        task = asyncio.create_task(w.run())
+        await started(task, logs)
+        assert heartbeats(migrated_db) == 1
         w.request_stop()
-        return await tache
+        return await task
 
     with capture_logs() as logs:
         assert asyncio.run(scenario()) == 0
-    assert evenements(logs) == [
+    assert events(logs) == [
         "worker.boot.checked",
         "worker.heartbeat.started",
         "worker.started",
@@ -94,21 +94,21 @@ def test_ordre_verifications_puis_heartbeat_puis_demarrage(base_migree: str, con
 
 
 @pytest.mark.spec("T-OPS-09")
-def test_heartbeat_ecrit_avant_la_fin_du_boot(base_migree: str, config_dir: Path) -> None:
-    """Le heartbeat est en base avant `worker.started` : avant toute étape suivante (modèles compris, à venir)."""
+def test_heartbeat_written_before_the_end_of_boot(migrated_db: str, config_dir: Path) -> None:
+    """The heartbeat is in the database before `worker.started`: before any later step (models included, upcoming)."""
 
     async def scenario() -> tuple[int, int]:
-        w = worker(base_migree, config_dir, SteppedClock(DEBUT))
-        tache = asyncio.create_task(w.run())
-        vus_au_demarrage = -1
-        while not tache.done():
-            if "worker.heartbeat.started" in evenements(logs) and vus_au_demarrage < 0:
-                vus_au_demarrage = heartbeats(base_migree)
-            if "worker.started" in evenements(logs):
+        w = worker(migrated_db, config_dir, SteppedClock(START))
+        task = asyncio.create_task(w.run())
+        seen_at_start = -1
+        while not task.done():
+            if "worker.heartbeat.started" in events(logs) and seen_at_start < 0:
+                seen_at_start = heartbeats(migrated_db)
+            if "worker.started" in events(logs):
                 break
             await asyncio.sleep(0.01)
         w.request_stop()
-        return vus_au_demarrage, await tache
+        return seen_at_start, await task
 
     with capture_logs() as logs:
         assert asyncio.run(scenario()) == (1, 0)
@@ -116,26 +116,26 @@ def test_heartbeat_ecrit_avant_la_fin_du_boot(base_migree: str, config_dir: Path
 
 @pytest.mark.spec("T-OPS-10:verifications")
 @pytest.mark.spec("T-DB-01")
-def test_prerequis_absent_refus_sans_heartbeat(base_migree: str, config_dir: Path) -> None:
-    async def prerequis_absent(engine: AsyncEngine) -> None:
-        raise PrerequisiteError("SQLite 3.34.1 < 3.35 requis")
+def test_missing_prerequisite_refused_without_heartbeat(migrated_db: str, config_dir: Path) -> None:
+    async def missing_prerequisite(engine: AsyncEngine) -> None:
+        raise PrerequisiteError("SQLite 3.34.1 < 3.35 required")
 
-    w = worker(base_migree, config_dir, SteppedClock(DEBUT), prerequisites=prerequis_absent)
+    w = worker(migrated_db, config_dir, SteppedClock(START), prerequisites=missing_prerequisite)
     with capture_logs() as logs:
         assert asyncio.run(w.run()) == 1
     assert [(e["event"], e["log_level"], e["reason"]) for e in logs] == [
-        ("worker.refused", "critical", "SQLite 3.34.1 < 3.35 requis")
+        ("worker.refused", "critical", "SQLite 3.34.1 < 3.35 required")
     ]
-    assert heartbeats(base_migree) == 0
+    assert heartbeats(migrated_db) == 0
 
 
 @pytest.mark.spec("T-OPS-10:verifications")
 @pytest.mark.spec("T-DB-02")
-def test_base_non_migree_refus_sans_heartbeat(tmp_path: Path, config_dir: Path) -> None:
-    db_path = str(tmp_path / "vide.db")
+def test_unmigrated_database_refused_without_heartbeat(tmp_path: Path, config_dir: Path) -> None:
+    db_path = str(tmp_path / "empty.db")
     sqlite3.connect(db_path).close()
     with capture_logs() as logs:
-        assert asyncio.run(worker(db_path, config_dir, SteppedClock(DEBUT)).run()) == 1
+        assert asyncio.run(worker(db_path, config_dir, SteppedClock(START)).run()) == 1
     assert [(e["event"], e["log_level"], e["error_class"]) for e in logs] == [
         ("worker.refused", "critical", "SchemaRevisionError")
     ]
@@ -143,53 +143,53 @@ def test_base_non_migree_refus_sans_heartbeat(tmp_path: Path, config_dir: Path) 
 
 
 @pytest.mark.spec("T-OPS-10:verifications")
-def test_configuration_invalide_refus_sans_heartbeat(base_migree: str, config_dir: Path) -> None:
+def test_invalid_configuration_refused_without_heartbeat(migrated_db: str, config_dir: Path) -> None:
     (config_dir / "topics.yaml").write_text("topics: [{slug: llm}]\n", encoding="utf-8")
     with capture_logs() as logs:
-        assert asyncio.run(worker(base_migree, config_dir, SteppedClock(DEBUT)).run()) == 2
+        assert asyncio.run(worker(migrated_db, config_dir, SteppedClock(START)).run()) == 2
     assert [(e["event"], e["log_level"]) for e in logs] == [("worker.refused", "critical")]
     assert logs[0]["issues"]
-    assert heartbeats(base_migree) == 0
+    assert heartbeats(migrated_db) == 0
 
 
 @pytest.mark.spec("T-OPS-08:heartbeat")
-def test_heartbeat_en_exception_log_critical_et_sortie_non_nulle(base_migree: str, config_dir: Path) -> None:
+def test_heartbeat_exception_logs_critical_and_exits_non_zero(migrated_db: str, config_dir: Path) -> None:
     async def scenario() -> int:
-        clock = SteppedClock(DEBUT)
-        w = worker(base_migree, config_dir, clock)
-        tache = asyncio.create_task(w.run())
-        await demarre(tache, logs)
-        conn = sqlite3.connect(base_migree)
+        clock = SteppedClock(START)
+        w = worker(migrated_db, config_dir, clock)
+        task = asyncio.create_task(w.run())
+        await started(task, logs)
+        conn = sqlite3.connect(migrated_db)
         conn.execute("DROP TABLE system_state")
         conn.commit()
         conn.close()
-        while clock.sleepers < 2:  # heartbeat et rafraîchissement du watchdog en attente
+        while clock.sleepers < 2:  # heartbeat and watchdog refresh waiting
             await asyncio.sleep(0.01)
         clock.advance(timedelta(seconds=1))
-        return await tache
+        return await task
 
     with capture_logs() as logs:
         assert asyncio.run(scenario()) == 1
-    echecs = [e for e in logs if e["event"] == "worker.task.failed"]
-    assert [(e["log_level"], e["task"]) for e in echecs] == [("critical", "heartbeat")]
-    assert "no such table" in str(echecs[0]["exc_info"])
-    assert evenements(logs)[-1] == "worker.stopped"
+    failures = [e for e in logs if e["event"] == "worker.task.failed"]
+    assert [(e["log_level"], e["task"]) for e in failures] == [("critical", "heartbeat")]
+    assert "no such table" in str(failures[0]["exc_info"])
+    assert events(logs)[-1] == "worker.stopped"
 
 
 @pytest.mark.spec("T-OPS-11:arret")
-def test_arret_demande_annule_les_taches_et_renvoie_0(base_migree: str, config_dir: Path) -> None:
-    espion = Espion()
+def test_stop_request_cancels_the_tasks_and_returns_0(migrated_db: str, config_dir: Path) -> None:
+    spy = Spy()
 
     async def scenario() -> tuple[int, int]:
-        w = worker(base_migree, config_dir, SteppedClock(DEBUT), on_watchdog_timeout=espion)
-        tache = asyncio.create_task(w.run())
-        await demarre(tache, logs)
+        w = worker(migrated_db, config_dir, SteppedClock(START), on_watchdog_timeout=spy)
+        task = asyncio.create_task(w.run())
+        await started(task, logs)
         w.request_stop()
-        code = await tache
-        restantes = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-        return code, len(restantes)
+        code = await task
+        remaining = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        return code, len(remaining)
 
     with capture_logs() as logs:
         assert asyncio.run(scenario()) == (0, 0)
     assert [e for e in logs if e["event"] == "worker.stopped"][0]["code"] == 0
-    assert espion.appels == 0
+    assert spy.calls == 0

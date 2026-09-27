@@ -1,10 +1,10 @@
 """${message}
 
-Révision : ${up_revision}
-Précédente : ${down_revision | comma,n}
-Créée le : ${create_date}
+Revision: ${up_revision}
+Revises: ${down_revision | comma,n}
+Created: ${create_date}
 
-Réversibilité (VII §36.9) : ce fichier fournit un `downgrade`, ou déclare ici « irréversible » avec la raison.
+Reversibility (VII §36.9): this file provides a `downgrade`, or declares "irreversible" here with the reason.
 """
 
 from collections.abc import Sequence
