@@ -1,0 +1,9 @@
+/* CSS Modules compiled by Vite at build time: no inline style, compatible with the strict CSP (E20). */
+.page {
+  font-family: system-ui, sans-serif;
+  margin: 2rem;
+}
+
+.title {
+  font-size: 1.5rem;
+}
