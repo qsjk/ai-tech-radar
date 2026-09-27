@@ -1,5 +1,5 @@
-# Dictionnaire d'entités — jeu de démonstration minimal (Sprint 1, décision Q-04).
-# Format : IV §16.4. Les alias sont déclarés ici, jamais en base (CF-19).
+# Entity dictionary: minimal demo set (Sprint 1, decision Q-04).
+# Format: IV §16.4. Aliases are declared here, never in the database (CF-19).
 entities:
   - type: company
     canonical_name: anthropic
@@ -13,6 +13,6 @@ entities:
     name: Claude Opus
     aliases: [{ term: 'claude[ -]?opus', regex: true }]
 
-github_reserved_paths:   # premiers segments d'URL github.com qui ne sont pas des owners
+github_reserved_paths:   # first github.com URL segments that are not owners
   [orgs, topics, settings, features, marketplace, sponsors, collections, trending,
    explore, about, pricing, login, join, notifications, search, apps, enterprise]

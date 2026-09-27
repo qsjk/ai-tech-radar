@@ -1,5 +1,5 @@
-# Taxonomie — jeu de démonstration minimal (Sprint 1, décision Q-04).
-# Format : IV §16.3.
+# Taxonomy: minimal demo set (Sprint 1, decision Q-04).
+# Format: IV §16.3.
 topics:
   - slug: anthropic
     name: Anthropic
@@ -14,7 +14,7 @@ topics:
   - slug: claude-code
     name: Claude Code
     parent: anthropic
-    description: CLI agentique de codage d'Anthropic
+    description: Anthropic's agentic coding CLI
     keywords:
       - { term: "claude code", weight: 3 }
       - { term: "claude-code", weight: 3 }

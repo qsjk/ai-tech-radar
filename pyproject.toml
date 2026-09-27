@@ -1,7 +1,7 @@
 [project]
 name = "ai-tech-radar"
 version = "0.1.0"
-description = "Radar de veille technologique : collecte, regroupement et tendances (docs/spec/)."
+description = "Technology watch radar: collection, clustering and trends (docs/spec/)."
 readme = "README.md"
 requires-python = "==3.12.*"
 dependencies = [
@@ -40,7 +40,7 @@ required-version = "==0.12.18"
 [tool.ruff]
 target-version = "py312"
 line-length = 120
-# Les blocs de code des documents Markdown sont indicatifs (IX §57.6) : ruff ne les vérifie ni ne les reformate.
+# Code blocks in Markdown documents are indicative (IX §57.6): ruff neither checks nor reformats them.
 extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
@@ -50,19 +50,19 @@ select = ["E", "W", "F", "I", "UP", "B"]
 python_version = "3.12"
 strict = true
 files = ["app"]
-# Le plugin pydantic donne à mypy la signature réelle des modèles, BaseSettings compris (lu dans l'environnement).
+# The pydantic plugin gives mypy the real signature of the models, BaseSettings included (read from the environment).
 plugins = ["pydantic.mypy"]
 
 [tool.coverage.run]
-# Les écouteurs SQLAlchemy du moteur async s'exécutent dans des greenlets.
+# The SQLAlchemy listeners of the async engine run in greenlets.
 concurrency = ["greenlet", "thread"]
-# Mesure aussi les sous-processus des tests de niveau processus (python -m app.worker).
+# Also measure the subprocesses of the process-level tests (python -m app.worker, uvicorn).
 patch = ["subprocess"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Blocage réseau pour toute la session (VIII §50.1) : seules les connexions vers 127.0.0.1 et ::1 sont permises ;
-# les sockets Unix restent autorisées. Couverture de app/ mesurée à chaque exécution, jamais bloquante (VIII §49.2).
+# Network blocking for the whole session (VIII §50.1): only connections to 127.0.0.1 and ::1 are allowed;
+# Unix sockets stay allowed. Coverage of app/ measured on every run, never blocking (VIII §49.2).
 addopts = [
     "--allow-hosts=127.0.0.1,::1",
     "--allow-unix-socket",
@@ -70,5 +70,5 @@ addopts = [
     "--cov-report=term-missing",
     "--strict-markers",
 ]
-# Traçabilité du catalogue (VIII §50.3) : `@pytest.mark.spec("T-DB-07")`, ou avec un volet `spec("T-SEC-01:logs")`.
-markers = ["spec(identifiant): identifiant du catalogue VIII §50.5 couvert par le test, volet éventuel après « : »"]
+# Catalogue traceability (VIII §50.3): `@pytest.mark.spec("T-DB-07")`, or with a part `spec("T-SEC-01:logs")`.
+markers = ["spec(identifier): VIII §50.5 catalogue identifier covered by the test, optional part after ':'"]

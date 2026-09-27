@@ -1,5 +1,5 @@
-# Sources de collecte — jeu de démonstration minimal (Sprint 1, décision Q-04).
-# Format : IV §16.2. La curation réelle commence au Sprint 2.
+# Collection sources: minimal demo set (Sprint 1, decision Q-04).
+# Format: IV §16.2. Real curation starts in Sprint 2.
 sources:
   - key: claude-code-releases
     name: Claude Code — Releases
