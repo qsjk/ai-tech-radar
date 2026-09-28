@@ -35,6 +35,35 @@ def test_app_and_worker_reach_the_doubles(service: str) -> None:
     }
 
 
+OUTSIDE = """
+import json, socket, time
+results = {}
+# A public resolver address and a documentation address (TEST-NET-1): neither must be reachable from egress.
+for address in (("1.1.1.1", 443), ("192.0.2.1", 80)):
+    start = time.monotonic()
+    try:
+        socket.create_connection(address, timeout=5).close()
+        results[address[0]] = "connected"
+    except OSError as error:
+        results[address[0]] = type(error).__name__
+    results[address[0] + "_s"] = round(time.monotonic() - start, 1)
+print(json.dumps(results))
+"""
+
+
+def test_worker_reaches_no_external_address_but_still_the_doubles() -> None:
+    """egress is internal in e2e (review of #100): no route out (5 s per attempt); the doubles stay reachable."""
+    result = compose("exec", "-T", "worker", "python", "-c", OUTSIDE)
+    assert result.returncode == 0, result.stderr
+    outcome = json.loads(result.stdout)
+    for address in ("1.1.1.1", "192.0.2.1"):
+        assert outcome[address] != "connected", outcome
+        assert outcome[f"{address}_s"] <= 6, outcome
+    reach = compose("exec", "-T", "worker", "python", "-c", REACH)
+    assert reach.returncode == 0, reach.stderr
+    assert set(json.loads(reach.stdout)) == {"fake-gateway", "fake-sources"}
+
+
 def test_worker_runs_in_test_mode_with_the_allow_list() -> None:
     result = compose(
         "exec",

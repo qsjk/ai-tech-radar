@@ -69,3 +69,7 @@ services:
     command: ["python", "/fakes/fake_sources.py"]
     networks: [edge, egress]
     restart: "no"
+
+networks:
+  # No route to the Internet in e2e (VIII §50.1): the worker only reaches the doubles (review of #100).
+  egress: { internal: true }
