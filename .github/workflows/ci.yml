@@ -1,22 +1,35 @@
-# Minimal Sprint 1 CI (T1.1): stages 1 (static) and 4 (tests) of VIII §49.2.
-# Completed up to the six stages by T1.11 (VIII §49, docs/architecture.md §5.1).
+# CI in six stages (VIII §49.1, §49.2; docs/architecture.md §5.1). Each stage blocks the next ones.
+# Stages 1 to 5 run on every branch and pull request; stage 6 (e2e) on main, and when called by scheduled.yml.
 # Job names keep the stage names of VIII §49.2 and docs/architecture.md §5.1, as displayed in the checks.
+# No secret: .env.example and FAKE-... values are enough (VIII §49.1). Actions and images pinned by sha or digest.
 name: ci
 
 on:
   push:
   pull_request:
+  workflow_call:
+    inputs:
+      e2e:
+        description: run stage 6 (e2e) whatever the branch
+        type: boolean
+        default: false
+      no_cache:
+        description: build the images without cache (monthly rebuild, VIII §49.1)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
   UV_VERSION: "0.12.18"
   PYTHON_VERSION: "3.12"
+  NODE_VERSION: "24.21.0"
+  GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
 
 jobs:
   static:
@@ -24,10 +37,20 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # secret scan on the whole history
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: ${{ env.UV_VERSION }}
           python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: uv lock --check
+        run: uv lock --check
       - name: Dependencies (uv.lock)
         run: uv sync --locked
       - name: ruff check
@@ -38,9 +61,28 @@ jobs:
         run: uv run mypy
       - name: shellcheck (scripts/radar-dev)
         run: uv run shellcheck scripts/radar-dev
+      - name: npm ci
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - name: eslint (react/no-danger)
+        working-directory: frontend
+        run: npm run lint
+      - name: tsc --noEmit
+        working-directory: frontend
+        run: npm run typecheck
+      - name: Secret scan (gitleaks 8.30.1, whole history)
+        run: >-
+          docker run --rm -v "$PWD:/repo" -w /repo
+          -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo
+          "$GITLEAKS_IMAGE" git /repo --redact --verbose --exit-code 1
+      - name: Catalogue traceability (scripts/check-test-catalog.py, VIII §50.3)
+        run: |
+          set -o pipefail
+          uv run python scripts/check-test-catalog.py | tee "$RUNNER_TEMP/catalogue.txt"
+          { echo "### Catalogue traceability"; echo '```'; cat "$RUNNER_TEMP/catalogue.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
-  tests:
-    name: "4 · Tests"
+  config:
+    name: "2 · Configuration"
     needs: static
     runs-on: ubuntu-24.04
     steps:
@@ -49,7 +91,78 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+      - name: Dependencies (uv.lock)
+        run: uv sync --locked
+      - name: validate-config on config/
+        run: uv run python -m app.cli validate-config
+      - name: Docker is required (the Compose policy must never be skipped)
+        run: docker version --format '{{.Server.Version}}' && docker compose version
+      - name: docker compose config with .env.example
+        run: docker compose --env-file .env.example config --quiet
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build radar-caddy for caddy validate
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/caddy.Dockerfile
+          tags: radar-caddy:ci
+          load: true
+          cache-from: type=gha,scope=caddy
+          cache-to: type=gha,scope=caddy,mode=max
+      - name: caddy validate on docker/Caddyfile, .env.example variables injected
+        run: |
+          set -euo pipefail
+          grep -E '^(DASHBOARD_URL|DASHBOARD_USER|DASHBOARD_PASSWORD_HASH|ACME_EMAIL)=' .env.example \
+            | sed "s/'//g" > "$RUNNER_TEMP/caddy.env"
+          docker run --rm --user 10001:10001 --read-only --cap-drop ALL --security-opt no-new-privileges:true \
+            --tmpfs /tmp --tmpfs /data:uid=10001,gid=10001 --tmpfs /config:uid=10001,gid=10001 \
+            --env-file "$RUNNER_TEMP/caddy.env" radar-caddy:ci \
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - name: Compose policy (T-SEC-08) on docker compose config
+        run: uv run pytest tests/unit/tooling/test_compose_policy.py --no-cov -p no:cacheprovider -rs
+
+  audit:
+    name: "3 · Audit"
+    needs: config
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Dependencies (uv.lock)
+        run: uv sync --locked
+      - uses: ./.github/actions/audit
+
+  tests:
+    name: "4 · Tests"
+    needs: audit
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - name: Dependencies (uv.lock)
         run: uv sync --locked
       - name: pytest (network blocked, VIII §50.1), app/ coverage in the job summary
         run: uv run pytest --cov-report=markdown-append:"$GITHUB_STEP_SUMMARY"
+      - name: npm ci
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - name: vitest
+        working-directory: frontend
+        run: npm test
