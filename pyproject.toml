@@ -70,6 +70,12 @@ addopts = [
     "--cov=app",
     "--cov-report=term-missing",
     "--strict-markers",
+    # e2e tests run against the Compose stack, only through `scripts/radar-dev e2e` (and CI stage 6, T1.11).
+    "-m",
+    "not e2e",
 ]
 # Catalogue traceability (VIII §50.3): `@pytest.mark.spec("T-DB-07")`, or with a part `spec("T-SEC-01:logs")`.
-markers = ["spec(identifier): VIII §50.5 catalogue identifier covered by the test, optional part after ':'"]
+markers = [
+    "spec(identifier): VIII §50.5 catalogue identifier covered by the test, optional part after ':'",
+    "e2e: end-to-end test against the Compose stack (VIII §49.2 stage 6), deselected by default",
+]

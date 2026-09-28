@@ -16,6 +16,10 @@ readonly ROOT
 readonly COMPOSE_FILE="${ROOT}/docker-compose.yml"
 readonly E2E_OVERRIDE="${ROOT}/docker-compose.test.yml"
 readonly E2E_TESTS="${ROOT}/tests/e2e"
+# The e2e stack runs in its own project, created then removed with its volumes; radar-dev is never touched (#99).
+readonly E2E_PROJECT="radar-dev-e2e"
+# The e2e stack needs no local .env: .env.example feeds the interpolation, docker-compose.test.yml the fake values.
+readonly E2E_ENV_FILE="${ROOT}/.env.example"
 readonly ENV_FILE="${ROOT}/.env"
 
 usage() {
@@ -75,23 +79,22 @@ compose() {
 }
 
 compose_e2e() {
-  docker compose --project-name "${PROJECT}" --project-directory "${ROOT}" \
-    --file "${COMPOSE_FILE}" --file "${E2E_OVERRIDE}" --env-file "${ENV_FILE}" "$@" \
-    || failed "docker compose $1 failed (e2e)"
+  docker compose --project-name "${E2E_PROJECT}" --project-directory "${ROOT}" \
+    --file "${COMPOSE_FILE}" --file "${E2E_OVERRIDE}" --env-file "${E2E_ENV_FILE}" "$@"
+}
+
+e2e_down() {
+  compose_e2e down --volumes --remove-orphans || echo "radar-dev: e2e cleanup failed (project ${E2E_PROJECT})" >&2
 }
 
 run_e2e() {
   if [[ ! -f "${E2E_OVERRIDE}" || ! -d "${E2E_TESTS}" ]]; then
-    failed "e2e is not available yet: docker-compose.test.yml and tests/e2e/ arrive with T1.10"
+    failed "e2e is not available: docker-compose.test.yml or tests/e2e/ is missing"
   fi
-  require_env
-  compose_e2e up --detach --build
-  local status=0
-  (cd "${ROOT}" && uv run pytest "${E2E_TESTS}") || status=$?
-  compose_e2e down --volumes
-  if [[ ${status} -ne 0 ]]; then
-    failed "e2e tests failed"
-  fi
+  # Always remove the e2e project, on success, failure or interruption.
+  trap e2e_down EXIT
+  compose_e2e up --detach --build --wait --wait-timeout 180 || failed "the e2e stack did not start"
+  (cd "${ROOT}" && uv run pytest -m e2e --no-cov -p no:cacheprovider "${E2E_TESTS}") || failed "e2e tests failed"
 }
 
 if [[ $# -eq 0 ]]; then

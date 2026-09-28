@@ -17,14 +17,15 @@ from tests.integration.db.conftest import ROOT
 
 SCRIPT = ROOT / "scripts" / "radar-dev"
 PROJECT = "radar-dev"
+E2E_PROJECT = "radar-dev-e2e"
 
 FAKE = """\
 #!/bin/sh
-# Fake {name}: records its arguments, one call per line, then exits with FAKE_EXIT (0 by default).
+# Fake {name}: records its arguments, one call per line, then exits with {exit_var} (0 by default).
 printf '{name}' >> "$FAKE_CALLS"
 for arg in "$@"; do printf ' %s' "$arg" >> "$FAKE_CALLS"; done
 printf '\\n' >> "$FAKE_CALLS"
-exit "${{FAKE_EXIT:-0}}"
+exit "${{{exit_var}:-0}}"
 """
 
 
@@ -34,12 +35,13 @@ class Sandbox:
         self.calls = root / "calls.log"
         self.bin = root / "fakebin"
 
-    def run(self, *args: str, fake_exit: int = 0) -> subprocess.CompletedProcess[str]:
+    def run(self, *args: str, fake_exit: int = 0, uv_exit: int = 0) -> subprocess.CompletedProcess[str]:
         self.calls.write_text("", encoding="utf-8")
         env = {
             "PATH": f"{self.bin}:/usr/bin:/bin",
             "FAKE_CALLS": str(self.calls),
-            "FAKE_EXIT": str(fake_exit),
+            "DOCKER_EXIT": str(fake_exit),
+            "UV_EXIT": str(uv_exit),
         }
         return subprocess.run(
             [str(self.root / "scripts" / "radar-dev"), *args],
@@ -53,12 +55,18 @@ class Sandbox:
     def recorded(self) -> list[str]:
         return self.calls.read_text(encoding="utf-8").splitlines()
 
-    def compose(self, *args: str, e2e: bool = False) -> str:
-        files = f"--file {self.root}/docker-compose.yml"
-        if e2e:
-            files += f" --file {self.root}/docker-compose.test.yml"
-        base = f"docker compose --project-name {PROJECT} --project-directory {self.root} {files}"
-        return f"{base} --env-file {self.root}/.env {' '.join(args)}"
+    def compose(self, *args: str) -> str:
+        base = f"docker compose --project-name {PROJECT} --project-directory {self.root}"
+        return f"{base} --file {self.root}/docker-compose.yml --env-file {self.root}/.env {' '.join(args)}"
+
+    def compose_e2e(self, *args: str) -> str:
+        base = f"docker compose --project-name {E2E_PROJECT} --project-directory {self.root}"
+        files = f"--file {self.root}/docker-compose.yml --file {self.root}/docker-compose.test.yml"
+        return f"{base} {files} --env-file {self.root}/.env.example {' '.join(args)}"
+
+    def enable_e2e(self) -> None:
+        (self.root / "docker-compose.test.yml").write_text("services: {}\n", encoding="utf-8")
+        (self.root / "tests" / "e2e").mkdir(parents=True)
 
 
 @pytest.fixture
@@ -71,7 +79,7 @@ def sandbox(tmp_path: Path) -> Sandbox:
     fakebin.mkdir()
     for name in ("docker", "uv"):
         fake = fakebin / name
-        fake.write_text(FAKE.format(name=name), encoding="utf-8")
+        fake.write_text(FAKE.format(name=name, exit_var=f"{name.upper()}_EXIT"), encoding="utf-8")
         fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
     return Sandbox(tmp_path)
 
@@ -162,26 +170,57 @@ def test_docker_failure_exits_1(sandbox: Sandbox) -> None:
 
 
 @pytest.mark.spec("T-CFG-11")
-def test_e2e_not_available_before_t1_10_exits_1_without_calling_docker(sandbox: Sandbox) -> None:
+def test_e2e_without_override_or_tests_exits_1_without_calling_docker(sandbox: Sandbox) -> None:
     result = sandbox.run("e2e")
     assert result.returncode == 1
-    assert "arrive with T1.10" in result.stderr
+    assert "e2e is not available" in result.stderr
     assert sandbox.recorded() == []
 
 
+E2E_UP = ("up", "--detach", "--build", "--wait", "--wait-timeout", "180")
+E2E_DOWN = ("down", "--volumes", "--remove-orphans")
+
+
 @pytest.mark.spec("T-CFG-11")
-def test_e2e_with_override_and_tests_runs_them_against_the_compose(sandbox: Sandbox) -> None:
-    (sandbox.root / "docker-compose.test.yml").write_text("services: {}\n", encoding="utf-8")
-    (sandbox.root / "tests" / "e2e").mkdir(parents=True)
+def test_e2e_runs_in_its_own_project_then_removes_it(sandbox: Sandbox) -> None:
+    sandbox.enable_e2e()
+    (sandbox.root / ".env").unlink()  # the e2e stack needs no local .env
     result = sandbox.run("e2e")
     assert result.returncode == 0, result.stderr
     assert sandbox.recorded() == [
-        sandbox.compose("up", "--detach", "--build", e2e=True),
-        f"uv run pytest {sandbox.root}/tests/e2e",
-        sandbox.compose("down", "--volumes", e2e=True),
+        sandbox.compose_e2e(*E2E_UP),
+        f"uv run pytest -m e2e --no-cov -p no:cacheprovider {sandbox.root}/tests/e2e",
+        sandbox.compose_e2e(*E2E_DOWN),
     ]
+    assert all(f"--project-name {PROJECT} " not in call for call in sandbox.recorded())
+
+
+@pytest.mark.spec("T-CFG-11")
+def test_e2e_failing_tests_exit_1_and_still_remove_the_project(sandbox: Sandbox) -> None:
+    sandbox.enable_e2e()
+    result = sandbox.run("e2e", uv_exit=1)
+    assert result.returncode == 1
+    assert "e2e tests failed" in result.stderr
+    assert sandbox.recorded()[-1] == sandbox.compose_e2e(*E2E_DOWN)
+
+
+@pytest.mark.spec("T-CFG-11")
+def test_e2e_stack_that_does_not_start_exits_1_and_is_removed(sandbox: Sandbox) -> None:
+    sandbox.enable_e2e()
+    result = sandbox.run("e2e", fake_exit=1)
+    assert result.returncode == 1
+    assert "the e2e stack did not start" in result.stderr
+    assert sandbox.recorded() == [sandbox.compose_e2e(*E2E_UP), sandbox.compose_e2e(*E2E_DOWN)]
 
 
 @pytest.mark.spec("T-CFG-11")
 def test_script_is_executable() -> None:
     assert os.access(SCRIPT, os.X_OK)
+
+
+@pytest.mark.spec("T-CFG-11")
+def test_e2e_project_is_shared_by_the_script_and_the_e2e_harness() -> None:
+    from tests.e2e.conftest import PROJECT as HARNESS_PROJECT
+
+    assert HARNESS_PROJECT == E2E_PROJECT
+    assert f'readonly E2E_PROJECT="{E2E_PROJECT}"' in SCRIPT.read_text(encoding="utf-8")
