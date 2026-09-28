@@ -142,3 +142,54 @@ scriptables arrivent avec leurs consommateurs (collectors au Sprint 2, couche LL
 | `tests/e2e/test_migrate_failure.py` | T-RES-10, dans le projet jetable `radar-dev-e2e-migrate-failure`, supprimé à la fin |
 
 Les attentes sont bornées (60 s) ; aucun test e2e n'attend sans borne (VIII §49.3).
+
+## CI en six étapes
+
+`.github/workflows/ci.yml` (VIII §49.1, §49.2 ; `architecture.md` §5.1). Un job par étape, dans l'ordre ; chaque étape
+bloque les suivantes. Les étapes 1 à 5 tournent sur toute branche et toute PR, l'étape 6 sur `main` et dans les
+workflows planifiés. Aucun secret : `.env.example` et les secrets factices `FAKE-…` suffisent. Actions et images sont
+épinglées par sha ou par digest.
+
+| Job | Contenu | En local |
+|---|---|---|
+| `1 · Statique` | `uv lock --check` · ruff · `ruff format --check` · mypy strict · shellcheck · `npm ci` · eslint (`react/no-danger`) · `tsc --noEmit` · gitleaks 8.30.1 sur **tout l'historique** · `scripts/check-test-catalog.py` | `uv run ruff check` … ; `npm run lint`, `npm run typecheck` dans `frontend/` |
+| `2 · Configuration` | `validate-config` · `docker compose config` avec `.env.example` · `caddy validate` dans l'image `radar-caddy` (tmpfs sur `/data` et `/config`, variables de `.env.example`) · politique Compose T-SEC-08. L'étape échoue si `docker` est absent, pour que la politique ne soit jamais sautée | `uv run python -m app.cli validate-config` |
+| `3 · Audit` | pip-audit 2.10.1 sur `uv.lock` et `npm audit`, confrontés à `.audit-exceptions.yaml` par `scripts/check-audit.py` (action `.github/actions/audit`) | voir ci-dessous |
+| `4 · Tests` | pytest (réseau bloqué, couverture dans le résumé) · vitest | `scripts/radar-dev test` ; `npm test` dans `frontend/` |
+| `5 · Build` | `radar-backend:<sha>` et `radar-caddy:<sha>` (cache des couches) ; `id -u` = 10001 ; aucun `.env` dans l'historique ni dans le système de fichiers. La vérification « modèle dans l'image » arrive au Sprint 4 (E5) | — |
+| `6 · e2e` | images de l'étape 5 chargées **sans reconstruction** (seuls les doubles sont construits) ; projet `radar-dev-e2e`, ports 8080 et 8443, sans `.env` ; `uv run pytest -m e2e` ; logs de la stack publiés en cas d'échec, puis `down --volumes` dans tous les cas | `scripts/radar-dev e2e` |
+
+Durée visée des étapes 1 à 5 : moins de 10 minutes (VIII §49.3), avec les caches uv, npm et des couches Docker.
+
+### Audit et exceptions
+
+- Backend : toute vulnérabilité remontée par pip-audit bloque (pip-audit ne donne pas de sévérité). Frontend : `high`
+  et `critical` bloquent ; `moderate` et en dessous figurent dans le résumé du job, sans bloquer.
+- `.audit-exceptions.yaml` : une entrée par vulnérabilité acceptée, avec `id`, `package`, `justification` et
+  `expires` (au plus 90 jours). Une exception expirée, trop lointaine ou incomplète fait échouer l'étape (VIII §49.4).
+- Codes de `scripts/check-audit.py` : `0` OK, `1` constat bloquant ou exception invalide, `2` entrée illisible.
+
+### Rapport de traçabilité
+
+`scripts/check-test-catalog.py` (VIII §50.3, `architecture.md` §5.3) lit le catalogue de VIII §50.5 (motif sur la
+première colonne, niveau en troisième), le statut et les « Identifiants visés » de chaque `docs/sprints/sprint-NN.md`,
+les marqueurs `spec` (volets compris) sous `tests/` et les tags `[T-FE-nn]` des tests vitest.
+
+- Sprint **clos** : tout identifiant U, I, E ou F visé, et chaque volet, doit avoir un test ; sinon `MISSING … —
+  BLOCKING` et code `1`.
+- Sprint **en cours** : les manques sont listés `missing … — non-blocking (sprint in progress, P-15)`, code `0`.
+- Marqueur inconnu, mal formé ou identifiant M marqué : erreur, code `1`.
+- Entrée illisible (section §50.5 absente, identifiant mal formé ou en double, niveau inconnu, statut illisible) :
+  code `2`, message sur stderr.
+
+Lancement : `uv run python scripts/check-test-catalog.py`. Le rapport est aussi publié dans le résumé de l'étape 1.
+
+### Workflows planifiés
+
+`.github/workflows/scheduled.yml` (VIII §49.1), sur `main` :
+
+| Déclencheur | Cron (UTC) | Contenu |
+|---|---|---|
+| nightly | `17 2 * * *` | `ci.yml` complet, étapes 1 à 6, e2e compris |
+| hebdomadaire | `43 4 * * 1` (lundi) | étape 3 seule, sur les lockfiles de `main` |
+| mensuel | `29 3 1 * *` (le 1er) | `ci.yml` complet, images reconstruites sans cache et images de base téléchargées à nouveau, e2e compris |
