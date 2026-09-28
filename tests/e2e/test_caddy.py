@@ -41,16 +41,35 @@ def test_authenticated_responses_carry_the_headers_without_server(auth_client: h
     assert "server" not in response.headers
 
 
-def test_small_body_reaches_the_app(auth_client: httpx2.Client) -> None:
-    assert auth_client.post("/api/health", content=b"x" * 1024).status_code == 405  # /api/health has no POST
+ONE_MB = 1024 * 1024
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="request_body max_size only applies when a body is read; no app route reads one in Sprint 1 (PR gap)",
-)
-def test_body_over_1_mb_refused(auth_client: httpx2.Client) -> None:
-    assert auth_client.post("/api/health", content=b"x" * (1024 * 1024 + 1)).status_code == 413
+@pytest.mark.parametrize("size", [1024, ONE_MB])
+def test_body_up_to_1_mb_reaches_the_app(auth_client: httpx2.Client, size: int) -> None:
+    # Unchanged behaviour: the app answers (405, /api/health has no POST).
+    assert auth_client.post("/api/health", content=b"x" * size).status_code == 405
+
+
+def test_requests_without_body_are_not_affected(client: httpx2.Client, auth_client: httpx2.Client) -> None:
+    # GET carries no Content-Length: the size guard must not match (empty header guarded before int()).
+    get = auth_client.get("/api/health")
+    assert "content-length" not in get.request.headers
+    assert get.status_code == 200
+    assert client.get("/api/health").status_code == 401
+    assert auth_client.post("/api/health", content=b"").status_code == 405  # Content-Length: 0
+
+
+@pytest.mark.parametrize("authenticated", [False, True])
+@pytest.mark.parametrize("path", ["/api/health", "/"])
+def test_body_over_1_mb_refused_with_413_before_authentication(
+    client: httpx2.Client, auth_client: httpx2.Client, authenticated: bool, path: str
+) -> None:
+    response = (auth_client if authenticated else client).post(path, content=b"x" * (ONE_MB + 1))
+    assert response.status_code == 413
+    for name, value in SECURITY_HEADERS.items():
+        assert response.headers.get(name) == value, name
+    assert "server" not in response.headers
+    assert "www-authenticate" not in response.headers
 
 
 def test_index_html_never_cached_and_assets_immutable(auth_client: httpx2.Client) -> None:

@@ -93,7 +93,16 @@ touché : l'e2e peut tourner pendant que l'environnement de développement est d
   `FAKE-dashboard-password`, dont le hash bcrypt factice figure dans la surcharge ;
 - images taguées `e2e` (`radar-backend:e2e`, `radar-caddy:e2e`, `radar-fakes:e2e`), distinctes de celles de
   `radar-dev` ;
-- aucune option de durcissement relâchée ; les doubles sont durcis comme les services.
+- aucune option de durcissement relâchée ; les doubles sont durcis comme les services ;
+- réseau `egress` en `internal: true` : en e2e, le worker n'a aucune route vers Internet et ne joint que les doubles
+  (VIII §50.1 ; revue de #100).
+
+### Taille des corps
+
+Caddy refuse en **413** tout corps annoncé à plus de 1 Mo par `Content-Length`, avant l'authentification et avant
+l'app (bloc `@body_too_large` du Caddyfile, revue de #100). La réponse passe par `handle_errors` : elle porte les
+en-têtes de sécurité et aucun `Server`. `request_body { max_size 1MB }` reste en place pour les corps effectivement
+lus, `chunked` compris. Un corps de 1 Mo ou moins atteint l'app comme avant.
 
 ### Ports
 
@@ -127,9 +136,9 @@ scriptables arrivent avec leurs consommateurs (collectors au Sprint 2, couche LL
 | Fichier | Identifiants |
 |---|---|
 | `tests/e2e/test_auth.py` | T-SEC-03 |
-| `tests/e2e/test_caddy.py` | T-SEC-06 (le volet « corps > 1 Mo refusé » est en `xfail` strict : voir la PR de T1.10) |
+| `tests/e2e/test_caddy.py` | T-SEC-06, dont le 413 d'un corps annoncé à plus de 1 Mo, avec et sans identifiants |
 | `tests/e2e/test_read_only.py` | T-SEC-09 [base] : Python, uvicorn, Alembic, sans restic |
-| `tests/e2e/test_doubles.py` | doubles branchés (VIII §47.2) |
+| `tests/e2e/test_doubles.py` | doubles branchés (VIII §47.2) ; le worker ne joint aucune adresse externe (délai de 5 s par essai) mais joint toujours les doubles |
 | `tests/e2e/test_migrate_failure.py` | T-RES-10, dans le projet jetable `radar-dev-e2e-migrate-failure`, supprimé à la fin |
 
 Les attentes sont bornées (60 s) ; aucun test e2e n'attend sans borne (VIII §49.3).

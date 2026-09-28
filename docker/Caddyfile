@@ -37,6 +37,14 @@
 		import security_headers
 	}
 
+	# A body announced over 1 MB by Content-Length is refused with 413, before authentication and before the app (review
+	# of #100, T-SEC-06): request_body max_size only applies to a body that is read. It is kept below for bodies that
+	# are read, chunked ones included. The error goes through handle_errors, hence the security headers.
+	@body_too_large expression `{http.request.header.Content-Length} != "" && int({http.request.header.Content-Length}) > 1048576`
+	handle @body_too_large {
+		error "request body too large" 413
+	}
+
 	# Public: minimal status only.
 	handle /health {
 		reverse_proxy app:8000
