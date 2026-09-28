@@ -1,0 +1,75 @@
+# e2e override of docker-compose.yml (VIII §46.1, §49.2 stage 6, §50.4). Used only with the dedicated Compose project
+# radar-dev-e2e, never radar nor radar-dev: `scripts/radar-dev e2e`, and the CI from T1.11.
+#
+# - APP_ENV=test and HTTP_TEST_ALLOW_HOSTS (VIII decision 23), fake secrets FAKE-... only;
+# - the HTTP test doubles run as containers, hardened like the services;
+# - images tagged "e2e" and host ports 8080 and 8443, distinct from those of radar-dev (80 and 443);
+# - no hardening option is relaxed (architecture.md §4.1).
+#
+# The Caddy password hash below is a fake: bcrypt of "FAKE-dashboard-password" ("$$" escapes "$" for Compose).
+
+x-hardening: &hardening
+  user: "10001:10001"
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+services:
+  migrate:
+    image: radar-backend:e2e
+
+  app:
+    image: radar-backend:e2e
+    environment:
+      APP_ENV: test
+      DASHBOARD_URL: https://localhost
+      RADAR_VERSION: e2e
+
+  worker:
+    image: radar-backend:e2e
+    environment:
+      APP_ENV: test
+      DASHBOARD_URL: https://localhost
+      RADAR_VERSION: e2e
+      HTTP_CONTACT: https://github.com/qsjk/ai-tech-radar
+      HTTP_TEST_ALLOW_HOSTS: fake-gateway,fake-sources
+      GITHUB_TOKEN: FAKE-github-token-e2e
+      LLM_BASE_URL: http://fake-gateway:8000/v1
+      LLM_API_KEY: FAKE-llm-api-key-e2e
+      LLM_MODEL: fake-model
+      SMTP_PASSWORD: FAKE-smtp-password-e2e
+      TELEGRAM_BOT_TOKEN: FAKE-telegram-bot-token-e2e
+      RESTIC_PASSWORD: FAKE-restic-password-e2e
+    depends_on:
+      fake-gateway: { condition: service_started }
+      fake-sources: { condition: service_started }
+
+  caddy:
+    image: radar-caddy:e2e
+    ports: !override ["8080:80", "8443:443", "8443:443/udp"]
+    environment:
+      DASHBOARD_URL: https://localhost
+      DASHBOARD_USER: FAKE-e2e-user
+      DASHBOARD_PASSWORD_HASH: "$$2a$$14$$Zc1r4/GJp75O4ItW9Z4dX.MPMsY3wbg7K/RElGJ/dSAbxvCcjjvEu"
+      ACME_EMAIL: ""
+
+  fake-gateway:
+    <<: *hardening
+    image: radar-fakes:e2e
+    build: { context: tests/fakes, dockerfile: Dockerfile }
+    command: ["python", "/fakes/fake_gateway.py"]
+    networks: [edge, egress]
+    restart: "no"
+
+  fake-sources:
+    <<: *hardening
+    image: radar-fakes:e2e
+    build: { context: tests/fakes, dockerfile: Dockerfile }
+    command: ["python", "/fakes/fake_sources.py"]
+    networks: [edge, egress]
+    restart: "no"
+
+networks:
+  # No route to the Internet in e2e (VIII §50.1): the worker only reaches the doubles (review of #100).
+  egress: { internal: true }

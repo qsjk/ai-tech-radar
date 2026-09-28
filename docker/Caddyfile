@@ -8,6 +8,18 @@
 	# log_credentials is NOT enabled: Authorization and Cookie stay masked in the logs (VII §42.3).
 }
 
+# Security headers of every response, errors included (VII §37.3, T-SEC-06).
+(security_headers) {
+	header {
+		Content-Security-Policy "default-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		X-Content-Type-Options "nosniff"
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+}
+
 {$DASHBOARD_URL} {
 	encode zstd gzip
 
@@ -17,13 +29,20 @@
 	}
 	log_skip /health
 
-	header {
-		Content-Security-Policy "default-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
-		X-Frame-Options "DENY"
-		Referrer-Policy "same-origin"
-		X-Content-Type-Options "nosniff"
-		Strict-Transport-Security "max-age=31536000"
-		-Server
+	import security_headers
+
+	# Error responses (the 401 of basic_auth among them) do not go through the site's header directive: same headers
+	# here, and no Server header either (#98, #95). The error status is kept.
+	handle_errors {
+		import security_headers
+	}
+
+	# A body announced over 1 MB by Content-Length is refused with 413, before authentication and before the app (review
+	# of #100, T-SEC-06): request_body max_size only applies to a body that is read. It is kept below for bodies that
+	# are read, chunked ones included. The error goes through handle_errors, hence the security headers.
+	@body_too_large expression `{http.request.header.Content-Length} != "" && int({http.request.header.Content-Length}) > 1048576`
+	handle @body_too_large {
+		error "request body too large" 413
 	}
 
 	# Public: minimal status only.
@@ -46,11 +65,14 @@
 
 		handle {
 			root * /srv
-			@assets path /assets/*
-			header @assets Cache-Control "public, max-age=31536000, immutable"
-			header /index.html Cache-Control "no-cache"
-			try_files {path} /index.html
-			file_server
+			# route keeps this order: the index.html header is set after try_files has rewritten the SPA routes.
+			route {
+				try_files {path} /index.html
+				@assets path /assets/*
+				header @assets Cache-Control "public, max-age=31536000, immutable"
+				header /index.html Cache-Control "no-cache"
+				file_server
+			}
 		}
 	}
 }
