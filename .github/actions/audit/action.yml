@@ -1,0 +1,34 @@
+# Stage 3 of the CI (VIII §49.2, §49.4), shared by ci.yml and the weekly audit of scheduled.yml.
+# Backend: pip-audit 2.10.1 on the requirements exported from uv.lock (hashes required, pip disabled).
+# Frontend: npm audit on frontend/package-lock.json. Both reports are confronted with .audit-exceptions.yaml by
+# scripts/check-audit.py; the report goes to the job summary. uv and Node must already be set up.
+name: audit
+description: Dependency audit confronted with .audit-exceptions.yaml
+runs:
+  using: composite
+  steps:
+    - name: Backend audit (pip-audit 2.10.1 on uv.lock)
+      shell: bash
+      run: |
+        set -euo pipefail
+        uv export --frozen --format requirements-txt --no-emit-project --all-groups -o "$RUNNER_TEMP/requirements.txt"
+        uvx --from pip-audit==2.10.1 pip-audit -r "$RUNNER_TEMP/requirements.txt" --require-hashes --disable-pip \
+          --format json --output "$RUNNER_TEMP/pip-audit.json" || true
+        test -s "$RUNNER_TEMP/pip-audit.json"
+    - name: Frontend audit (npm audit on package-lock.json)
+      shell: bash
+      working-directory: frontend
+      run: |
+        set -euo pipefail
+        npm audit --package-lock-only --json > "$RUNNER_TEMP/npm-audit.json" || true
+        test -s "$RUNNER_TEMP/npm-audit.json"
+    - name: Confront with .audit-exceptions.yaml
+      shell: bash
+      run: |
+        set -euo pipefail
+        status=0
+        uv run python scripts/check-audit.py --pip-audit "$RUNNER_TEMP/pip-audit.json" \
+          --npm-audit "$RUNNER_TEMP/npm-audit.json" --exceptions .audit-exceptions.yaml > "$RUNNER_TEMP/audit.txt" || status=$?
+        cat "$RUNNER_TEMP/audit.txt"
+        { echo "### Audit (stage 3)"; echo '```'; cat "$RUNNER_TEMP/audit.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+        exit "$status"

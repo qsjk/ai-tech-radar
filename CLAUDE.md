@@ -76,10 +76,11 @@ la spec, sans inventer d'options.
 | Besoin | Commande | Référence |
 |---|---|---|
 | Lint et format (backend) | `ruff check` · `ruff format --check` · `mypy` (strict sur `app/`) | VIII §49.2, étape 1 |
-| Lint (frontend) | eslint · `tsc --noEmit` | VIII §49.2, étape 1 |
+| Lint (frontend) | `npm run lint` (eslint) · `npm run typecheck` (`tsc --noEmit`), dans `frontend/` | VIII §49.2, étape 1 |
 | Configuration | `python -m app.cli validate-config` | IV §16.5 · IX §56.4 |
-| Tests unitaires et d'intégration | `pytest` (réseau bloqué) · vitest | VIII §49.2, étape 4 · §50.1 |
-| Traçabilité du catalogue | `scripts/check-test-catalog.py` | VIII §50.3 |
+| Tests unitaires et d'intégration | `pytest` (réseau bloqué) · `npm test` (vitest, dans `frontend/`) | VIII §49.2, étape 4 · §50.1 |
+| Traçabilité du catalogue | `uv run python scripts/check-test-catalog.py` | VIII §50.3 |
+| Audit des dépendances | `scripts/check-audit.py` sur les rapports pip-audit et npm audit (étape 3) | VIII §49.4 |
 | Compose local | `scripts/radar-dev up` · `down` · `reset` · `ps` · `logs <service>` · `health` | VIII §46.1 · ADR-0021 |
 | Tests par `radar-dev` | `scripts/radar-dev test` · `scripts/radar-dev e2e` | VIII §46.1 |
 | Lint du script | `shellcheck scripts/radar-dev` | VIII §49.2, étape 1 |

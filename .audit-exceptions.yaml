@@ -1,0 +1,7 @@
+# Audit exceptions (VIII §49.4), read by stage 3 of the CI through scripts/check-audit.py.
+# One entry per vulnerability accepted temporarily, with:
+#   id: vulnerability identifier (GHSA-…, PYSEC-…, CVE-…)
+#   package: affected package name
+#   justification: why it is not exploitable in this product, or why no fix is available
+#   expires: YYYY-MM-DD, at most 90 days ahead; an expired entry fails the CI
+exceptions: []

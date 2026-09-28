@@ -1,22 +1,35 @@
-# Minimal Sprint 1 CI (T1.1): stages 1 (static) and 4 (tests) of VIII §49.2.
-# Completed up to the six stages by T1.11 (VIII §49, docs/architecture.md §5.1).
+# CI in six stages (VIII §49.1, §49.2; docs/architecture.md §5.1). Each stage blocks the next ones.
+# Stages 1 to 5 run on every branch and pull request; stage 6 (e2e) on main, and when called by scheduled.yml.
 # Job names keep the stage names of VIII §49.2 and docs/architecture.md §5.1, as displayed in the checks.
+# No secret: .env.example and FAKE-... values are enough (VIII §49.1). Actions and images pinned by sha or digest.
 name: ci
 
 on:
   push:
   pull_request:
+  workflow_call:
+    inputs:
+      e2e:
+        description: run stage 6 (e2e) whatever the branch
+        type: boolean
+        default: false
+      no_cache:
+        description: build the images without cache (monthly rebuild, VIII §49.1)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
   UV_VERSION: "0.12.18"
   PYTHON_VERSION: "3.12"
+  NODE_VERSION: "24.21.0"
+  GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
 
 jobs:
   static:
@@ -24,10 +37,20 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # secret scan on the whole history
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: ${{ env.UV_VERSION }}
           python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: uv lock --check
+        run: uv lock --check
       - name: Dependencies (uv.lock)
         run: uv sync --locked
       - name: ruff check
@@ -38,9 +61,28 @@ jobs:
         run: uv run mypy
       - name: shellcheck (scripts/radar-dev)
         run: uv run shellcheck scripts/radar-dev
+      - name: npm ci
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - name: eslint (react/no-danger)
+        working-directory: frontend
+        run: npm run lint
+      - name: tsc --noEmit
+        working-directory: frontend
+        run: npm run typecheck
+      - name: Secret scan (gitleaks 8.30.1, whole history)
+        run: >-
+          docker run --rm -v "$PWD:/repo" -w /repo
+          -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo
+          "$GITLEAKS_IMAGE" git /repo --redact --verbose --exit-code 1
+      - name: Catalogue traceability (scripts/check-test-catalog.py, VIII §50.3)
+        run: |
+          set -o pipefail
+          uv run python scripts/check-test-catalog.py | tee "$RUNNER_TEMP/catalogue.txt"
+          { echo "### Catalogue traceability"; echo '```'; cat "$RUNNER_TEMP/catalogue.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
-  tests:
-    name: "4 · Tests"
+  config:
+    name: "2 · Configuration"
     needs: static
     runs-on: ubuntu-24.04
     steps:
@@ -49,7 +91,191 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+      - name: Dependencies (uv.lock)
+        run: uv sync --locked
+      - name: validate-config on config/
+        run: uv run python -m app.cli validate-config
+      - name: Docker is required (the Compose policy must never be skipped)
+        run: docker version --format '{{.Server.Version}}' && docker compose version
+      - name: docker compose config with .env.example
+        run: docker compose --env-file .env.example config --quiet
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build radar-caddy for caddy validate
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/caddy.Dockerfile
+          tags: radar-caddy:ci
+          load: true
+          cache-from: type=gha,scope=caddy
+          cache-to: type=gha,scope=caddy,mode=max
+      - name: caddy validate on docker/Caddyfile, .env.example variables injected
+        run: |
+          set -euo pipefail
+          grep -E '^(DASHBOARD_URL|DASHBOARD_USER|DASHBOARD_PASSWORD_HASH|ACME_EMAIL)=' .env.example \
+            | sed "s/'//g" > "$RUNNER_TEMP/caddy.env"
+          docker run --rm --user 10001:10001 --read-only --cap-drop ALL --security-opt no-new-privileges:true \
+            --tmpfs /tmp --tmpfs /data:uid=10001,gid=10001 --tmpfs /config:uid=10001,gid=10001 \
+            --env-file "$RUNNER_TEMP/caddy.env" radar-caddy:ci \
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - name: Compose policy (T-SEC-08) on docker compose config
+        run: uv run pytest tests/unit/tooling/test_compose_policy.py --no-cov -p no:cacheprovider -rs
+
+  audit:
+    name: "3 · Audit"
+    needs: config
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Dependencies (uv.lock)
+        run: uv sync --locked
+      - uses: ./.github/actions/audit
+
+  tests:
+    name: "4 · Tests"
+    needs: audit
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - name: Dependencies (uv.lock)
         run: uv sync --locked
       - name: pytest (network blocked, VIII §50.1), app/ coverage in the job summary
         run: uv run pytest --cov-report=markdown-append:"$GITHUB_STEP_SUMMARY"
+      - name: npm ci
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - name: vitest
+        working-directory: frontend
+        run: npm test
+
+  build:
+    name: "5 · Build"
+    needs: tests
+    runs-on: ubuntu-24.04
+    env:
+      RUN_E2E: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || inputs.e2e == true }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build radar-backend:<sha>
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/backend.Dockerfile
+          tags: radar-backend:${{ github.sha }}
+          load: true
+          no-cache: ${{ inputs.no_cache == true }}
+          pull: ${{ inputs.no_cache == true }}
+          cache-from: ${{ inputs.no_cache != true && 'type=gha,scope=backend' || '' }}
+          cache-to: type=gha,scope=backend,mode=max
+      - name: Build radar-caddy:<sha>
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/caddy.Dockerfile
+          tags: radar-caddy:${{ github.sha }}
+          load: true
+          no-cache: ${{ inputs.no_cache == true }}
+          pull: ${{ inputs.no_cache == true }}
+          cache-from: ${{ inputs.no_cache != true && 'type=gha,scope=caddy' || '' }}
+          cache-to: type=gha,scope=caddy,mode=max
+      # Sprint 1 checks (docs/architecture.md §5.1); the "embedding model in the image" check comes in Sprint 4 (E5).
+      - name: Non-root user (id -u = 10001)
+        run: |
+          set -euo pipefail
+          for image in radar-backend radar-caddy; do
+            uid="$(docker run --rm --entrypoint id "$image:$GITHUB_SHA" -u)"
+            echo "$image: uid $uid"
+            test "$uid" = "10001"
+          done
+      - name: No .env in the layers (history and filesystem)
+        run: |
+          set -euo pipefail
+          for image in radar-backend radar-caddy; do
+            if docker history --no-trunc --format '{{.CreatedBy}}' "$image:$GITHUB_SHA" | grep -E '(^|[ /])\.env(\.|[[:space:]]|$)'; then
+              echo "$image: .env in the build history" >&2; exit 1
+            fi
+            container="$(docker create "$image:$GITHUB_SHA")"
+            if docker export "$container" | tar -t | grep -E '(^|/)\.env(\..+)?$'; then
+              docker rm "$container" >/dev/null; echo "$image: .env in the filesystem" >&2; exit 1
+            fi
+            docker rm "$container" >/dev/null
+            echo "$image: no .env"
+          done
+      - name: Save the images for stage 6
+        if: env.RUN_E2E == 'true'
+        run: docker save "radar-backend:$GITHUB_SHA" "radar-caddy:$GITHUB_SHA" | gzip -1 > "$RUNNER_TEMP/images.tar.gz"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: env.RUN_E2E == 'true'
+        with:
+          name: images-${{ github.sha }}
+          path: ${{ runner.temp }}/images.tar.gz
+          retention-days: 1
+          compression-level: 0
+
+  e2e:
+    name: "6 · e2e"
+    needs: build
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || inputs.e2e == true
+    runs-on: ubuntu-24.04
+    env:
+      # Same project and files as `scripts/radar-dev e2e` (T1.10): no .env, .env.example for interpolation.
+      COMPOSE: >-
+        docker compose --project-name radar-dev-e2e --file docker-compose.yml --file docker-compose.test.yml
+        --env-file .env.example
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+      - name: Dependencies (uv.lock)
+        run: uv sync --locked
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: images-${{ github.sha }}
+          path: ${{ runner.temp }}
+      - name: Load the images of stage 5 (no rebuild of backend nor Caddy)
+        run: |
+          set -euo pipefail
+          gunzip -c "$RUNNER_TEMP/images.tar.gz" | docker load
+          docker tag "radar-backend:$GITHUB_SHA" radar-backend:e2e
+          docker tag "radar-caddy:$GITHUB_SHA" radar-caddy:e2e
+      - name: Build the test doubles only
+        run: $COMPOSE build fake-gateway fake-sources
+      - name: Start the e2e stack
+        run: $COMPOSE up --detach --no-build --wait --wait-timeout 180
+      - name: e2e tests (pytest -m e2e)
+        run: uv run pytest -m e2e --no-cov -p no:cacheprovider tests/e2e
+      - name: Stack logs on failure
+        if: failure()
+        run: $COMPOSE logs --no-color --timestamps > "$RUNNER_TEMP/e2e-stack.log" 2>&1; cat "$RUNNER_TEMP/e2e-stack.log"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: e2e-stack-logs-${{ github.sha }}
+          path: ${{ runner.temp }}/e2e-stack.log
+          retention-days: 7
+      - name: Remove the e2e stack
+        if: always()
+        run: $COMPOSE down --volumes --remove-orphans
