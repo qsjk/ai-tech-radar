@@ -193,3 +193,83 @@ Lancement : `uv run python scripts/check-test-catalog.py`. Le rapport est aussi 
 | nightly | `17 2 * * *` | `ci.yml` complet, étapes 1 à 6, e2e compris |
 | hebdomadaire | `43 4 * * 1` (lundi) | étape 3 seule, sur les lockfiles de `main` |
 | mensuel | `29 3 1 * *` (le 1er) | `ci.yml` complet, images reconstruites sans cache et images de base téléchargées à nouveau, e2e compris |
+
+## Niveaux et emplacement
+
+Niveaux et exécution : VIII §50.2. Emplacement dans le dépôt :
+
+| Niveau | Emplacement | Lancement |
+|---|---|---|
+| U — unitaire | `tests/unit/<domaine>/` (`core`, `db`, `cli`, `ops`, `fakes`, `tooling`) | `uv run pytest` (ou `scripts/radar-dev test`) |
+| I — intégration | `tests/integration/<domaine>/` (`db`, `ops`, `app`, `cli`) : SQLite réel sur fichier en WAL, migré à `head`, jamais `:memory:` (VIII §50.1) ; sous-processus pour les comportements de niveau processus | `uv run pytest` |
+| E — e2e Compose | `tests/e2e/`, marqueur `e2e`, exclu par défaut | `scripts/radar-dev e2e` (voir « Tests e2e ») |
+| F — frontend | `frontend/src/**/*.test.tsx` (vitest) | `npm test` dans `frontend/` |
+| M — manuel sur VPS | procédure dans `docs/`, preuve dans `go-live.md` ou `measurements.md` (Sprint 11) | — |
+
+Aides partagées : `tests/fakes/` (doubles et horloges), `tests/integration/conftest.py` (base migrée `migrated_db`,
+dossier `config_dir` à réglages courts), `tests/integration/process.py` (sous-processus à logs JSON, attentes bornées).
+`tests/fixtures/` (réponses HTTP par type, sorties LLM enregistrées…) arrive avec ses consommateurs (VIII §50.2).
+
+## Doubles
+
+Liste, rôle et exigences : VIII §50.4. Au Sprint 1, seuls `fake_gateway.py` et `fake_sources.py` existent, vides mais
+branchés : voir « Tests e2e », section « Doubles ». Règle : un double s'ajoute avec son premier consommateur et se
+documente ici (IX §55.4). Aucun test n'appelle un vrai provider (VIII §49.3).
+
+## Blocage réseau
+
+Règle : VIII §50.1. Mise en œuvre : `pytest-socket`, par les options de `[tool.pytest.ini_options]` dans
+`pyproject.toml` (`--allow-hosts=127.0.0.1,::1 --allow-unix-socket`), pour toute la session ; vérifié par
+`tests/unit/tooling/test_network_blocking.py`.
+
+**Limite** (report de la revue de #89) : pytest-socket bloque `connect()` vers tout hôte autre que `127.0.0.1`, `::1`
+et les sockets Unix, mais **pas** la résolution DNS (`getaddrinfo`, par la libc) ni un `sendto` UDP sans `connect`.
+Un test qui passe un nom d'hôte externe peut donc déclencher une vraie requête DNS avant d'être bloqué.
+
+**Règle** : les tests n'utilisent que des adresses IP (par exemple `192.0.2.1`, adresse de documentation jamais
+routée) ou les doubles, **jamais un nom d'hôte externe**. En e2e, les conteneurs ne joignent que les doubles : réseau
+`egress` interne et `HTTP_TEST_ALLOW_HOSTS` (voir « Tests e2e »).
+
+## Horloge
+
+Règle : aucun `sleep` réel dans les tests unitaires et d'intégration ; le temps avance par la `Clock` (VIII §49.3,
+§50.1 ; `architecture.md` §5.2 ; ADR-0016).
+
+- Le code reçoit une `Clock` (`app/core/clock.py`) ; il ne lit jamais `datetime.now()` ni `time.time()`.
+- `tests/fakes/clock.py` :
+  - `ManualClock` : l'instant n'avance que par `advance()` ; son `sleep()` avance le temps sans attendre ;
+  - `SteppedClock` : son `sleep()` attend que le test avance le temps jusqu'à l'échéance, pour piloter une boucle
+    permanente tour par tour (heartbeat, watchdog).
+- Les tests de niveau processus et e2e peuvent attendre, mais toujours avec un délai borné (VIII §49.3).
+
+## Marqueurs `spec` et volets
+
+Règle : VIII §50.3 ; format des plans de sprint : `architecture.md` P-11.
+
+- Chaque test d'un identifiant du catalogue porte `@pytest.mark.spec("T-DB-07")`. Un test peut en porter plusieurs,
+  un identifiant peut être couvert par plusieurs tests. Côté vitest, un tag `[T-FE-01]` dans le nom du test.
+- Identifiant couvert en plusieurs sprints : le plan le vise avec ses volets (`T-DB-13 [pragma, check]`), le test
+  déclare le sien (`@pytest.mark.spec("T-DB-13:pragma")`). Un marqueur sans volet couvre l'identifiant entier.
+- `--strict-markers` refuse un marqueur non déclaré ; `scripts/check-test-catalog.py` refuse un identifiant inconnu,
+  mal formé ou de niveau M (voir « Rapport de traçabilité »).
+
+## Traiter un échec d'audit
+
+Politique : VIII §49.4 ; mise en œuvre : « Audit et exceptions » ci-dessus. Quand l'étape 3 échoue :
+
+1. Lire le rapport dans le résumé du job `3 · Audit` : paquet, identifiant, sévérité.
+2. **Corriger d'abord** : mettre à jour la dépendance, par un commit dédié (VIII §46.2).
+   - Backend : `uv add --bounds exact <paquet>==<version corrigée>` (ou `uv lock --upgrade-package <paquet>` pour une
+     dépendance indirecte), puis tests.
+   - Frontend : dans `frontend/`, `npm install --save-exact <paquet>@<version corrigée>` avec npm 11.19.0, puis
+     lint, `typecheck` et vitest.
+3. **Sinon, exception datée** dans `.audit-exceptions.yaml`, seulement si la vulnérabilité n'est pas exploitable dans
+   ce produit ou si aucun correctif n'existe : `id`, `package`, `justification`, `expires` à 90 jours au plus. Elle se
+   relit à son expiration : une exception expirée fait échouer l'étape.
+4. Rejouer l'étape en local : voir la commande de l'action `.github/actions/audit` (pip-audit par `uvx`,
+   `npm audit --package-lock-only --json`, puis `scripts/check-audit.py`).
+
+## Enregistrer des fixtures LLM
+
+À venir avec la couche LLM (Sprint 6) : `scripts/record-llm-fixtures.py`, lancé à la main contre un vrai gateway,
+jamais en CI (VIII §50.4).
