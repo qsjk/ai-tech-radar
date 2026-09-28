@@ -12,6 +12,8 @@ Il ne remplace ni la spec, ni le plan du sprint, ni les ADR.
 4. `docs/architecture.md` (processus, configuration, conteneurs, CI) et `docs/database.md` (modèle SQL, migrations)
    pour la conception.
 5. `docs/adr/README.md` pour les décisions acceptées et leurs raisons.
+6. Pour l'exploitation et les tests (IX §55.4, §55.5) : `docs/runbook.md` (que faire quand…, commandes `app.cli`),
+   `docs/testing.md` (tests, `radar-dev`, e2e, CI, audit) et `docs/deployment.md` (environnement de développement).
 
 ## Interdits
 
