@@ -1,8 +1,8 @@
 # Tests et environnement local
 
-Mode d'emploi des tests (IX §55.4). Ce document est créé au Sprint 1 avec sa première section ; les autres (niveaux,
-doubles, blocage réseau, horloge, marqueurs `spec`, e2e en local, échec d'audit, `record-llm-fixtures`) arrivent avec
-T1.12 et les sprints qui les concernent.
+Mode d'emploi des tests (IX §55.4) : environnement local par `radar-dev`, tests e2e, CI en six étapes, audit et
+traçabilité, niveaux et emplacement, doubles, blocage réseau, horloge, marqueurs `spec`, échec d'audit. Le document est
+complété à chaque nouveau double ou règle de test ; `record-llm-fixtures` arrive avec la couche LLM (Sprint 6).
 
 ## Environnement local par `radar-dev`
 
