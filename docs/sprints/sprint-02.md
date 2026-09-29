@@ -81,11 +81,15 @@ T2.12 (skill radar-dev V1) : indépendante, avant T2.11.
     `http`, `breaker`, `scheduler`, avec leurs défauts ;
   - reports de la revue de #93 (#19) : durées strictement positives ; schéma http ou https de `SourceSpec.url` ;
     défaut de `github_reserved_paths` sur la liste de IV §16.4 ; clé YAML non hachable en `ConfigError` ;
-  - `HTTP_TEST_ALLOW_HOSTS` renseignée avec `APP_ENV=production` : le worker refuse de démarrer (VIII décision 23).
+  - `HTTP_TEST_ALLOW_HOSTS` renseignée avec `APP_ENV=production` : le worker refuse de démarrer (VIII décision 23) ;
+  - `llm.delay.enrich_article` (15 min, V-A §27.8) déclarée dès ce sprint et validée, lue par le runner en T2.7 pour
+    T-COL-12 (décision du 2026-09-29) ; les autres clés `llm` restent au Sprint 6 ;
+  - ligne de T-CFG-04 du catalogue (VIII §50.5) complétée des sections `language`, `dedup`, `summary`, `breaker` et
+    `scheduler` de IV §16.6, dans la PR de cette tâche et avec ses tests (VIII §50.3 ; décision du 2026-09-29).
 - **Dépendances** : T2.2.
-- **Identifiants** : **T-CFG-04 [collectors, normalization, relevance, extraction, http]** ; **T-CFG-09** ;
-  **T-CFG-03** (voir l'écart relevé dans la PR du plan : son objet, `clustering.*` et `llm.delay.enrich_article`,
-  n'existe pas au Sprint 2).
+- **Identifiants** : **T-CFG-04 [collectors, normalization, language, dedup, relevance, summary, extraction, http,
+  breaker, scheduler]** (les dix sections du périmètre IV ; volet `llm` au Sprint 6) ; **T-CFG-09**. T-CFG-03
+  (`clustering.*`) est reporté au Sprint 4 (décision du 2026-09-29).
 - **Vérifiable** : chaque section refuse une valeur invalide avec fichier, clé et champ ; `pipeline.yaml` absent donne
   les défauts ; `0s` est refusé ; le worker refuse de démarrer sur `HTTP_TEST_ALLOW_HOSTS` en production.
 
@@ -134,7 +138,8 @@ T2.12 (skill radar-dev V1) : indépendante, avant T2.11.
 - **Fichiers** : `app/collectors/base.py`, `registry.py`, `rss.py` ; `app/pipeline/runner.py` : contrôle d'âge,
   dédup exacte en base et filet `ON CONFLICT`, liaisons `keyword` sur le texte final, purge immédiate du contenu des
   `filtered` (IV §14.3), checkpoint dans la transaction de la page, `CollectorRun` et invariant de compteurs, premier
-  run plafonné, `trends_since` à la première insertion `ready` (D11), un `enrich_article` par `ready` (E7) ;
+  run plafonné, `trends_since` à la première insertion `ready` (D11), un `enrich_article` par `ready` (E7), dont
+  `next_attempt_at` suit `llm.delay.enrich_article` (T2.3) ;
   `app/db/session.py` : docstring de `run_write` sur les unités sans effet hors base, et règle « jamais d'écriture par
   `read_session` » tenue dès ce premier usage métier (revue de #91, #19) ; validation `config` par le collector.
 - **Dépendances** : T2.5, T2.6.
@@ -162,11 +167,14 @@ T2.12 (skill radar-dev V1) : indépendante, avant T2.11.
 
 - **Objectif** : les cinq autres types (IV §15), sur le runner de T2.7.
 - **Fichiers** : `app/collectors/github.py`, `hackernews.py`, `reddit.py`, `youtube.py`, `webpage.py` ; fixtures
-  associées ; nettoyage du jeton GitHub dans les logs du client (VII §42.4).
+  associées ; nettoyage du jeton GitHub dans les logs du client (VII §42.4) ; `config/sources.yaml` de démonstration
+  complété aux six types, avec de vraies URL, une fois les six types enregistrés, pour que T-CFG-01 reste vert à chaque
+  tâche (décision du 2026-09-29).
 - **Dépendances** : T2.7, T2.8.
 - **Identifiants** : **T-COL-01** (types `github`, `hackernews`, `reddit`, `youtube`, `webpage`) ;
   **T-SEC-01 [github]**.
-- **Vérifiable** : chaque type collecte ses fixtures ; `webpage` avec gabarit cassé écarte ses items sans exception ;
+- **Vérifiable** : chaque type collecte ses fixtures ; `validate-config` accepte le `config/` de démonstration à six
+  types ; `webpage` avec gabarit cassé écarte ses items sans exception ;
   le jeton factice `FAKE-…` n'apparaît dans aucun log.
 
 ### T2.10 — Pilotage : disjoncteur, scheduler, credentials, boot et arrêt du worker
@@ -177,22 +185,24 @@ T2.12 (skill radar-dev V1) : indépendante, avant T2.11.
   `max_instances=1`, sauts de run sans `CollectorRun`, rattrapage des misfires) ; disjoncteur par source ;
   vérification des credentials par type ; `app/worker.py` : scheduler en dernière étape du boot, tâche permanente
   supervisée, arrêt sur SIGTERM sans nouveau run et attente des runs en cours ≤ 20 s ; comportement défini et testé
-  d'un SIGTERM reçu pendant les vérifications de boot (revue de #94, #19).
+  d'un SIGTERM reçu pendant les vérifications de boot (revue de #94, #19) ; `app/ops/health.py` : composant `sources` de
+  `/api/health` (`scheduled`, `breaker_open`, `missing_credentials`, VII §40.3), qui expose l'état « credentials
+  manquants » de T-CFG-06 (décision du 2026-09-29).
 - **Dépendances** : T2.9.
 - **Identifiants** : **T-COL-09**, **T-COL-10** ; **T-CFG-06** ; **T-OPS-16** ; **T-OPS-08 [scheduler]** ;
   **T-OPS-10 [scheduler]** ; **T-OPS-11 [runs]**.
 - **Vérifiable** : les ticks du scheduler s'appellent directement avec la `Clock` (VIII §50.1) ; une source sans
-  credentials n'est pas planifiée et le worker démarre ; un scheduler en exception arrête le worker ; SIGTERM laisse
+  credentials n'est pas planifiée, le worker démarre et `/api/health` la cite dans `sources.missing_credentials` ; un scheduler en exception arrête le worker ; SIGTERM laisse
   finir les runs en cours dans le délai.
 
 ### T2.11 — e2e du sprint et démonstration
 
 - **Objectif** : l'acceptation de VIII §47.2 sur la stack Compose, par `radar-dev e2e` et l'étape 6 de la CI.
-- **Fichiers** : `docker-compose.test.yml` (faux serveur scripté, `HTTP_TEST_ALLOW_HOSTS`, configuration des sources
-  pointée vers le faux serveur), `tests/e2e/…`.
+- **Fichiers** : `docker-compose.test.yml` (faux serveur scripté, `HTTP_TEST_ALLOW_HOSTS`, copie du `config/` de
+  démonstration pointée vers le faux serveur, montée dans la stack e2e ; décision du 2026-09-29), `tests/e2e/…`.
 - **Dépendances** : T2.10.
 - **Identifiants** : **T-RES-04** ; **T-SEC-09 [lingua]**.
-- **Vérifiable** : les six types collectés contre le faux serveur ; rejeu sans doublon ; invariant de compteurs sur
+- **Vérifiable** : avec la copie du `config/` de démonstration, les six types collectés contre le faux serveur ; rejeu sans doublon ; invariant de compteurs sur
   chaque run ; une source en 5xx ou en timeout n'arrête pas les autres, son disjoncteur s'ouvre et elle reprend ;
   lingua fonctionne sur racine en lecture seule.
 
@@ -202,15 +212,17 @@ T2.12 (skill radar-dev V1) : indépendante, avant T2.11.
 - **Fichiers** : `.claude/skills/radar-dev/SKILL.md` ; `docs/testing.md` si un renvoi manque.
 - **Dépendances** : aucune dans le sprint ; à livrer avant T2.11, qui s'en sert pour diagnostiquer l'e2e.
 - **Identifiants** : aucun.
-- **Vérifiable** : les critères de #63. Les sous-commandes que la revue de #102 propose d'évaluer (`restart`,
-  `alembic current`, `caddy hash-password`, `logs -f`) relèvent de l'écart signalé dans la PR du plan.
+- **Vérifiable** : les critères de #63 ; le skill ne contient aucun code. Les sous-commandes candidates (`restart`,
+  `alembic current`, `caddy hash-password`, `logs -f`, revue de #102) sont déplacées dans #107, au Sprint 3, à trancher
+  avec #64 (décision du 2026-09-29).
 
 ### T2.13 — Documentation du sprint
 
 - **Objectif** : les documents que IX §55.4 prévoit au Sprint 2, et ceux que le sprint modifie.
 - **Fichiers** : `docs/collectors.md` (types, configuration, ajout d'une source ou d'un collector, Partie I §2.4) ;
   `docs/testing.md` (fixtures, faux serveur) ; `docs/runbook.md` (procédure de rafraîchissement des images de base
-  épinglées par digest, revue de #101, #19 ; toute nouvelle commande) ; `docs/architecture.md` et `database.md` si le
+  épinglées par digest, revue de #101, #19 ; une mise à jour automatique des digests sera évaluée avant `deploy.sh`,
+  report sur #37, décision du 2026-09-29 ; toute nouvelle commande) ; `docs/architecture.md` et `database.md` si le
   code s'écarte de la proposition.
 - **Dépendances** : T2.11.
 - **Identifiants** : aucun.
@@ -222,7 +234,7 @@ T2.12 (skill radar-dev V1) : indépendante, avant T2.11.
 |---|---|---|---|
 | T2.1 | Dette du Sprint 1 | — | (T-OPS-02, cas ajouté) |
 | T2.2 | Migrations du sprint (liste critique) | T2.1 | T-DB-12 [article-status] · T-DB-08 |
-| T2.3 | Configuration | T2.2 | T-CFG-03 · T-CFG-04 [collectors, normalization, relevance, extraction, http] · T-CFG-09 |
+| T2.3 | Configuration | T2.2 | T-CFG-04 [dix sections du périmètre IV] · T-CFG-09 |
 | T2.4 | Faux serveur de sources | T2.3 | — |
 | T2.5 | `HttpClient` partagé (liste critique) | T2.4 | T-HTTP-01 à 09 |
 | T2.6 | Étages purs | T2.3 | T-PIPE-01 à 05, 08, 09, 11, 12 · T-COL-13 |
@@ -274,8 +286,7 @@ T-COL-11         T2.7
 T-COL-12         T2.7
 T-COL-13         T2.6
 T-CFG-02 [collectors]                    T2.7   (volet schemas : Sprint 1)
-T-CFG-03         T2.3   (écart relevé dans la PR du plan)
-T-CFG-04 [collectors, normalization, relevance, extraction, http]   T2.3   (autres sections : leur sprint ; complet au Sprint 11)
+T-CFG-04 [collectors, normalization, language, dedup, relevance, summary, extraction, http, breaker, scheduler]   T2.3   (llm : Sprint 6 ; autres sections : leur sprint ; complet au Sprint 11)
 T-CFG-05         T1.6   (couvert au Sprint 1, relisté par VIII §47.2)
 T-CFG-06         T2.10
 T-CFG-09         T2.3
@@ -316,6 +327,10 @@ Identifiants que ce sprint ne couvre qu'en partie (VIII §50.3), avec le sprint 
 |---|---|---|---|
 | T-PIPE-10 | reload | topics `user` activés en base, rechargement à la création d'un topic | 8 |
 | T-DB-12 | aijob-status · alertlog-status | `AIJob.status` · `AlertLog.status` | 5 · 10 |
+| T-CFG-04 | llm, puis les sections des sprints suivants | `llm.*` (sauf `llm.delay.enrich_article`, T2.3), `embeddings`, `clustering`… | 6, puis leur sprint ; complet au Sprint 11 |
+
+T-CFG-03 (`clustering.embedding_wait + clustering.tick < llm.delay.enrich_article`) n'est pas visé : il est reporté au
+Sprint 4, avec `clustering` (décision du 2026-09-29, VIII §47.2).
 
 ## Dette reportée sur #19
 
@@ -327,7 +342,7 @@ Identifiants que ce sprint ne couvre qu'en partie (VIII §50.3), avec le sprint 
 | revue de #93 | défaut de `github_reserved_paths` | T2.3 |
 | revue de #93 | clé YAML non hachable en `ConfigError` | T2.3 |
 | revue de #101 | concurrence de la CI (`cancel-in-progress` sur `main`) | T2.1 |
-| revue de #101 | rafraîchissement des images de base épinglées par digest | T2.13 (procédure documentée dans le runbook) ; un outillage automatique reste une option, à décider |
+| revue de #101 | rafraîchissement des images de base épinglées par digest | T2.13 (procédure documentée dans le runbook) ; mise à jour automatique des digests évaluée avant `deploy.sh`, report sur #37 (décision du 2026-09-29) |
 | revue de #101 | doubles qui ignorent SIGTERM | T2.4 |
 | revue de #104 (#91) | docstring de `run_write`, règle d'écriture de `read_session` | T2.7 (premier usage métier) |
 | revue de #104 (#95) | heartbeat sans fuseau dans `HealthChecker` | T2.1 |
@@ -335,9 +350,9 @@ Identifiants que ce sprint ne couvre qu'en partie (VIII §50.3), avec le sprint 
 
 ## Critères d'acceptation
 
-Ceux de **VIII §47.2, Sprint 2**, sans ajout :
+Ceux de **VIII §47.2, Sprint 2**, sans ajout (premier critère reformulé par la décision du 2026-09-29) :
 
-- avec le `config/` de démonstration, le worker collecte les six types contre le faux serveur ;
+- avec une copie du `config/` de démonstration pointée vers le faux serveur, le worker collecte les six types ;
 - un rejeu complet ne crée aucun doublon ;
 - l'invariant de compteurs tient sur chaque run ;
 - une source en panne n'arrête pas les autres ;
