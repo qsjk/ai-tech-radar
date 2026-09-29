@@ -206,11 +206,11 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - **Doubles** : faux serveur de sources avec les fixtures par type.
 
 **Acceptation** :
-- avec le `config/` de démonstration, le worker collecte les six types contre le faux serveur ;
+- avec une copie du `config/` de démonstration pointée vers le faux serveur, le worker collecte les six types ;
 - un rejeu complet ne crée aucun doublon ;
 - l'invariant de compteurs tient sur chaque run ;
 - une source en panne n'arrête pas les autres.
-- **Tests** : T-PIPE-* · T-HTTP-* · T-COL-* · T-CFG-02 à 06, 09 (T-CFG-04 sur les sections de `pipeline.yaml` du périmètre IV ; chaque sprint suivant ajoute et teste ses sections) · T-DB-12 (`Article.status`) · T-OPS-16 · T-RES-04.
+- **Tests** : T-PIPE-* · T-HTTP-* · T-COL-* · T-CFG-02, 04 à 06, 09 (T-CFG-04 sur les sections de `pipeline.yaml` du périmètre IV ; chaque sprint suivant ajoute et teste ses sections) · T-DB-12 (`Article.status`) · T-OPS-16 · T-RES-04.
 
 #### Sprint 3 — Feed
 
@@ -234,7 +234,7 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - un Event multi-sources forme une seule story ;
 - moteur d'embeddings arrêté, le clustering continue par URL et entités ;
 - premières mesures M1 et M2 au profil réaliste, consignées **à titre indicatif** dans `docs/measurements.md`.
-- **Tests** : T-EMB-* · T-CLU-* (sauf la partie `resolve_event` de T-CLU-08 et T-CLU-12) · T-API-01 (Feed) · T-SEC-10.
+- **Tests** : T-EMB-* · T-CLU-* (sauf la partie `resolve_event` de T-CLU-08 et T-CLU-12) · T-API-01 (Feed) · T-SEC-10 · T-CFG-03 (reporté du Sprint 2, décision du 2026-09-29).
 
 #### Sprint 5 — File de jobs
 
