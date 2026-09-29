@@ -377,13 +377,11 @@ vient du commentaire `[revue]` de la PR.
 | Concurrence de la CI : `cancel-in-progress` à limiter hors de `main` avant `deploy.sh` | revue de #101 | #19 |
 | Rafraîchissement des images de base épinglées par digest (VII §43.2) à outiller ou documenter | revue de #101 | #19 |
 | Doubles de test qui ignorent SIGTERM (≈ 10 s à l'arrêt de l'e2e) | revue de #101 | #19 |
-| Critères restants du poste rootless : `radar-dev up` puis `radar-dev e2e` réussis, écarts consignés dans `testing.md` | #61 | #61 (tous deux faits en T1.10 et T1.12, clôture au propriétaire) |
+| Docstring de `run_write` (unités sans effet hors base, puisque rejouées) et règle « jamais d'écriture par `read_session` », au premier usage métier | revue de #91 | #19 (décision du 2026-09-29) |
+| Heartbeat dont `at` serait sans fuseau : erreur 500 au lieu de `down` dans `HealthChecker` (cas théorique) | revue de #95 | #19 (décision du 2026-09-29) |
+| SIGTERM reçu pendant les vérifications de boot du worker, avant l'installation des gestionnaires (sans conséquence au Sprint 1) | revue de #94 | #19 (décision du 2026-09-29) |
 
-**Remarques de revue sans issue**, notées « sans bloquer » : docstring de `run_write` sur les unités sans effet hors
-base et discipline « jamais d'écriture par `read_session` » (#91, au premier usage métier, Sprint 2) ; heartbeat
-dont `at` serait sans fuseau, qui donnerait une erreur 500 au lieu de `down` dans `HealthChecker` (#95, cas
-théorique) ; SIGTERM reçu pendant les vérifications de boot du worker (#94, sans conséquence). **À reporter sur #19 par
-le propriétaire** s'il les retient comme dette (VIII §51.2).
+Aucune dette ne reste hors issue (VIII §51.2).
 
 **Tests en quarantaine** : aucun. Le seul `xfail` du sprint (corps > 1 Mo, #100) a été retiré avant fusion.
 
@@ -404,7 +402,8 @@ le propriétaire** s'il les retient comme dette (VIII §51.2).
 
 ### Écarts du Docker rootless
 
-Constatés sur le poste (#61, ADR-0021) et consignés dans `docs/testing.md`, section « Écarts du mode rootless » :
+Le prérequis du poste en Docker rootless, **#61**, est fermé depuis le 2026-09-28 : ses critères ont été cochés à la
+fusion de #100 (`radar-dev up` puis `radar-dev e2e` réussis). Écarts constatés sur le poste (ADR-0021) et consignés dans `docs/testing.md`, section « Écarts du mode rootless » :
 ports 80 et 443 par `net.ipv4.ip_unprivileged_port_start=80` ; avertissements `No io.max` (contrôleur d'E/S non
 délégué, délégation mémoire à prévoir pour `mem_limit` au Sprint 4) ; réseau en espace utilisateur ; sous-uid des
 volumes ; AppArmor sans blocage. Aucun écart n'a empêché la démonstration ni l'e2e local : `radar-dev e2e` est vert sur
