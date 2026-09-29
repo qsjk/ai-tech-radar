@@ -411,4 +411,14 @@ le poste (36 tests) comme en CI, où le démon est root.
 
 ### Sessions consommées
 
-*À remplir par le propriétaire.*
+| Sprint | Prévu (planning §5) | Consommé |
+|---|---|---|
+| S0 | 5–7 | ≈ 4 |
+| S1 | 6–9 | ≈ 11 |
+| **S0 + S1** | **13,5** au scénario central (6 + 7,5) | **≈ 15** |
+
+- **Méthode** : reconstitution depuis l'historique Git de `main`. Un bloc de travail de 2 à 3 h vaut une session ; au-delà
+  de 3 h sans commit, une nouvelle session commence.
+- **Vitesse** : 15 sessions consommées pour 13,5 prévues, soit un facteur de **1,11**, appliqué aux sprints restants
+  dans le recalage de `planning.md` §8.
+- Décision du propriétaire du 2026-09-29 (#18), appliquée par #120.
