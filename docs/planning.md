@@ -75,20 +75,20 @@ Relevées à la lecture de `SPEC.md` V0.4. Le planning les applique ; elles sont
 
 | Étape | Objectif | Identifiants (≈) | Effort (sessions) | Gate / mesures | Fin prévue (§8) |
 |---|---|---|---|---|---|
-| Pré-S0 | Préalables et outillage | — | 1–2 | — | 02/10/2026 |
-| **S0** | Cadrage, sans code | — | 5–7 | **G1 faisabilité** | 20/10/2026 |
-| S1 | Foundation | 28 | 6–9 | **G2 socle** | 11/11/2026 |
-| S2 | Collecte & pipeline déterministe | ≈ 41 | 6–9 | — | 03/12/2026 |
-| S3 | Feed | 10 | 3–5 | — | 14/12/2026 |
-| S4 | Embeddings & clustering | ≈ 24 | 5–7 | **G3 cœur sans LLM** · M1, M2 indicatives | 15/01/2027 |
-| S5 | File de jobs | 9 | 2–3 | — | 22/01/2027 |
-| S6 | LLM Gateway & LLMClient | 19 | 3–4 | ADR-0020 | 01/02/2027 |
-| S7 | Intelligence & purge | ≈ 14 + compléments | 4–5 | — | 14/02/2027 |
-| S8 | Trends & émergence | 15 + compléments | 4–6 | M5 indicative | 01/03/2027 |
-| S9 | Dashboard | ≈ 8 | 4–5 | — | 14/03/2027 |
-| S10 | Alertes | 17 | 3–5 | **G4 fonctionnel complet** | 26/03/2027 |
-| S11 | Production | ≈ 25 + 3 M | 6–8 | **G5 pré-prod** | 15/04/2027 |
-| Pré-prod | ≥ 14 jours sur le VPS cible | M1–M10 | 5–7 | **G6 go-live** | ≥ 02/05/2027 |
+| Pré-S0 | Préalables et outillage | — | 1–2 | — | réalisé, 22/09/2026 |
+| **S0** | Cadrage, sans code | — | 5–7 | **G1 faisabilité** | réalisé, 23/09/2026 |
+| S1 | Foundation | 28 | 6–9 | **G2 socle** | réalisé, 29/09/2026 |
+| S2 | Collecte & pipeline déterministe | ≈ 41 | 6–9 | — | 05/10/2026 |
+| S3 | Feed | 10 | 3–5 | — | 08/10/2026 |
+| S4 | Embeddings & clustering | ≈ 24 | 5–7 | **G3 cœur sans LLM** · M1, M2 indicatives | 13/10/2026 |
+| S5 | File de jobs | 9 | 2–3 | — | 15/10/2026 |
+| S6 | LLM Gateway & LLMClient | 19 | 3–4 | ADR-0020 | 18/10/2026 |
+| S7 | Intelligence & purge | ≈ 14 + compléments | 4–5 | — | 21/10/2026 |
+| S8 | Trends & émergence | 15 + compléments | 4–6 | M5 indicative | 25/10/2026 |
+| S9 | Dashboard | ≈ 8 | 4–5 | — | 29/10/2026 |
+| S10 | Alertes | 17 | 3–5 | **G4 fonctionnel complet** | 01/11/2026 |
+| S11 | Production | ≈ 25 + 3 M | 6–8 | **G5 pré-prod** | 07/11/2026 |
+| Pré-prod | ≥ 14 jours sur le VPS cible | M1–M10 | 5–7 | **G6 go-live** | ≥ 24/11/2026 |
 | **Total** | | 211 (208 auto · 3 M) | **57–82** | | |
 
 ---
