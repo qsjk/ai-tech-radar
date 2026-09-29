@@ -1,6 +1,6 @@
 # Sprint 1 — Foundation
 
-Statut : en cours
+Statut : clos
 
 > Plan rédigé le 2026-09-23 (T0.8, #11), à valider par le propriétaire avant toute implémentation (IX §57.8,
 > VIII §47.1). Contenu et acceptation : **VIII §47.2, Sprint 1** ; ce plan les découpe en tâches et ne les redéfinit pas.
@@ -302,5 +302,114 @@ Volets restants, avec le sprint pressenti, **à titre indicatif** (chaque plan d
 
 ## Bilan
 
-*À remplir en fin de sprint : écarts à la spec, dette tracée, identifiants couverts, résultat des vérifications de
-l'image Caddy, écarts du Docker rootless constatés.*
+Rédigé le 2026-09-29 (#103), à partir des PR #89 à #95 et #97 à #102 et de leurs commentaires `[revue]`. La DoD de
+sprint est celle de VIII §51.2 ; ce bilan en couvre les rubriques. La démonstration sur un Compose neuf et la clôture de
+la gate G2 (#18) restent au propriétaire.
+
+### Tâches livrées
+
+| Tâche | Issue | PR | Fusion |
+|---|---|---|---|
+| T1.1 — Squelette, blocage réseau, CI minimale | #78 | #89 | oui |
+| T1.2 — Noyau : `Clock`, `UTCDateTime`, configuration, logs | #79 | #90 | oui |
+| T1.3 — Accès base, sessions, prérequis | #80 | #91 | oui |
+| T1.4 — Migrations, `system_state`, révision | #81 | #92 | oui |
+| T1.5 — `config/` et `validate-config` | #82 | #93 | oui |
+| T1.6 — Worker minimal | #83 | #94 | oui |
+| T1.7 — Santé | #84 | #95 | oui |
+| Règle de langue (hors plan, décision du 2026-09-27) | #96 | #97 | oui |
+| T1.8 — Images et Compose | #85 | #98 | oui |
+| T1.9 — `radar-dev` V0 | #62 | #99 | oui |
+| T1.10 — Surcharge e2e, doubles, tests e2e | #86 | #100 | oui |
+| T1.11 — CI en six étapes, traçabilité | #87 | #101 | oui |
+| T1.12 — Documentation d'exploitation, modèles GitHub | #88 | #102 | oui |
+
+### Critères d'acceptation (VIII §47.2)
+
+| Critère | Preuve |
+|---|---|
+| `docker compose up -d` : `migrate` se termine, puis `app`, `worker` et `caddy` sont `running` | démonstrations de #98 (projet dédié), #99 et #102 (`radar-dev up`, `ps`) ; étape 6 de la CI |
+| `/health` = `{"status":"ok"}` sans identifiants ; `/api/health` authentifié | démonstrations de #98 et #102 ; T-OPS-01, T-SEC-03 (e2e) |
+| WAL actif ; `app` et `worker` refusent un schéma qui n'est pas à `head` | T-DB-03 ; `wal_bytes` de `app.cli health` ; T-DB-02 (intégration, processus et e2e T-RES-10) |
+| CI verte, e2e compris | `main` au sha `d2a3ec8` : six étapes vertes, run 36466437860, `36 passed` à l'étape 6 |
+| Identifiants visés couverts | ci-dessous |
+
+### Identifiants couverts
+
+Les 31 identifiants visés (section « Identifiants visés »), volets compris, ont au moins un test marqué. Sortie de
+`uv run python scripts/check-test-catalog.py` une fois ce plan passé à `Statut : clos`, donc **bloquant** (P-15) :
+
+```
+sprint-01 (clos): 31 identifier(s) targeted, 0 without test
+result: OK
+```
+
+Les volets restants de T-CFG-02, T-DB-13, T-OPS-08 à T-OPS-11, T-SEC-01 et T-SEC-09 sont listés dans « Volets
+reportés » ; chacun sera déclaré par le plan du sprint qui livre son objet (VIII §50.3).
+
+### Écarts à la spec et leur sort
+
+Aucun écart n'est laissé non tranché (VIII §51.3). Le détail de chaque écart est dans la description de sa PR ; le sort
+vient du commentaire `[revue]` de la PR.
+
+| Source | Écarts | Sort |
+|---|---|---|
+| #89 (T1.1) | aucun relevé | deux points reportés : limite DNS de pytest-socket → #88, **corrigé** en T1.12 (#102) ; exclusion de `tests/` et `docs/` du contexte de build → #85, vérifié en T1.8 (#98) |
+| #90 (T1.2) | 1 T-CFG-07 sans le port · 2 refus de démarrer · 3 choix des secrets · 4 clés sensibles · 5 variables en attente · 6 naïf lu en base | 1 et 4 **corrigés** (décision du 2026-09-24 : ligne T-CFG-07 de VIII §50.5 complétée ; clés reconnues par suffixe, normalisées par `str()`) ; 3, 5 et 6 **acceptés** ; 2 reporté → #83, #84, **corrigé** en T1.6 et T1.7 ; plugin `pydantic.mypy` → #83, **corrigé** |
+| #91 (T1.3) | 1 trois tentatives · 2 `busy_timeout` en paramètre · 3 unité de `db_locked` · 4 option `radar_read_only` | **acceptés** (décision du 2026-09-24) |
+| #92 (T1.4) | 1 `JSONText` · 2 convention de nommage · 3 emplacement de `migrations/` · 4 logs de `migrate` · 5 migration irréversible · 6 refus de démarrer | 1, 2 et 5 **acceptés** (décision du 2026-09-26), `database.md` §1.1 et §3.19 **corrigés** dans la PR ; 3 et 4 reportés → #85, **corrigés** en T1.8 ; 6 → #83, #84, **corrigé** ; test non hermétique → #83, **corrigé** ; sept lignes `JSON` restantes de `database.md` §3 → **#19** |
+| #93 (T1.5) | 1 `--config-dir` · 2 réglages `ops` · 3 champs inconnus refusés · 4 messages de Pydantic · 5 `service: worker` · 6 durées entières | **acceptés** (décision du 2026-09-27) ; quatre points de validation (durée minimale, schéma d'`url`, défaut de `github_reserved_paths`, clé YAML non hachable) → **#19** |
+| #94 (T1.6) | 11 écarts, dont codes de sortie `2` et `1` et SIGINT traité comme SIGTERM | **acceptés** (décision du 2026-09-27) ; deux corrections demandées puis **corrigées** dans la PR : minimum de 10 s pour `ops.watchdog_timeout`, heartbeat qui survit à `DatabaseLockedError` |
+| #95 (T1.7) | 15 écarts, dont code 3 d'uvicorn sur refus, fin par SIGTERM, `/api/health` toujours 200, `app.cli health` en `1` si `down` | **acceptés** (décision du 2026-09-27) ; en-tête `server: uvicorn` → #86, **corrigé** en T1.10 (retiré par Caddy, testé) |
+| #97 (#96) | extraits de code indicatifs de `docs/` restés en français | **accepté** en revue |
+| #98 (T1.8) | 12 écarts, dont digest Python de T0.3, projet hors du venv, `email "{$ACME_EMAIL}"`, `skip_install_trust`, T-SEC-08 dans un module de test | **acceptés** (décision du 2026-09-27) ; 401 sans en-têtes de sécurité → #86, **corrigé** en T1.10 (`handle_errors`) ; `caddy validate` et politique T-SEC-08 en CI → #87, **corrigés** en T1.11 |
+| #99 (T1.9) | 7 écarts | 1, 3 à 7 **acceptés** (décision du 2026-09-27) ; 2 (e2e et volumes de développement) **tranché** le 2026-09-27 : projet dédié `radar-dev-e2e`, **corrigé** en T1.10 |
+| #100 (T1.10) | 10 écarts | 2 à 10 **acceptés** ; 1 (corps > 1 Mo) **corrigé** selon la décision du 2026-09-28 (413 avant l'authentification) ; sortie réseau en e2e **corrigée** (`egress` interne) |
+| #101 (T1.11) | 13 écarts, dont TypeScript 6.0.3, eslint 9, audit backend plus strict, reconstruction mensuelle | **acceptés** en revue ; trois points de suivi → **#19** |
+| #102 (T1.12) | 5 écarts | 1, 2, 3 et 5 **acceptés** ; 4 (introduction de `testing.md`) **corrigé** dans la PR de ce bilan |
+
+### Dette tracée
+
+| Point | Source | Issue |
+|---|---|---|
+| Sept lignes `JSON` de `database.md` §3 à aligner sur `JSONText` avant la migration de `Source` | revue de #92 | #19 |
+| Validation de `config/` : durée minimale strictement positive, `poll_interval` par type, schéma d'`url`, défaut de `github_reserved_paths`, clé YAML non hachable en `ConfigError` | revue de #93 | #19 |
+| Concurrence de la CI : `cancel-in-progress` à limiter hors de `main` avant `deploy.sh` | revue de #101 | #19 |
+| Rafraîchissement des images de base épinglées par digest (VII §43.2) à outiller ou documenter | revue de #101 | #19 |
+| Doubles de test qui ignorent SIGTERM (≈ 10 s à l'arrêt de l'e2e) | revue de #101 | #19 |
+| Critères restants du poste rootless : `radar-dev up` puis `radar-dev e2e` réussis, écarts consignés dans `testing.md` | #61 | #61 (tous deux faits en T1.10 et T1.12, clôture au propriétaire) |
+
+**Remarques de revue sans issue**, notées « sans bloquer » : docstring de `run_write` sur les unités sans effet hors
+base et discipline « jamais d'écriture par `read_session` » (#91, au premier usage métier, Sprint 2) ; heartbeat
+dont `at` serait sans fuseau, qui donnerait une erreur 500 au lieu de `down` dans `HealthChecker` (#95, cas
+théorique) ; SIGTERM reçu pendant les vérifications de boot du worker (#94, sans conséquence). **À reporter sur #19 par
+le propriétaire** s'il les retient comme dette (VIII §51.2).
+
+**Tests en quarantaine** : aucun. Le seul `xfail` du sprint (corps > 1 Mo, #100) a été retiré avant fusion.
+
+### Vérifications des images
+
+- **Étape 5 de la CI**, sur `main` au sha `d2a3ec8` (run 36466437860) : `radar-backend: uid 10001`,
+  `radar-caddy: uid 10001`, `radar-backend: no .env`, `radar-caddy: no .env` (historique et système de fichiers
+  exporté). La vérification du modèle d'embeddings arrive au Sprint 4 (E5).
+- **Image Caddy** (`architecture.md` §4.3), vérifiée en T1.8 (#98) sur `caddy:2.11.4` épinglée par digest :
+  - aucun `VOLUME` sur `/data` ni `/config` (`Config.Volumes = null`) : le `chown` du build est conservé ; `/data`,
+    `/config` et leurs sous-dossiers `caddy` sont à 10001 en mode 0750 ;
+  - l'image officielle pose la capacité de fichier `cap_net_bind_service=ep` sur `/usr/bin/caddy`, qui empêche
+    l'exécution sous `cap_drop: ALL` (`operation not permitted`) ; **parade** : binaire recopié sans ses attributs
+    étendus, et le build échoue si `getcap` en trouve encore ; 80 et 443 sont liés sans capacité ;
+  - Caddy n'écrit que dans `/data`, `/config` et `/tmp` ; la seule tentative hors de ces dossiers (installation du CA
+    local dans le magasin du système) est supprimée par `skip_install_trust`.
+- **Racine en lecture seule** : `docker diff` vide pour `app`, `worker` et `caddy` (T1.8) ; T-SEC-09 [base] en e2e.
+
+### Écarts du Docker rootless
+
+Constatés sur le poste (#61, ADR-0021) et consignés dans `docs/testing.md`, section « Écarts du mode rootless » :
+ports 80 et 443 par `net.ipv4.ip_unprivileged_port_start=80` ; avertissements `No io.max` (contrôleur d'E/S non
+délégué, délégation mémoire à prévoir pour `mem_limit` au Sprint 4) ; réseau en espace utilisateur ; sous-uid des
+volumes ; AppArmor sans blocage. Aucun écart n'a empêché la démonstration ni l'e2e local : `radar-dev e2e` est vert sur
+le poste (36 tests) comme en CI, où le démon est root.
+
+### Sessions consommées
+
+*À remplir par le propriétaire.*
