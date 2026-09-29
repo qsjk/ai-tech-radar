@@ -65,7 +65,10 @@ T2.12 (skill radar-dev V1) : indépendante, avant T2.11.
   `Topic`, `Entity`, `ArticleTopic`, `ArticleEntity`, `AIJob` (table complète, index compris, E7) ; `docs/database.md`
   si un détail change.
 - **Dépendances** : T2.1 (types JSON alignés).
-- **Identifiants** : **T-DB-12 [article-status]** ; T-DB-08 (chaque migration du sprint a son `downgrade` testé).
+- **Liste critique** (migrations, planning §0) : relecture ligne à ligne et accord explicite du propriétaire avant la
+  fusion.
+- **Identifiants** : **T-DB-12 [article-status]** ; **T-DB-08** (couvert au Sprint 1, étendu à chaque migration du
+  sprint, `downgrade` testé).
 - **Vérifiable** : `upgrade head` depuis une base vide et `downgrade` testés ; `compare_metadata` sans différence ;
   une valeur hors `CHECK` de `Article.status` est refusée.
 
@@ -91,7 +94,7 @@ T2.12 (skill radar-dev V1) : indépendante, avant T2.11.
 - **Objectif** : le double qui remplace toute source réelle, avant le premier collector (VIII §50.4).
 - **Fichiers** : `tests/fakes/fake_sources.py` (comportements scriptables : fixtures par type, 304, 401, 403 avec et
   sans `x-ratelimit-remaining: 0`, 404, 410, 429, 5xx, timeout, redirections dont vers une adresse privée, corps trop
-  gros, `Content-Type` non HTML, pagination interruptible, `robots.txt`) ; `tests/fixtures/sources/<type>/` ;
+  gros, `Content-Type` non HTML, pagination interruptible, `robots.txt`) ; `tests/fixtures/http/<type>/` (VIII §50.4) ;
   arrêt propre sur SIGTERM des doubles (revue de #101, #19) ; `docs/testing.md` (section « Doubles »).
 - **Dépendances** : T2.3.
 - **Identifiants** : aucun en propre ; il sert T-HTTP-*, T-COL-* et T-RES-04.
@@ -106,6 +109,8 @@ T2.12 (skill radar-dev V1) : indépendante, avant T2.11.
   seulement en `APP_ENV=test`, `robots.txt` avec cache de 24 h, User-Agent (IV §17.3), nettoyage des secrets de niveau
   2 (VII §42.4).
 - **Dépendances** : T2.4.
+- **Liste critique** (anti-SSRF, planning §0) : relecture ligne à ligne et accord explicite du propriétaire avant la
+  fusion.
 - **Identifiants** : **T-HTTP-01** à **T-HTTP-09**.
 - **Vérifiable** : tous les T-HTTP-* verts contre le faux serveur, sans `sleep` réel ; la garde refuse `127.0.0.1` sans
   la liste de test (T-HTTP-08). La résolution DNS des tests passe par un résolveur injecté, jamais par un nom d'hôte
@@ -133,10 +138,13 @@ T2.12 (skill radar-dev V1) : indépendante, avant T2.11.
   `app/db/session.py` : docstring de `run_write` sur les unités sans effet hors base, et règle « jamais d'écriture par
   `read_session` » tenue dès ce premier usage métier (revue de #91, #19) ; validation `config` par le collector.
 - **Dépendances** : T2.5, T2.6.
-- **Identifiants** : **T-PIPE-06**, **T-PIPE-07**, **T-PIPE-10** ; **T-COL-01** (type `rss`) ; **T-COL-02** à
+- **Identifiants** : **T-PIPE-06**, **T-PIPE-07**, **T-PIPE-10 [keyword]** (liaisons sur le texte final des `ready` ;
+  volet `reload`, topics `user` et rechargement à la création d'un topic : Sprint 8, avec `create_topic`) ;
+  **T-COL-01** (type `rss`) ; **T-COL-02** à
   **T-COL-07** ; **T-COL-11**, **T-COL-12** ; **T-CFG-02 [collectors]** (type inconnu, `poll_interval` sous le
   minimum du type, `config` refusée par le collector).
-- **Vérifiable** : un run `rss` contre le faux serveur écrit ses articles ; un rejeu ne crée aucun doublon ;
+- **Vérifiable** : un run `rss` contre le faux serveur écrit ses articles ; `trends_since` est posé une seule fois, à la
+  première insertion `ready` (D11, `database.md` §3.19) ; un rejeu ne crée aucun doublon ;
   l'invariant de compteurs tient ; une interruption en milieu de pagination reprend sans doublon ; le double HTTP
   échoue s'il est appelé pendant une `write_session`.
 
@@ -213,12 +221,12 @@ T2.12 (skill radar-dev V1) : indépendante, avant T2.11.
 | # | Tâche | Dépend de | Identifiants |
 |---|---|---|---|
 | T2.1 | Dette du Sprint 1 | — | (T-OPS-02, cas ajouté) |
-| T2.2 | Migrations du sprint | T2.1 | T-DB-12 [article-status] |
+| T2.2 | Migrations du sprint (liste critique) | T2.1 | T-DB-12 [article-status] · T-DB-08 |
 | T2.3 | Configuration | T2.2 | T-CFG-03 · T-CFG-04 [collectors, normalization, relevance, extraction, http] · T-CFG-09 |
 | T2.4 | Faux serveur de sources | T2.3 | — |
-| T2.5 | `HttpClient` partagé | T2.4 | T-HTTP-01 à 09 |
+| T2.5 | `HttpClient` partagé (liste critique) | T2.4 | T-HTTP-01 à 09 |
 | T2.6 | Étages purs | T2.3 | T-PIPE-01 à 05, 08, 09, 11, 12 · T-COL-13 |
-| T2.7 | Registre, runner, `rss` | T2.5, T2.6 | T-PIPE-06, 07, 10 · T-COL-01 (`rss`), 02 à 07, 11, 12 · T-CFG-02 [collectors] |
+| T2.7 | Registre, runner, `rss` | T2.5, T2.6 | T-PIPE-06, 07, 10 [keyword] · T-COL-01 (`rss`), 02 à 07, 11, 12 · T-CFG-02 [collectors] |
 | T2.8 | Extraction ciblée | T2.7 | T-COL-08 |
 | T2.9 | Cinq autres collectors | T2.7, T2.8 | T-COL-01 (autres types) · T-SEC-01 [github] |
 | T2.10 | Pilotage, boot et arrêt | T2.9 | T-COL-09, 10 · T-CFG-06 · T-OPS-16 · T-OPS-08 [scheduler] · T-OPS-10 [scheduler] · T-OPS-11 [runs] |
@@ -240,7 +248,7 @@ T-PIPE-06        T2.7
 T-PIPE-07        T2.7
 T-PIPE-08        T2.6
 T-PIPE-09        T2.6
-T-PIPE-10        T2.7
+T-PIPE-10 [keyword]                      T2.7   (volet reload : Sprint 8, avec create_topic)
 T-PIPE-11        T2.6
 T-PIPE-12        T2.6
 T-HTTP-01        T2.5
@@ -271,6 +279,7 @@ T-CFG-04 [collectors, normalization, relevance, extraction, http]   T2.3   (autr
 T-CFG-05         T1.6   (couvert au Sprint 1, relisté par VIII §47.2)
 T-CFG-06         T2.10
 T-CFG-09         T2.3
+T-DB-08          T2.2   (couvert au Sprint 1, étendu aux migrations du sprint)
 T-DB-12 [article-status]                 T2.2   (AIJob.status : Sprint 5 ; AlertLog.status : Sprint 10)
 T-OPS-16         T2.10
 T-RES-04         T2.11
@@ -298,6 +307,15 @@ Les autres volets de `sprint-01.md` restent aux sprints pressentis : T-DB-13 [re
 boucle-ai, job-failing] (4, 5, 11), T-OPS-09 [modeles] (4), T-OPS-10 [modeles-matrice, requalification-jobs,
 requalification-alertes] (4, 5, 10), T-OPS-11 [jobs] (5), T-SEC-01 [llm, alertes, restic] (6, 10, 11), T-SEC-09
 [onnxruntime, restic] (4, 11).
+
+## Volets de ce sprint à compléter plus tard
+
+Identifiants que ce sprint ne couvre qu'en partie (VIII §50.3), avec le sprint pressenti, **à titre indicatif** :
+
+| Identifiant | Volet restant | Objet | Sprint pressenti |
+|---|---|---|---|
+| T-PIPE-10 | reload | topics `user` activés en base, rechargement à la création d'un topic | 8 |
+| T-DB-12 | aijob-status · alertlog-status | `AIJob.status` · `AlertLog.status` | 5 · 10 |
 
 ## Dette reportée sur #19
 
