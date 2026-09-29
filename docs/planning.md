@@ -162,8 +162,8 @@ Les entrées et sorties **communes** (§0) s'appliquent à chaque sprint ; les f
 |---|---|
 | **Objectif** | Ingestion complète des six types de sources, sans LLM ni clustering |
 | **Livrables 🤖** | `HttpClient` partagé (limiteur, retry, `Retry-After`, quota, anti-SSRF, `robots.txt`, User-Agent) · interface `Collector` et registre · collectors `rss`, `github`, `hackernews`, `reddit`, `youtube`, `webpage` · runner (normalisation → relevance → extraction → liaisons keyword → résumé de repli, transaction par page, checkpoint, `CollectorRun`) · disjoncteur par source, scheduler · `trends_since` (D11) · table `AIJob` et création des `enrich_article` (E7) · validation des trois fichiers `config/` · faux serveur de sources · `collectors.md` · **skill `radar-dev` V1** (#63, E22) |
-| **Tests** | T-PIPE-* · T-HTTP-* · T-COL-* · T-CFG-02 à 06, 09 · T-DB-12 (`Article.status`) · T-OPS-16 · T-RES-04 |
-| **Sortie spécifique** | six types collectés contre le faux serveur avec le `config/` de démo · rejeu sans doublon · invariant de compteurs · source en panne isolée |
+| **Tests** | T-PIPE-* · T-HTTP-* · T-COL-* · T-CFG-02, 04 à 06, 09 · T-DB-12 (`Article.status`) · T-OPS-16 · T-RES-04 |
+| **Sortie spécifique** | six types collectés contre le faux serveur, avec une copie du `config/` de démo pointée vers lui · rejeu sans doublon · invariant de compteurs · source en panne isolée |
 | **Dépendances** | D4 → D5 → D6 · D7 amorcé (liaisons keyword, `entities.yaml`) |
 | **Effort** | 6–9 (sprint le plus volumineux en tests) |
 | **Risques** | volume de fixtures par type · coexistence anti-SSRF et hôtes de test (VIII décision 23) · RAM de lingua · gabarits `webpage` fragiles |
@@ -187,7 +187,7 @@ Les entrées et sorties **communes** (§0) s'appliquent à chaque sprint ; les f
 |---|---|
 | **Objectif** | Regrouper les articles en Events et rendre la hotness visible, toujours sans LLM |
 | **Livrables 🤖** | file d'embeddings dérivée, calcul hors event-loop, matrice de fenêtre · Event clustering V-B §28 complet (hors `resolve_event`) · stories = Events + articles isolés · `cluster-calibrate`, `recount-events` · jeu synthétique, script de charge, projet `radar-load` · vérification CI « modèle dans l'image » activée (E5) · `measurements.md` |
-| **Tests** | T-EMB-* · T-CLU-* (sauf volet `resolve_event` de T-CLU-08, et T-CLU-12) · T-API-01 (Feed) · T-SEC-10 |
+| **Tests** | T-EMB-* · T-CLU-* (sauf volet `resolve_event` de T-CLU-08, et T-CLU-12) · T-API-01 (Feed) · T-SEC-10 · T-CFG-03 (reporté du S2, décision du 2026-09-29) |
 | **Sortie spécifique** | un Event multi-sources = une story · moteur d'embeddings arrêté → clustering par URL et entités · **M1 et M2 indicatives** consignées |
 | **Dépendances** | D7 → D8 |
 | **Effort** | 5–7 |
