@@ -346,28 +346,43 @@ Menée en parallèle des sprints. « Au plus tard » = sinon l'étape citée ne 
 
 ## 8. Projection calendaire
 
-**Hypothèses** : démarrage lundi 28/09/2026 · 3 sessions par semaine · effort × 1,25 (tampon d'interruptions) · 2 semaines de creux fin décembre · pré-prod ≈ 2,5 semaines (14 jours + revue).
+**Recalage de fin de S1** (décision du propriétaire du 2026-09-29, #18 ; appliqué par #120).
+
+**Hypothèses** :
+- démarrage du reste le **mardi 29/09/2026** (fin réalisée du S1) ;
+- effort de chaque sprint restant, pris dans sa fiche (§5), **× 1,11** (vitesse réelle de S0 et S1 : 15 sessions
+  consommées pour 13,5 prévues, voir `sprints/sprint-01.md`) **× 1,25** (tampon d'interruptions), soit × 1,3875 ;
+- cadence : **12 sessions par semaine** pour les colonnes optimiste (effort bas) et centrale (effort milieu), **8** pour
+  la colonne prudente (effort haut) ; une session vaut donc 7/12 de jour (7/8 en prudent) ;
+- creux de Noël du **21/12 au 03/01** : 14 jours ajoutés à l'étape qui le traverse, une seule fois, et seulement s'il
+  est traversé ;
+- pré-prod : **2,5 semaines** (17,5 jours) après la fin du S11, jusqu'à la décision de go-live ;
+- dates : cumul des durées depuis le 29/09/2026 à 0 h ; la date affichée est le jour où le cumul est atteint.
 
 | Étape | Optimiste (effort bas) | **Central** | Prudent (effort haut) |
 |---|---|---|---|
-| Pré-S0 | 01/10/2026 | **02/10/2026** | 04/10/2026 |
-| S0 | 16/10/2026 | **20/10/2026** | 24/10/2026 |
-| S1 | 02/11/2026 | **11/11/2026** | 19/11/2026 |
-| S2 | 19/11/2026 | **03/12/2026** | 16/12/2026 |
-| S3 | 28/11/2026 | **14/12/2026** | 13/01/2027 |
-| S4 | 13/12/2026 | **15/01/2027** | 03/02/2027 |
-| S5 | 02/01/2027 | **22/01/2027** | 11/02/2027 |
-| S6 | 10/01/2027 | **01/02/2027** | 23/02/2027 |
-| S7 | 22/01/2027 | **14/02/2027** | 10/03/2027 |
-| S8 | 03/02/2027 | **01/03/2027** | 27/03/2027 |
-| S9 | 14/02/2027 | **14/03/2027** | 11/04/2027 |
-| S10 | 23/02/2027 | **26/03/2027** | 25/04/2027 |
-| S11 | 13/03/2027 | **15/04/2027** | 19/05/2027 |
-| **Décision go-live** | ≈ 30/03/2027 | **≈ 02/05/2027** | ≈ 05/06/2027 |
+| Pré-S0 | 22/09/2026 (réalisé) | **22/09/2026 (réalisé)** | 22/09/2026 (réalisé) |
+| S0 | 23/09/2026 (réalisé) | **23/09/2026 (réalisé)** | 23/09/2026 (réalisé) |
+| S1 | 29/09/2026 (réalisé) | **29/09/2026 (réalisé)** | 29/09/2026 (réalisé) |
+| S2 | 03/10/2026 | **05/10/2026** | 09/10/2026 |
+| S3 | 06/10/2026 | **08/10/2026** | 15/10/2026 |
+| S4 | 10/10/2026 | **13/10/2026** | 24/10/2026 |
+| S5 | 11/10/2026 | **15/10/2026** | 28/10/2026 |
+| S6 | 14/10/2026 | **18/10/2026** | 01/11/2026 |
+| S7 | 17/10/2026 | **21/10/2026** | 08/11/2026 |
+| S8 | 20/10/2026 | **25/10/2026** | 15/11/2026 |
+| S9 | 24/10/2026 | **29/10/2026** | 21/11/2026 |
+| S10 | 26/10/2026 | **01/11/2026** | 27/11/2026 |
+| S11 | 31/10/2026 | **07/11/2026** | 07/12/2026 |
+| **Décision go-live** | ≈ 17/11/2026 | **≈ 24/11/2026** | ≈ 07/01/2027 (creux de Noël traversé par la pré-prod) |
 
 - Les échéances des milestones GitHub portent le scénario **central**.
-- **Recalage obligatoire** à la fin de S1 et de S4 : vitesse réelle (sessions consommées / estimées) appliquée aux sprints restants.
-- Seuil d'alerte : un sprint qui dépasse son effort haut de plus de 30 % déclenche une revue du planning (découpage, périmètre, ou report V2 par ADR).
+- **Recalage obligatoire** à la fin de S1 (fait ci-dessus) et de S4 : vitesse réelle (sessions consommées / estimées)
+  appliquée aux sprints restants.
+- **Garde-fou de cadence** : si la cadence tombe sous 8 sessions par semaine pendant deux semaines, recalage.
+- Seuil d'alerte : un sprint qui dépasse son effort haut de plus de 30 % déclenche une revue du planning (découpage,
+  périmètre, ou report V2 par ADR).
+- **Décision (2026-09-29)** : chiffres, vitesse, cadence et garde-fou fixés par le propriétaire en fin de S1 (#18).
 
 ---
 
