@@ -174,4 +174,4 @@ def test_unreadable_input_exits_2(tmp_path: Path, catalogue: str, sprints: dict[
 def test_repository_catalogue_and_sprint_01() -> None:
     result = run(ROOT)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "sprint-01 (en cours)" in result.stdout
+    assert "sprint-01 (clos): 31 identifier(s) targeted, 0 without test" in result.stdout
