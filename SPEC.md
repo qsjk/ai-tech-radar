@@ -3,7 +3,7 @@
 Plateforme personnelle de veille technologique qui collecte, dédoublonne, regroupe et hiérarchise l'actualité technique,
 et reste pleinement utilisable quand l'intelligence AI est indisponible.
 
-**Version** : V0.4, impacts reportés le 2026-09-23 (Sprint 0 : T0.1, puis réconciliation de la Partie VII par T0.2b, #67) ; réorientation vers l'API Claude le 2026-09-30 (ADR-0022, #122). Le contenu vit dans `docs/spec/`, une partie par fichier ; ce fichier n'en est que l'index.
+**Version** : V0.4, impacts reportés le 2026-09-23 (Sprint 0 : T0.1, puis réconciliation de la Partie VII par T0.2b, #67) ; réorientation vers l'API Claude le 2026-09-30 (ADR-0022, #122) ; Partie X en squelette le 2026-09-30 (#126). Le contenu vit dans `docs/spec/`, une partie par fichier ; ce fichier n'en est que l'index.
 
 ## Sommaire
 
@@ -19,6 +19,7 @@ et reste pleinement utilisable quand l'intelligence AI est indisponible.
 | [VII — Ops & Production](docs/spec/partie-VII.md) | §35 Stack · §36 Infra / VPS · §37 HTTPS & Caddy · §38 Backup & restore · §39 Monitoring · §40 Health endpoint · §41 Monitoring externe · §42 Logging · §43 Sécurité · §44 Stockage · §45 Coût & performance cibles |
 | [VIII — Livraison](docs/spec/partie-VIII.md) | §46 Repository · §47 Sprints · §48 Ordre d'implémentation · §49 CI/CD · §50 Tests · §51 Definition of Done · §52 Critères de mise en production |
 | [IX — Gouvernance & démarrage](docs/spec/partie-IX.md) | §53 Décisions verrouillées · §54 ADR · §55 Documentation · §56 Runbook · §57 Première mission — Sprint 0 |
+| [X — Capacités Claude](docs/spec/partie-X.md) *(squelette, capacités candidates)* | §58 Cadre · §59 Assistant de veille · §60 `radar-mcp` · §61 Synthèse hebdomadaire · §62 PDF et images · §63 Sécurité LLM · §64 Évaluations · §65 Outillage Claude Code · §66 Recherche approfondie · §67 RAG sur l'historique |
 
 ## Règles de lecture
 
