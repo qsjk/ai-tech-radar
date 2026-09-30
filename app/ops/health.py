@@ -157,13 +157,18 @@ class HealthChecker:
         return HealthReport(status, detail)
 
     def _worker(self, heartbeat: dict[str, Any] | None, checked_at: datetime) -> dict[str, Any]:
-        """`worker` component: heartbeat age computed now; missing, unreadable or stale → `down`."""
+        """`worker` component: heartbeat age computed now; missing, unreadable or stale → `down`.
+
+        A timestamp without timezone is unreadable: it cannot be compared with the aware `Clock`.
+        """
         if heartbeat is None:
             return {"status": Status.DOWN.value, "heartbeat_at": None, "heartbeat_age_s": None}
         try:
             at = datetime.fromisoformat(heartbeat["at"])
             started_at = datetime.fromisoformat(heartbeat["started_at"])
             version = str(heartbeat["version"])
+            if at.tzinfo is None or started_at.tzinfo is None:
+                raise ValueError("heartbeat timestamp without timezone")
         except (KeyError, TypeError, ValueError):
             log.warning("health.heartbeat.unreadable")
             return {"status": Status.DOWN.value, "heartbeat_at": None, "heartbeat_age_s": None}
