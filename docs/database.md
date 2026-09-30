@@ -233,12 +233,12 @@ Une ligne par source de `config/sources.yaml`, upsertée au démarrage du worker
 | `name` | `TEXT` | `String` | non | — | | libellé affiché | III §11.1 | 2 |
 | `type` | `TEXT` | `String` | non | — | validé par le code (registre des collectors) | V1 : `rss · github · hackernews · reddit · youtube · webpage` ; ne change jamais pour une `key` | III §11.1, décision 7 · IV §16.2 | 2 |
 | `url` | `TEXT` | `String` | non | — | | URL lisible de la source (page de liste pour `webpage`) | III §11.1 · IV §16.2 | 2 |
-| `config` | `TEXT` (JSON) | `JSON` | oui | — | Pydantic : `config_model` du collector | paramètres propres au collector — `NULL` pour un type de collector sans paramètres : `config` n'est obligatoire que selon le type (IV §16.2). | III §11.1 · IV §16.2 | 2 |
+| `config` | `TEXT` (JSON) | `JSONText` | oui | — | Pydantic : `config_model` du collector | paramètres propres au collector — `NULL` pour un type de collector sans paramètres : `config` n'est obligatoire que selon le type (IV §16.2). | III §11.1 · IV §16.2 | 2 |
 | `enabled` | `INTEGER` | `Boolean` | non | — | | source planifiée ou non | III §11.1 | 2 |
 | `poll_interval` | `INTEGER` | `Integer` | non | — | | intervalle en secondes, ≥ minimum du type | III §11.1 · IV §16.2 | 2 |
 | `relevance` | `TEXT` | `String` | non | — | `CHECK IN ('filter','always')` | `always` : article toujours `ready` | III §11.1 · IV §20.3 | 2 |
 | `extract` | `TEXT` | `String` | non | — | `CHECK IN ('auto','never')` | extraction ciblée autorisée ou non | III §11.1 · IV §17.1 | 2 |
-| `checkpoint` | `TEXT` (JSON) | `JSON` | oui | — | Pydantic | curseur, `ETag`, `Last-Modified`, date de dernière collecte ; vide à l'insertion ; jamais écrasé par le YAML — `NULL` tant qu'aucune page n'a été collectée (checkpoint vide à l'insertion, IV §16.2). | III §11.1 · IV §14.3, §16.1 | 2 |
+| `checkpoint` | `TEXT` (JSON) | `JSONText` | oui | — | Pydantic | curseur, `ETag`, `Last-Modified`, date de dernière collecte ; vide à l'insertion ; jamais écrasé par le YAML — `NULL` tant qu'aucune page n'a été collectée (checkpoint vide à l'insertion, IV §16.2). | III §11.1 · IV §14.3, §16.1 | 2 |
 | `last_success_at` | `TEXT` | `UTCDateTime` | oui | — | | fin du dernier run `success` ou `partial` — `NULL` tant qu'aucun run n'a réussi. | III §11.1 · IV §14.4 | 2 |
 | `last_error` | `TEXT` | `Text` | oui | — | | dernier run `partial` ou `failed`, après nettoyage des secrets par valeur — `NULL` tant qu'aucun run n'a échoué. | III §11.1 · IV §14.4 · VII §42.4 | 2 |
 | `last_http_status` | `INTEGER` | `Integer` | oui | — | | état de santé — `NULL` tant qu'aucune réponse HTTP n'a été reçue. | III §11.1 | 2 |
@@ -302,7 +302,7 @@ inséré ; un item malformé non plus (III décision 6).
 | `summary` | `TEXT` | `Text` | **non** (E12) | — | | aperçu : repli à l'insertion (`ready` **et** `filtered`), puis synthèse LLM | III §11.2 · IV §14.5 | 2 |
 | `summary_origin` | `TEXT` | `String` | non | — | `CHECK IN ('fallback','llm')` | | III §11.2 | 2 |
 | `summary_lang` | `TEXT` | `String` | oui | — | | langue du résumé ; au repli, `language` (éventuellement `NULL`) | III §11.2 · IV §14.5 | 2 |
-| `metrics` | `TEXT` (JSON) | `JSON` | oui | — | Pydantic | engagement à la collecte (points HN, vues YouTube…), instantané jamais mis à jour — `NULL` quand le provider ne fournit aucune métrique d'engagement (métrique absente, V-B §28.9). | III §11.2 · IV §15.4 | 2 |
+| `metrics` | `TEXT` (JSON) | `JSONText` | oui | — | Pydantic | engagement à la collecte (points HN, vues YouTube…), instantané jamais mis à jour — `NULL` quand le provider ne fournit aucune métrique d'engagement (métrique absente, V-B §28.9). | III §11.2 · IV §15.4 | 2 |
 | `event_id` | `INTEGER` | `Integer` | oui | — | FK `event(id)` `RESTRICT` ; index | appartenance à un Event | III §11.2, décision 4 · V-B §28.5 | **4** |
 | `duplicate_of_id` | `INTEGER` | `Integer` | oui | — | FK `article(id)` `RESTRICT` | renseigné si `duplicate` | III §11.2 · V-B §28.7 | **4** |
 | `clustered_at` | `TEXT` | `UTCDateTime` | oui | — | index partiel | article évalué par le clustering | III §11.2 · V-B §28.2 | **4** |
@@ -445,7 +445,7 @@ mécanisme en V1 (V-A §24.6). Le suivi et la sourdine ne sont pas ici : ce sont
 | `description` | `TEXT` | `Text` | oui | — | | `null` par défaut dans le YAML ; `llm_description` ou `NULL` pour un topic `user` | III §11.4 · IV §16.3 · V-B §30.8 | 2 |
 | `parent_id` | `INTEGER` | `Integer` | oui | — | FK `topic(id)` `RESTRICT` | hiérarchie ; `NULL` pour un topic `user` | III §11.4 · IV §16.3 · V-B §30.8 | 2 |
 | `origin` | `TEXT` | `String` | non | — | `CHECK IN ('seeded','discovered','user')` | | III §11.4 | 2 |
-| `keywords` | `TEXT` (JSON) | `JSON` | non | — | Pydantic | `{include, exclude}` : mots-clés et motifs du relevance filter, termes masqués avant matching | III §11.4 · IV §16.3, §20.3 | 2 |
+| `keywords` | `TEXT` (JSON) | `JSONText` | non | — | Pydantic | `{include, exclude}` : mots-clés et motifs du relevance filter, termes masqués avant matching | III §11.4 · IV §16.3, §20.3 | 2 |
 | `enabled` | `INTEGER` | `Boolean` | non | — | | un topic désactivé n'est pas utilisé par le scoring et n'a plus de Signal | III §11.4 · IV §16.3 · V-B §29.7 | 2 |
 | `created_at` | `TEXT` | `UTCDateTime` | non | — | | couverture d'un topic `user` : `created_at − topic_backfill.window` | III §11.0 · V-B §29.3 | 2 |
 | `updated_at` | `TEXT` | `UTCDateTime` | non | — | | dernière modification de la ligne | III §11.0 | 2 |
@@ -762,7 +762,7 @@ V-A §27). Le statut du candidat (`converted`, `active`…) est **dérivé à la
 | `label` | `TEXT` | `String` | non | — | | | III §11.13 | 8 |
 | `first_detected_at` | `TEXT` | `UTCDateTime` | non | — | | | III §11.13 | 8 |
 | `last_evidence_at` | `TEXT` | `UTCDateTime` | non | — | | dernière mise à jour de `evidence` | III §11.13 · V-B §30.4 | 8 |
-| `evidence` | `TEXT` (JSON) | `JSON` | non | — | Pydantic | `mentions_7d · mentions_prev7d · growth · sources · authors · channels · stories · first_seen_at · article_ids` (≤ 20) | III §11.13 · V-B §30.4 | 8 |
+| `evidence` | `TEXT` (JSON) | `JSONText` | non | — | Pydantic | `mentions_7d · mentions_prev7d · growth · sources · authors · channels · stories · first_seen_at · article_ids` (≤ 20) | III §11.13 · V-B §30.4 | 8 |
 | `ref_mentions` · `ref_channel_count` | `INTEGER` | `Integer` | non | — | | référence de l'évolution significative | III §11.13 · V-B §30.5 | 8 |
 | `last_significant_at` | `TEXT` | `UTCDateTime` | non | — | | dernière évolution significative | III §11.13 · V-B §30.5 | 8 |
 | `resurfaced_at` | `TEXT` | `UTCDateTime` | oui | — | | réapparition d'un candidat ignoré | III §11.13 · V-B §30.7 | 8 |
@@ -770,7 +770,7 @@ V-A §27). Le statut du candidat (`converted`, `active`…) est **dérivé à la
 | `topic_id` | `INTEGER` | `Integer` | **oui** | — | FK `topic(id)` `RESTRICT` | topic créé sur `create_topic` | III §11.13 · V-B §30.8 | 8 |
 | `llm_label` · `llm_description` | `TEXT` | `Text` | oui | — | | résultat de `discover_topics` | III §11.13 · V-A §27 | 8 |
 | `covered_by_topic_id` | `INTEGER` | `Integer` | **oui** | — | FK `topic(id)` `RESTRICT` | suggestion, jamais d'écartement automatique | III §11.13 · V-A §27 | 8 |
-| `suggested_keywords` | `TEXT` (JSON) | `JSON` | oui | — | Pydantic | mots-clés suggérés pour « Create topic » — `NULL` tant que `discover_topics` n'a pas évalué le candidat. | III §11.13 · V-B §30.8 | 8 |
+| `suggested_keywords` | `TEXT` (JSON) | `JSONText` | oui | — | Pydantic | mots-clés suggérés pour « Create topic » — `NULL` tant que `discover_topics` n'a pas évalué le candidat. | III §11.13 · V-B §30.8 | 8 |
 | `assessed_at` | `TEXT` | `UTCDateTime` | oui | — | | dernier `discover_topics` — `NULL` tant que `discover_topics` n'a pas évalué le candidat. | III §11.13 | 8 |
 | `created_at` | `TEXT` | `UTCDateTime` | non | — | | insertion de la ligne | III §11.0 | 8 |
 | `updated_at` | `TEXT` | `UTCDateTime` | non | — | | dernière modification de la ligne | III §11.0 | 8 |
@@ -866,7 +866,7 @@ T-CFG-08).
 | Colonne | SQLite | SQLAlchemy | Null | Défaut | Contrainte | Rôle | Réf. | Sprint |
 |---|---|---|---|---|---|---|---|---|
 | `key` | `TEXT` | `String` | non | — | **PK** | clé du registre | III §11.12 · VI §34.3 | 9 |
-| `value` | `TEXT` (JSON) | `JSON` | non | — | Pydantic (schéma de la clé) | | III §11.12 | 9 |
+| `value` | `TEXT` (JSON) | `JSONText` | non | — | Pydantic (schéma de la clé) | | III §11.12 | 9 |
 | `updated_at` | `TEXT` | `UTCDateTime` | non | — | | | III §11.12 | 9 |
 
 **Registre en code** (VI §34.3 fait foi ; rappel des clés) :
