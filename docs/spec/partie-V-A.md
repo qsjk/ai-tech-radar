@@ -1,7 +1,7 @@
 # Partie V-A — Intelligence : machinerie & tâches LLM
 
 > **Partie V-A — Machinerie & tâches LLM.** Version durcie issue de la revue §23–§27.
-> Dernière révision : 2026-09-23. Prend les Parties I, II, III et IV durcies comme acquis.
+> Dernière révision : 2026-09-30 (ADR-0022, #122). Prend les Parties I, II, III et IV durcies comme acquis.
 > Les §28–§30 (clustering, trend engine, sujets émergents) relèvent de la **Partie V-B** : ils ne sont pas traités ici.
 
 > **Déjà tranché ailleurs, non repris ici** : claim atomique, deux producteurs de jobs (l'app insère, le worker exécute), contrat d'interface = schéma SQLite, modèle d'exécution asyncio avec le travail CPU hors event-loop, heartbeat, coalescence des misfires, purge (Partie II §8) ; résilience LLM, repli déterministe, JSON malformé → `dead_letter` (Partie II §9) ; table `AIJob`, index unique partiel sur les jobs actifs, idempotence par remplacement des résultats (Partie III §11.10). Cette partie ne durcit que ce qui est **propre aux tâches LLM**.
@@ -164,6 +164,11 @@ L'état vit en mémoire du worker (processus unique). Il est recopié à chaque 
 
 ### 24.3 Budget quotidien
 
+> **À réviser (ADR-0022, #123).** L'ADR-0022 remplace ce budget quotidien en requêtes par un **budget mensuel plafonné**
+> en coût réel : plafond configuré en USD (défaut ≈ 15 €), suivi en tokens et en coût, plafond dur appliqué par le
+> worker, remise à zéro le 1er du mois (UTC) ; cadre en Partie I §4.3 et VII §45.1. Le contrat ci-dessous reste en
+> vigueur tant que #123 ne l'a pas réécrit ; il ne doit pas être implémenté en l'état.
+
 - Compteur `SystemState.llm_usage` = `{day, requests}` (jour UTC). Il est incrémenté pour chaque appel ayant reçu une réponse du gateway (2xx ou sortie malformée) ; un 429 ou une erreur réseau ne compte pas.
 - `llm.daily_request_budget` : `null` (défaut) = pas de limite locale ; les quotas du gateway s'appliquent via les 429.
 - Budget défini, avec `used ≥ budget − llm.app_reserve` → `:min_priority = 100` : seuls les jobs de l'app passent.
@@ -228,7 +233,13 @@ Ce n'est pas le re-scoring rétroactif reporté par la Partie IV : ce dernier po
 
 **Taxonomie** : `origin = discovered` n'est produit par **aucun** mécanisme en V1 ; un topic n'est créé que sur action de l'utilisateur (`origin = user`).
 
-## 25. LLM Gateway & LLMClient
+## 25. API Claude & LLMClient
+
+> **À réviser (ADR-0022, #123).** L'ADR-0022 remplace la chaîne OpenAI-compatible et le gateway par l'**API Claude en
+> direct**, par le SDK `anthropic` confiné au `LLMClient` (`max_retries=0`), avec `ANTHROPIC_API_KEY` et `LLM_MODEL` ;
+> `LLM_BASE_URL` est supprimée et `ANTHROPIC_BASE_URL` n'est acceptée qu'avec `APP_ENV=test` (IX §53.2, DV-09). Le
+> contrat ci-dessous (configuration, `generate`, `health`, erreurs) reste en vigueur tant que #123 ne l'a pas réécrit ;
+> il ne doit pas être implémenté en l'état.
 
 Chaîne `AI Tech Radar → LLMClient → API OpenAI-compatible → LLM Gateway → Providers` : **inchangée**. Le choix du gateway est documenté dans `docs/llm-gateway.md` au Sprint 6 ; la check-list de mesure de référence, avec les gateways candidats, est la ligne M6 de la Partie VII §45.4.
 
