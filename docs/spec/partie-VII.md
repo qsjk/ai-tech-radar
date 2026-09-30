@@ -851,16 +851,22 @@ Sur 40 Go, le budget est large ; le seuil de 80 % garantit la place d'une copie 
 
 ## 45. Coût & performance cibles
 
-### 45.1 Coût (acquis Partie I)
+### 45.1 Coût (acquis Partie I §4.3, ADR-0022)
+
+Deux critères séparés : l'infrastructure d'un côté, le LLM de l'autre.
 
 | Poste | Cible |
 |---|---|
 | VPS | 5–10 €/mois |
 | Stockage des backups | 0–1 €/mois (dépôt restic chiffré ; offres gratuites ou quasi gratuites de quelques Go) |
 | Monitoring externe | 0 € |
-| LLM | **0 €** — le produit fonctionne sans abonnement LLM payant, et sans LLM du tout |
 | Domaine | faible (≈ 1 €/mois) |
-| **Total** | **≤ 12 €/mois** |
+| **Total infrastructure** | **≤ 12 €/mois** |
+| **LLM (API Claude)** | **≤ plafond mensuel**, configuré en USD (devise de facturation), défaut ≈ **15 €** ; suivi en tokens et en coût réel ; **plafond dur** appliqué par le worker ; remise à zéro le 1er du mois (UTC). **0 €** si le LLM n'est pas configuré : le produit fonctionne sans lui |
+
+La **limite de dépense mensuelle de la Console Anthropic**, réglée au même montant, est la seconde ligne de défense :
+elle borne la dépense même si le plafond du worker faillait. Le détail du budget (clés, comptage, réservation avant
+appel) relève de la Partie V-A §24.3.
 
 ### 45.2 Principe
 
@@ -897,7 +903,7 @@ Chaque mesure est consignée dans `docs/measurements.md` (date, VPS, profil, ré
 | M3 | Taille du fichier **`-wal`** en collecte soutenue, **pendant un `VACUUM INTO`** et pendant le job analytique | échantillonnage `ops.tick` | reste sous `ops.wal_max_bytes` | recale le seuil `wal_large` |
 | M4 | Durée de la **plus longue transaction** du worker | métrique dédiée | ≤ 500 ms | valide le découpage en lots (II §8.6) |
 | M5 | Durée du **job analytique** au volume nominal | chronométrage, profil cible | ≤ 5 min | valide le calcul horaire (V-B §29.4) |
-| M6 | **Gateway LLM** — check-list de référence : RAM/CPU si auto-hébergé, requêtes multiples, quota épuisé, timeout, provider indisponible, **comportement 429 / `Retry-After`**, **disponibilité de `GET /models`**. Gateways candidats : OmniRoute, Free Model Router, FreeLLMAPI ; si trop lourd, déployable séparément | contre le gateway retenu | 429 conforme aux attentes du disjoncteur (V-A §24.2) ; `health()` fiable | valide le gateway ; sinon `health()` adapté, tracé en ADR |
+| M6 | **API Claude** — check-list de référence : requêtes multiples, **comportement 429 / `retry-after`**, surcharge (529), timeout, crédit épuisé, **disponibilité de `GET /v1/models`**, **tokens et coût réels par tâche** comparés au plafond mensuel (§45.1) | contre l'API Claude, avec le modèle configuré, par un enregistrement manuel imputé au budget (aucun test automatisé n'appelle l'API réelle, VIII §50.1) | 429 et 529 conformes aux attentes du disjoncteur (V-A §24.2) ; `health()` fiable ; coût mensuel estimé au volume nominal ≤ plafond | valide l'accès à l'API et le plafond ; sinon `health()` adapté ou plafond ajusté, tracé en ADR |
 | M7 | **Backup et restauration** : durée, taille, exercice complet sur machine neuve | §38.4 | backup ≤ 10 min ; restauration ≤ 30 min | valide le RTO |
 | M8 | **Taille des images** et empreinte disque totale | `docker system df` | image courante + précédente + base + marge backup < 50 % du disque | valide le budget disque |
 | M9 | **Latence de l'API** (Overview, Feed, recherche, `/health`) | charge légère sur profil cible | p95 ≤ 300 ms ; `/health` ≤ 50 ms | valide la pagination et les index |
