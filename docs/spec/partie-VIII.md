@@ -1,7 +1,7 @@
 # Partie VIII — Livraison
 
 > **Partie VIII — Livraison.** Version durcie issue de la revue §46–§52.
-> Dernière révision : 2026-09-30 (ADR-0022, #122 ; créneaux de capacité, #126). Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
+> Dernière révision : 2026-09-30 (ADR-0022, #122 ; créneaux de capacité, #126 ; contrat du `LLMClient`, #123). Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
 
 **Nature de cette partie : une agrégation.** Les tests, étapes CI et critères de production fléchés par les Parties I à VII sont rassemblés ici, rattachés à un identifiant et organisés par domaine. Les doublons sont réconciliés (§ « Réconciliations ») et seul ce qui manquait est durci à neuf.
 
@@ -277,14 +277,14 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 #### Sprint 6 — API Claude & LLMClient
 
 **Contenu** :
-- **Client** : `LLMClient` (interface typée, parsing et validation, `TolerantList` / `SoftStr`, erreurs typées, aucun retry interne) ; disjoncteur LLM à trois états ; budget mensuel plafonné (V-A §24.3, à réviser, ADR-0022) ; LLM non configuré ; observabilité (§25.6).
+- **Client** : `LLMClient` sur le SDK `anthropic` (V-A §25 : `max_retries=0`, client `httpx2` sans redirection, `llm.model` épinglé, structured outputs, traitement de chaque `stop_reason`, `TolerantList` / `SoftStr`, erreurs typées, `health()` par `GET /v1/models`) ; disjoncteur LLM à trois états ; budget mensuel plafonné (V-A §24.3, à réviser, ADR-0022) ; LLM non configuré ; observabilité (§25.6).
 - **Doubles** : double de l'API Messages de Claude, joint par `ANTHROPIC_BASE_URL` en test seulement.
 - **API Claude** : SDK `anthropic` confiné au `LLMClient`, modèle et budget documentés dans `docs/llm.md` ; première mesure M6 contre l'API Claude.
 
 **Acceptation** :
 - les huit scénarios de V-A §26.3 passent contre le double de l'API ;
 - `ANTHROPIC_API_KEY` absent → produit fonctionnel ; dans `/api/health`, le composant `llm_gateway` est en statut `disabled`, raison `not_configured` (VII §40.3).
-- **Tests** : T-LLM-01 à 17, 19, 20 · T-RES-01 (partie file de jobs).
+- **Tests** : T-LLM-01 à 17, 19, 20 · T-RES-01 (partie file de jobs) · **à créer au catalogue, avec leurs tests, dans ce sprint** (V-A §26.3) : T-LLM-21, T-LLM-22, T-CFG-12 · compléments : T-SEC-08 (volet `ANTHROPIC_*`), T-SEC-02 (volet `x-api-key`).
 
 #### Sprint 7 — Intelligence & purge
 
@@ -569,7 +569,7 @@ Fixtures et doubles : `tests/fixtures/` (réponses HTTP par type, configurations
 
 | Double / jeu | Rôle | Exigences |
 |---|---|---|
-| **Double de l'API Messages de Claude** (remplace le faux gateway, ADR-0022 ; aussi en conteneur e2e), joint par `ANTHROPIC_BASE_URL` avec `APP_ENV=test` | tous les tests LLM | scriptable par test : réponse valide · JSON malformé · sortie tronquée (`stop_reason = max_tokens`) · vide · refus · 429 avec ou sans `retry-after` · 529 surchargé · 5xx · 401 / 403 / 404 · 400 / 413 / 422 · latence réglable (timeout) · connexion refusée · `GET /v1/models` ; journal des requêtes reçues, pour vérifier « aucun appel ». Liste à réviser avec V-A §25.4 |
+| **Double de l'API Messages de Claude** (remplace le faux gateway, ADR-0022 ; aussi en conteneur e2e), joint par `ANTHROPIC_BASE_URL` avec `APP_ENV=test` | tous les tests LLM | scriptable par test : réponse valide (bloc `text`, blocs `thinking` éventuels) · JSON malformé · chaque `stop_reason` (V-A §25.3) · vide · 429 avec ou sans `retry-after`, en-têtes `anthropic-ratelimit-*` · 429 `enforced_spend_limit_reached` et 400 de limite de dépense · 529 · 5xx · 401 / 402 / 403 / 404 · 400 / 413 / 422 · redirection · latence réglable (timeout) · connexion refusée · `GET /v1/models` paginé, avec ou sans le modèle configuré ; en-tête `request-id` ; journal des requêtes reçues, pour vérifier « aucun appel » et « une seule requête » (V-A §25.4) |
 | **Faux serveur de sources** (`tests/fakes/fake_sources.py`, aussi en conteneur e2e) | collectors, extraction, `robots.txt`, SSRF | sert les fixtures par type ; codes 304, 401, 403 (avec et sans `x-ratelimit-remaining: 0`), 404, 410, 429, 5xx, timeout, redirections (dont vers une adresse privée), corps trop gros, `Content-Type` non HTML, pagination interruptible |
 | **Fixtures par type** (`tests/fixtures/http/<type>/`) | T-COL-01 | RSS et Atom · GitHub releases · Algolia HN · Reddit RSS avec `[link]` · YouTube RSS · `webpage` avec gabarit conforme et cassé |
 | **Fixtures de prompts** (`tests/fixtures/llm/<task>/<PROMPT_VERSION>/`) | T-LLM-16 | snapshot du prompt construit (`system` et `user`) pour une entrée de référence, empreinte du template ; sorties réelles enregistrées (valides, limites, malformées) |
@@ -696,25 +696,25 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | ID | Test | Niv. | Origine |
 |---|---|---|---|
 | T-LLM-01 | API LLM down (connexion refusée) → disjoncteur ouvert → aucun claim LLM → tentatives inchangées → API up → sonde OK → job test OK → reprise, les plus récents d'abord | I | V-A §26.3 |
-| T-LLM-02 | 429 avec `Retry-After: 120` → `open_until = +120 s` → `half_open` → job test → `closed` | I | V-A §26.3 |
-| T-LLM-03 | 429 persistant sans `Retry-After` → réouvertures à 60 s, 120 s, 240 s…, plafonnées à 6 h | I | V-A §26.3 |
+| T-LLM-02 | 429 avec `retry-after: 120` → `open_until = +120 s` → `half_open` → job test → `closed` | I | V-A §26.3 |
+| T-LLM-03 | 429 persistant sans `retry-after` → réouvertures à 60 s, 120 s, 240 s…, plafonnées à 6 h | I | V-A §26.3 |
 | T-LLM-04 | Réponse non JSON × 3 → `dead_letter` ; purge du contenu bloquée ; relance par l'app → `pending` | I | V-A §26.3 |
 | T-LLM-05 | Élément d'entité invalide dans une réponse valide → écarté, `dropped_items = 1`, job `completed` | I | V-A §26.3 |
 | T-LLM-06 | 3 timeouts consécutifs → disjoncteur ouvert (cause `unavailable`) | I | V-A §26.3 |
 | T-LLM-07 | `ANTHROPIC_API_KEY` absent → worker démarré, jobs créés et `pending`, `llm_gateway` à `not_configured` | I | V-A §26.3 |
 | T-LLM-08 | `kill -9` après l'appel LLM, avant la transaction → `retry` → rejoué → état final identique | E | V-A §26.3 |
-| T-LLM-09 | Erreurs typées : connexion / DNS / 5xx → `LLMUnavailable` · 429 → `LLMRateLimited` · 401 / 403 / 404 → `LLMConfigError` (plus alerte de configuration) · timeout de lecture → `LLMTimeout` · malformé, vide, tronqué, refus → `LLMMalformed` · 400 / 413 / 422 → `LLMBadRequest` → `failed` ; `last_error` sans secret | I | V-A §25.4, §26.1 |
-| T-LLM-10 | Extraction du JSON : balises de code retirées, premier objet `{…}` équilibré | U | V-A §25.3 |
+| T-LLM-09 | Erreurs typées (V-A §25.4) : connexion / DNS / 5xx / 529 / 409 → `LLMUnavailable` · 429 → `LLMRateLimited` · 429 `enforced_spend_limit_reached` et 400 de limite de dépense → `LLMSpendLimit` (jamais `failed`) · 401 / 402 / 403 / 404, redirection, `llm.model` absent → `LLMConfigError` (plus alerte de configuration) · timeout de lecture → `LLMTimeout` · malformé, vide, tronqué, inattendu → `LLMMalformed` · refus → `LLMRefused` → `failed` · 400 / 413 / 422 → `LLMBadRequest` → `failed` ; `last_error` sans secret | I | V-A §25.4, §26.1 |
+| T-LLM-10 | Lecture de la sortie : seuls les blocs `text` sont lus (blocs `thinking` ignorés) ; JSON analysé sans réparation ni extraction heuristique ; aucun bloc `text` → `LLMMalformed` | U | V-A §25.3 |
 | T-LLM-11 | `TolerantList` (élément invalide écarté et compté) et `SoftStr` (coupe au-delà de `max` sur un mot + `…`, erreur sous `min`) | U | V-A §25.3 |
 | T-LLM-12 | Aucune écriture avant la fin de la validation ; résultat écrit en une transaction unique | I | V-A §26.2 |
 | T-LLM-13 | Entités LLM canonicalisées par les alias de `entities.yaml`, puis par slug déterministe : aucun doublon d'entité | U | V-A décision 17 |
 | T-LLM-14 | Budget quotidien : désactivé par défaut ; épuisé → plus de claim côté worker, la réserve reste disponible pour les demandes de l'app ; remise à zéro au changement de jour UTC | I | V-A §24.3 |
 | T-LLM-15 | Injection : un contenu d'article porteur d'instructions est placé dans `user` entre délimiteurs ; une sortie hors schéma ou avec des topics hors liste fermée est écartée ; la sortie n'est jamais exécutée | U | V-A §25.5 |
 | T-LLM-16 | Fixtures de prompts : snapshot du prompt construit par `PROMPT_VERSION` ; template modifié sans changement de version → échec ; parsing des sorties de référence enregistrées | U | V-A → VIII · décision 15 |
-| T-LLM-17 | Observabilité : log par appel avec `task`, `job_id`, latence, tokens, classe d'erreur et `PROMPT_VERSION` ; jamais le prompt ni la réponse au niveau `info` | U | V-A §25.6 |
+| T-LLM-17 | Observabilité : log par appel avec `task`, `job_id`, `model`, `stop_reason`, tokens d'entrée et de sortie, champs de cache tels que renvoyés, `request_id`, latence, classe d'erreur et `PROMPT_VERSION` ; jamais le prompt ni la réponse au niveau `info` | U | V-A §25.6 |
 | T-LLM-18 | `enrich_article` remplace les trois familles `method=llm` en une transaction et passe `summary_origin` à `llm` ; `resolve_event` ne touche ni à l'appartenance ni aux compteurs et passe `title_origin` à `llm` ; `discover_topics` écrit les colonnes `llm_*` du candidat sans jamais l'écarter | I | V-A §27 |
-| T-LLM-19 | LLM isolé : changer de modèle par la seule variable `LLM_MODEL`, sans changement de code ; aucun module hors du `LLMClient` n'importe le SDK `anthropic` | I | Partie I §4.3 |
-| T-LLM-20 | Le `LLMClient` refuse une redirection vers un autre hôte que celui de l'API Claude (ou de `ANTHROPIC_BASE_URL` en test) | U | V-A §25.2 |
+| T-LLM-19 | LLM isolé : changer de modèle par la seule clé `llm.model` de `pipeline.yaml`, sans changement de code ; aucun identifiant de modèle en dur dans le code ; aucun module hors du `LLMClient` n'importe le SDK `anthropic` | I | Partie I §4.3 |
+| T-LLM-20 | Le `LLMClient` ne suit aucune redirection (client `httpx2` avec `follow_redirects=False`) : une réponse de redirection → `LLMConfigError` | U | V-A §25.2 |
 
 #### T-EMB — Embeddings *(III §12 · V-A §24.4)*
 
@@ -1031,7 +1031,7 @@ Toute divergence entre le code et la spec se résout **avant** la fin du sprint 
 | G3 | **Observable** : tout incident majeur détectable via `/health` ou une alerte, sans SSH | T-OPS-06, T-OPS-12, E4 |
 | G4 | **Résilient** : tableau §50.6 vert | C1 à C3 |
 | G5 | **Low-cost** : coût d'infrastructure estimé ≤ 12 €/mois, détaillé par poste ; dépense LLM ≤ plafond mensuel, limite de la Console Anthropic réglée | `go-live.md` |
-| G6 | **LLM isolé** : changement de modèle par la seule variable `LLM_MODEL` ; SDK `anthropic` confiné au `LLMClient` | T-LLM-19 |
+| G6 | **LLM isolé** : changement de modèle par la seule clé `llm.model` (`pipeline.yaml`) ; SDK `anthropic` confiné au `LLMClient` | T-LLM-19 |
 
 ### H. Documentation
 

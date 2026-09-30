@@ -527,7 +527,7 @@ Sans copie de `RESTIC_PASSWORD` hors du VPS, tous les backups sont perdus avec l
 | `ram_high` | `docker stats` ; mémoire du worker dans `app.cli health` | relancer le worker (`restart`) ; si récurrent, mesure M1 et `mem_limit` |
 | `wal_large` | job analytique ou backup en cours ; `db_locked` | attendre la fin de l'opération ; si persistant, relancer le worker ; recaler `ops.wal_max_bytes` d'après M3 |
 | `db_locked` | logs `database is locked`, plus longue transaction (M4) | relancer le worker ; ouvrir une issue avec les logs (transaction trop longue = bug) |
-| `llm_config_error` | `llm_gateway.reason`, variables `ANTHROPIC_API_KEY` et `LLM_MODEL` | corriger `.env`, `docker compose up -d worker` |
+| `llm_config_error` | `llm_gateway.reason`, variable `ANTHROPIC_API_KEY`, clé `llm.model` (présente, et listée par `GET /v1/models`, Partie V-A §25.2) | clé : corriger `.env`, `docker compose up -d worker` ; modèle : corriger `llm.model` dans `pipeline.yaml` (P10) |
 | `llm_down_long` | état de l'API Claude, clé | rien à rétablir côté produit : il tourne en repli jusqu'au retour de l'API |
 | `embeddings_down` | logs du worker (`embeddings`) | relancer le worker ; si l'échec persiste, issue (modèle, RAM) |
 | `backup_not_configured` | `RESTIC_REPOSITORY` | configurer le dépôt dans `.env`, `docker compose up -d worker`, `backup-now` |

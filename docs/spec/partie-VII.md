@@ -1,7 +1,7 @@
 # Partie VII — Ops & Production
 
 > **Partie VII — Ops & Production.** Version durcie issue de la revue §35–§45.
-> Dernière révision : 2026-09-30 (ADR-0022, #122). Prend les Parties I, II, III, IV, V-A, V-B et VI durcies comme acquis.
+> Dernière révision : 2026-09-30 (ADR-0022, #122 ; contrat du `LLMClient`, #123). Prend les Parties I, II, III, IV, V-A, V-B et VI durcies comme acquis.
 
 > **Nature de cette partie** : essentiellement une **consolidation**. Les décisions Ops fléchées par les Parties I à VI sont rassemblées ici ; les doublons et contradictions sont réconciliés (§ « Réconciliations ») ; seul ce qui manquait est durci à neuf.
 
@@ -71,7 +71,7 @@ Consolidation des choix déjà faits, plus ce que cette partie ajoute (**en gras
 | Worker | asyncio · APScheduler **3.x** (`AsyncIOScheduler`) |
 | Collecte | httpx · feedparser · trafilatura · lingua |
 | Embeddings | fastembed (onnxruntime) · numpy |
-| LLM (optionnel) | **SDK `anthropic`** (API Claude), importé par le seul `LLMClient` du worker (ADR-0022) |
+| LLM (optionnel) | **SDK `anthropic`** (API Claude), importé par le seul `LLMClient` du worker (ADR-0022) ; **`httpx2`**, client HTTP requis par le SDK, distinct du httpx des collectors (Partie V-A §25.2) |
 | Logs | **structlog** (rendu JSON) |
 | Backup | **restic** (binaire statique dans l'image backend) |
 | Qualité | pytest · ruff · mypy |
@@ -258,9 +258,9 @@ AWS_SECRET_ACCESS_KEY=
 
 # ── Optionnel : LLM, API Claude (ADR-0022) ─────────────────────────────────
 # Clé absente → LLM « not_configured » : le produit tourne sans LLM, aperçus
-# et titres en repli. Le plafond mensuel de dépense n'est pas ici (§45.1).
+# et titres en repli. Le modèle n'est pas ici : llm.model, dans
+# config/pipeline.yaml (Partie V-A §25.1). Le plafond mensuel non plus (§45.1).
 ANTHROPIC_API_KEY=
-LLM_MODEL=
 
 # ── Optionnel : canaux d'alerte (canal désactivé si incomplet) ─────────────
 # Au moins un canal est exigé pour la mise en production (Partie VIII).
@@ -298,7 +298,7 @@ RADAR_VERSION=               # tag d'image (sha Git) déployé
 |---|---|
 | `caddy` | `DASHBOARD_URL` · `DASHBOARD_USER` · `DASHBOARD_PASSWORD_HASH` · `ACME_EMAIL` |
 | `app` | `DASHBOARD_URL` · `APP_ENV` · `LOG_LEVEL` · `RADAR_VERSION` — **aucun secret** |
-| `worker` | toutes les autres, sauf `DASHBOARD_USER`, `DASHBOARD_PASSWORD_HASH` et `ACME_EMAIL` (réservée à `caddy`) |
+| `worker` | toutes les autres, dont `ANTHROPIC_API_KEY`, sauf `DASHBOARD_USER`, `DASHBOARD_PASSWORD_HASH` et `ACME_EMAIL` (réservée à `caddy`) ; aucune autre variable `ANTHROPIC_*` (Partie V-A §25.1) |
 | `migrate` | `LOG_LEVEL` |
 
 - `DASHBOARD_URL` est validée au démarrage de `app` et `worker` : schéma `https` (ou `http://localhost` en développement), sans chemin ni slash final.
@@ -551,7 +551,7 @@ La procédure est outillée par `scripts/restore.sh <snapshot>` (Partie VIII dé
 
 | Métrique | Source |
 |---|---|
-| appels par tâche et par issue · timeouts · 429 · latence · tokens · `dropped_items` | mémoire |
+| appels par tâche et par issue · `stop_reason` par tâche · timeouts · 429 · latence · tokens d'entrée et de sortie par tâche · `dropped_items` | mémoire |
 | jobs `skipped` par motif ; backlog par `job_type` et par statut ; `dead_letter` | `AIJob` |
 | disjoncteur (`state`, `reason`, `since`, `open_until`) | `SystemState.llm_gateway` |
 | budget quotidien (`day`, `used`, `budget`, `reserve`) | `SystemState.llm_usage` + `pipeline.yaml` |
@@ -759,6 +759,7 @@ Les trois sont calculés par **un seul module** (`app/ops/health.py`) : même le
 | `component` | worker | `collector` · `pipeline` · `embeddings` · `clustering` · `trends` · `emerging` · `ai` · `alerts` · `purge` · `ops` · `backup` |
 | `source_id` · `run_id` | collecte | identifiants de la source et du run |
 | `job_id` · `job_type` · `prompt_version` | jobs AI | V-A §25.6 |
+| `model` · `stop_reason` · `input_tokens` · `output_tokens` · `cache_creation_input_tokens` · `cache_read_input_tokens` · `request_id` | appels LLM | V-A §25.6 ; champs de cache tels que renvoyés par l'API, éventuellement `null` |
 | `duration_ms` | opérations chronométrées | — |
 | `items_*` | fin de run | compteurs du §14.4 de la Partie IV |
 | `status` | fin d'opération | `success` · `partial` · `failed`… |
@@ -780,7 +781,7 @@ Trois niveaux, cumulatifs :
 
 1. **Par construction** : les secrets sont chargés dans un objet de configuration typé (`SecretStr`), dont la représentation est masquée. Aucun log ne reçoit l'objet de configuration entier.
 2. **Par transport** : le `HttpClient` masque `Authorization` et les paramètres sensibles (Partie IV §21.1).
-3. **Par valeur (filet final)** : un processeur structlog remplace par `***` **toute occurrence de la valeur** d'un secret configuré, dans tous les champs, messages et traces d'exception. Il masque aussi les valeurs des clés nommées `authorization`, `password`, `token`, `secret`, `api_key`, `cookie`.
+3. **Par valeur (filet final)** : un processeur structlog remplace par `***` **toute occurrence de la valeur** d'un secret configuré, dans tous les champs, messages et traces d'exception. Il masque aussi les valeurs des clés nommées `authorization`, `password`, `token`, `secret`, `api_key`, `x-api-key`, `cookie` (`x-api-key` : en-tête envoyé par le SDK `anthropic`, Partie V-A §25.2).
 
 - Le niveau 3 est indispensable : le token Telegram fait partie de l'URL de l'API (`/bot<token>/…`), et httpx inclut l'URL dans ses exceptions.
 - **Le même nettoyage s'applique à ce qui est écrit en base et affiché** : `Source.last_error`, `AlertLog.error`, `backup_last_attempt.error`, erreurs d'`AIJob`.
@@ -810,7 +811,7 @@ Trois niveaux, cumulatifs :
 - Pas de CORS ; `/docs`, `/redoc`, `/openapi.json` désactivés ; en-têtes de sécurité du §37.3 ; corps de requête limité à 1 Mo.
 - **Sorties LLM** rendues en texte brut, `dangerouslySetInnerHTML` interdit (VI).
 - Aucun secret renvoyé par l'API ni stocké dans `Setting` (VI §32.3).
-- **Anti-SSRF** (Partie IV §21.1) : les URLs à récupérer proviennent de flux tiers. Le `HttpClient` refuse toute destination dont l'adresse résolue est privée, de bouclage, lien-local (dont `169.254.169.254`, métadonnées cloud), unique-local IPv6 ou non routable, **vérifiée après résolution DNS et à chaque redirection**. Appliqué à toutes les requêtes du `HttpClient`, **sans exception**. Le `LLMClient` passe par le client du SDK `anthropic`, qui n'appelle que l'API Claude (`ANTHROPIC_BASE_URL`, pour le double de test, n'est acceptée qu'avec `APP_ENV=test`) et ne suit aucune redirection vers un autre hôte (Partie V-A §25.2 ; ADR-0022) ; restic, binaire externe, ne passe pas par le `HttpClient` (§38.2).
+- **Anti-SSRF** (Partie IV §21.1) : les URLs à récupérer proviennent de flux tiers. Le `HttpClient` refuse toute destination dont l'adresse résolue est privée, de bouclage, lien-local (dont `169.254.169.254`, métadonnées cloud), unique-local IPv6 ou non routable, **vérifiée après résolution DNS et à chaque redirection**. Appliqué à toutes les requêtes du `HttpClient`, **sans exception**. Le `LLMClient` passe par le client du SDK `anthropic`, qui n'appelle que l'API Claude (`ANTHROPIC_BASE_URL`, pour le double de test, n'est acceptée qu'avec `APP_ENV=test`) et ne suit aucune redirection : son client `httpx2` est construit avec `follow_redirects=False`, le défaut du SDK suivant les redirections (Partie V-A §25.2 ; ADR-0022) ; restic, binaire externe, ne passe pas par le `HttpClient` (§38.2).
 
 ### 43.4 Secrets
 

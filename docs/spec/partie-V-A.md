@@ -1,7 +1,7 @@
 # Partie V-A — Intelligence : machinerie & tâches LLM
 
 > **Partie V-A — Machinerie & tâches LLM.** Version durcie issue de la revue §23–§27.
-> Dernière révision : 2026-09-30 (ADR-0022, #122). Prend les Parties I, II, III et IV durcies comme acquis.
+> Dernière révision : 2026-09-30 (ADR-0022, #122 ; contrat du `LLMClient`, #123). Prend les Parties I, II, III et IV durcies comme acquis.
 > Les §28–§30 (clustering, trend engine, sujets émergents) relèvent de la **Partie V-B** : ils ne sont pas traités ici.
 
 > **Déjà tranché ailleurs, non repris ici** : claim atomique, deux producteurs de jobs (l'app insère, le worker exécute), contrat d'interface = schéma SQLite, modèle d'exécution asyncio avec le travail CPU hors event-loop, heartbeat, coalescence des misfires, purge (Partie II §8) ; résilience LLM, repli déterministe, JSON malformé → `dead_letter` (Partie II §9) ; table `AIJob`, index unique partiel sur les jobs actifs, idempotence par remplacement des résultats (Partie III §11.10). Cette partie ne durcit que ce qui est **propre aux tâches LLM**.
@@ -18,22 +18,22 @@
 6. **Articles enrichis** : les articles hors Event et les **représentants** d'Event. Les membres non représentatifs gardent leurs liaisons keyword et leur aperçu de repli.
 7. **`resolve_event` = enrichissement seul** (titre + description). Il **ne touche jamais** à l'appartenance ni aux compteurs (Partie II §7.3). L'arbitrage des cas ambigus est **reporté en V2**. Pas de job sur un Event à une seule source.
 8. **Nouveau statut terminal `skipped`**, avec une colonne `skip_reason` (liste fermée). Il rend le taux de réduction mesurable.
-9. **Deux familles d'échecs** : les échecs d'**infrastructure** (gateway injoignable, 429, erreur de configuration) **ne consomment pas de tentative** et ouvrent un **disjoncteur LLM** ; les échecs **du job** (sortie malformée, timeout) consomment une tentative. Une panne du gateway ne vide donc jamais la file vers `dead_letter`.
+9. **Deux familles d'échecs** : les échecs d'**infrastructure** (API injoignable ou surchargée, 429, limite de dépense, erreur de configuration) **ne consomment pas de tentative** et ouvrent un **disjoncteur LLM** ; les échecs **du job** (sortie malformée, timeout) consomment une tentative. Une panne de l'API ne vide donc jamais la file vers `dead_letter`. Les requêtes refusées et les refus du modèle sont **non rejouables** (§25.4, #123).
 10. **Disjoncteur LLM** à trois états (`closed` · `open` · `half_open`). Tant qu'il est ouvert, le worker **ne claime plus** de job LLM. Son état est exposé dans `SystemState.llm_gateway`.
 11. **Ordre de claim** : priorité décroissante, puis **les plus récents d'abord** (`created_at DESC`). Après une panne, le quota va à l'actualité fraîche.
 12. **TTL par type** : 72 h pour `enrich_article`, 7 j pour `resolve_event` et `discover_topics`. Au-delà, le job est `skipped` (`expired`). Cela borne le backlog et la rétention du contenu.
 13. **Budget quotidien local optionnel** (`llm.daily_request_budget`, désactivé par défaut), avec une réserve pour les demandes de l'app.
-14. **Pas de batching en V1** : un appel = un job. Le contrat reste compatible avec un batching ultérieur.
-15. **Contrat `LLMClient` fixé** : signature typée, parsing et validation Pydantic **dans le client**, **aucun retry interne**, erreurs typées.
+14. **Pas de batching en V1** : un appel = un job. Le contrat reste compatible avec un batching ultérieur (« À durcir pendant la formation »).
+15. **Contrat `LLMClient` fixé** : SDK `anthropic` créé avec `max_retries=0`, sortie structurée, traitement de chaque `stop_reason`, signature typée, validation Pydantic **dans le client**, **aucun retry interne**, erreurs typées (§25, #123).
 16. **Validation à deux niveaux** : une structure invalide fait échouer le job ; un **élément de liste invalide est écarté seul** et compté.
 17. **Entités LLM canonicalisées** : on passe d'abord par le matcher d'alias de `entities.yaml`, puis par un slug déterministe. Évite les doublons d'entités.
 18. **Jobs créables par l'app : liste fermée** `enrich_article` · `resolve_event` (régénération). Le rattachement de l'historique à un topic créé est un **traitement déterministe** dérivé de `EmergingDecision`, **hors `AIJob`**.
 19. **Exception documentée à la règle d'un seul écrivain** : l'app peut faire passer un job de `dead_letter` à `pending` ou à `cancelled`, et **uniquement** ces deux transitions.
 20. **File dérivée des embeddings** : elle ne sélectionne que les articles dont le contenu n'est **pas purgé**, ce qui empêche tout ré-embedding automatique de l'historique. Un échec persistant est enregistré comme une **ligne `Embedding` en échec**.
 21. **`processed_at` est posé par une passe unique de l'étage purge**, de façon idempotente.
-22. **Gateway non configuré** (`LLM_BASE_URL` absent) → le worker démarre, avec le disjoncteur ouvert en permanence (`not_configured`). Le produit tourne à 0 € sans LLM.
+22. **LLM non configuré** (`ANTHROPIC_API_KEY` absent) → le worker démarre, avec le disjoncteur ouvert en permanence (`not_configured`). Le produit tourne sans LLM, à 0 € de LLM.
 23. **`discover_topics` écrit dans de nouvelles colonnes de `EmergingCandidate`**. Son résultat est **indicatif** : il n'écarte jamais un candidat automatiquement (Partie II §6.1-4).
-24. **Tous les réglages LLM vivent dans `pipeline.yaml`, section `llm.*`** (§27.8).
+24. **Tous les réglages LLM vivent dans `pipeline.yaml`, section `llm.*`** (§27.8), modèle compris (`llm.model`) ; seul le secret `ANTHROPIC_API_KEY` est dans `.env` (#123).
 
 ---
 
@@ -115,7 +115,7 @@ RETURNING *;
 
 - **Échec du job** (§26.1) : la tentative est consommée. Backoff `30 s · 2 min · 10 min` ; `max_attempts = 3` ; au-delà → `dead_letter` (acquis).
 - **Échec d'infrastructure** : la tentative est **rendue** (`attempts = attempts − 1`), le job repasse en `retry` avec `next_attempt_at` = réouverture prévue du disjoncteur.
-- **Échec non rejouable** (requête refusée par le gateway, §26.1) → `failed`.
+- **Échec non rejouable** (requête refusée par l'API, ou refus du modèle ; §25.4, §26.1) → `failed`.
 - `completed_at` est renseigné à toute transition vers `completed`, `failed`, `cancelled` ou `skipped`, et reste `NULL` pour `dead_letter` (Partie III §11.10).
 
 ### 23.6 Actions de l'app sur les jobs
@@ -152,22 +152,23 @@ L'état vit en mémoire du worker (processus unique). Il est recopié à chaque 
 
 | Transition | Déclencheur |
 |---|---|
-| `closed → open` | `LLMUnavailable`, `LLMRateLimited`, `LLMConfigError`, ou **3 `LLMTimeout` consécutifs** |
-| `open → half_open` | cause `unavailable` : une sonde `health()` réussit (sonde toutes les 60 s) · cause `rate_limited` : `open_until` est atteint · cause `config` : sonde toutes les 5 min |
+| `closed → open` | `LLMUnavailable`, `LLMRateLimited`, `LLMSpendLimit`, `LLMConfigError`, ou **3 `LLMTimeout` consécutifs** |
+| `open → half_open` | cause `unavailable` : une sonde `health()` réussit (sonde toutes les 60 s) · cause `rate_limited` : `open_until` est atteint · cause `config` : sonde toutes les 5 min · cause `spend_limit` : renvoyée au budget (§24.3, #125) |
 | `half_open → closed` | le **job test** (un seul job claimé) aboutit |
 | `half_open → open` | le job test subit à nouveau un échec d'infrastructure |
-| — (permanent) | `LLM_BASE_URL` absent : état `open`, `reason = not_configured`, aucune sonde |
+| — (permanent) | `ANTHROPIC_API_KEY` absent : état `open`, `reason = not_configured`, aucune sonde |
 
-- **`open_until` après un 429** : valeur de `Retry-After` plafonnée à `llm.breaker.retry_after_cap` (6 h). Sans `Retry-After` : 60 s, doublé à chaque réouverture en échec, dans la même limite.
-- **Pourquoi un job test** : une sonde `health()` ne détecte pas un quota épuisé. Seul un vrai appel le peut.
+- **`open_until` après un 429** (`LLMRateLimited`) : valeur de `retry-after` plafonnée à `llm.breaker.retry_after_cap` (6 h). Sans `retry-after` : 60 s, doublé à chaque réouverture en échec, dans la même limite.
+- **Pourquoi un job test** : une sonde `health()` ne détecte ni une limite de débit ni une limite de dépense. Seul un vrai appel le peut.
+- **`LLMSpendLimit`** : jamais `failed`, aucune tentative consommée ; la reprise et le plafond interne relèvent du budget (§24.3, #125).
 - Les jobs déjà en cours au moment de l'ouverture subissent chacun leur propre échec d'infrastructure ; leur tentative est rendue.
 
 ### 24.3 Budget quotidien
 
-> **À réviser (ADR-0022, #123).** L'ADR-0022 remplace ce budget quotidien en requêtes par un **budget mensuel plafonné**
+> **À réviser (ADR-0022, #125).** L'ADR-0022 remplace ce budget quotidien en requêtes par un **budget mensuel plafonné**
 > en coût réel : plafond configuré en USD (défaut ≈ 15 €), suivi en tokens et en coût, plafond dur appliqué par le
 > worker, remise à zéro le 1er du mois (UTC) ; cadre en Partie I §4.3 et VII §45.1. Le contrat ci-dessous reste en
-> vigueur tant que #123 ne l'a pas réécrit ; il ne doit pas être implémenté en l'état.
+> vigueur tant que #125 ne l'a pas réécrit ; il ne doit pas être implémenté en l'état.
 
 - Compteur `SystemState.llm_usage` = `{day, requests}` (jour UTC). Il est incrémenté pour chaque appel ayant reçu une réponse du gateway (2xx ou sortie malformée) ; un 429 ou une erreur réseau ne compte pas.
 - `llm.daily_request_budget` : `null` (défaut) = pas de limite locale ; les quotas du gateway s'appliquent via les 429.
@@ -235,40 +236,94 @@ Ce n'est pas le re-scoring rétroactif reporté par la Partie IV : ce dernier po
 
 ## 25. API Claude & LLMClient
 
-> **À réviser (ADR-0022, #123).** L'ADR-0022 remplace la chaîne OpenAI-compatible et le gateway par l'**API Claude en
-> direct**, par le SDK `anthropic` confiné au `LLMClient` (`max_retries=0`), avec `ANTHROPIC_API_KEY` et `LLM_MODEL` ;
-> `LLM_BASE_URL` est supprimée et `ANTHROPIC_BASE_URL` n'est acceptée qu'avec `APP_ENV=test` (IX §53.2, DV-09). Le
-> contrat ci-dessous (configuration, `generate`, `health`, erreurs) reste en vigueur tant que #123 ne l'a pas réécrit ;
-> il ne doit pas être implémenté en l'état.
+Chaîne `AI Tech Radar → LLMClient → SDK anthropic (AsyncAnthropic) → Messages API` (ADR-0022). Le SDK n'est importé que
+par le `LLMClient` (T-LLM-19).
 
-Chaîne `AI Tech Radar → LLMClient → API OpenAI-compatible → LLM Gateway → Providers` : **inchangée**. Le choix du gateway est documenté dans `docs/llm-gateway.md` au Sprint 6 ; la check-list de mesure de référence, avec les gateways candidats, est la ligne M6 de la Partie VII §45.4.
+**Sources.** Chaque règle issue de l'API cite sa page de documentation, relative à `https://platform.claude.com/docs/en/`
+et consultée le 2026-09-30, ou le code source du SDK `anthropic` 1.9.0 (dernière version publiée, le 2026-09-28 ; la
+version épinglée est fixée au Sprint 6 et ces règles y sont revérifiées). La mention **à vérifier** marque ce qu'aucune
+page officielle ne confirme.
 
 ### 25.1 Configuration
 
-| Variable d'environnement | Rôle |
-|---|---|
-| `LLM_BASE_URL` | URL de l'API OpenAI-compatible. **Absente → LLM désactivé** : le worker démarre, avec le disjoncteur en `open / not_configured` |
-| `LLM_API_KEY` | jeton Bearer, jamais journalisé |
-| `LLM_MODEL` | modèle unique pour toutes les tâches en V1 (le gateway peut router) |
+| Réglage | Où | Rôle |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | `.env`, worker seul (Partie VII §36.7) | clé de l'API, jamais journalisée. **Absente → LLM désactivé** : le worker démarre, avec le disjoncteur en `open / not_configured` |
+| `llm.model` | `pipeline.yaml` (§27.8) | identifiant de modèle **épinglé**, unique pour toutes les tâches en V1. Aucun défaut ; aucun identifiant de modèle en dur dans le code |
+| `ANTHROPIC_BASE_URL` | environnement de test seulement | adresse du double de l'API ; acceptée seulement si `APP_ENV=test`, sinon le worker refuse de démarrer (T-CFG-12, §26.3) |
 
-Les autres réglages (timeouts, température, mode JSON) sont dans `pipeline.yaml` (§27.8).
+- **Clé présente, `llm.model` absent** : le worker démarre ; le disjoncteur s'ouvre avec `reason = config` et la
+  condition `llm_config_error` est levée (Partie VII §39.5). Il n'y a pas de refus de démarrer : le produit tourne sans
+  LLM.
+- **Identifiant épinglé** : un identifiant de modèle désigne une version figée. Depuis la génération 4.6, un identifiant
+  sans date (`claude-sonnet-4-6`) est lui-même un snapshot ; avant, un identifiant sans date (`claude-sonnet-4-5`) est
+  un alias vers le dernier snapshot daté (doc : `about-claude/models/model-ids-and-versions`). Un motif ne peut donc pas
+  distinguer un alias : l'interdiction des alias flottants est une **règle de revue**, consignée dans `docs/llm.md`
+  (Partie IX §55.4).
+- **Sortie structurée sur le modèle épinglé** : **à vérifier** au choix du modèle (Sprint 6, M6). La page
+  `build-with-claude/structured-outputs` liste les modèles compatibles, et la liste des modèles déclare la capacité
+  (`capabilities.structured_outputs`, doc : `api/models/list`).
+- **Variables lues d'office par le SDK** : `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`,
+  `ANTHROPIC_CUSTOM_HEADERS`, `ANTHROPIC_PROFILE` et les variables de fédération (source SDK 1.9.0, `_client.py`). Le
+  `LLMClient` passe la clé et l'adresse **explicitement**, et Compose ne transmet au worker que des variables listées
+  une à une (Partie VII §36.5) : aucune autre variable `ANTHROPIC_*` que la clé n'atteint le worker (volet de T-SEC-08,
+  §26.3).
 
-### 25.2 Interface
+Les autres réglages (timeouts, `max_tokens` par tâche) sont dans `pipeline.yaml` (§27.8). `temperature` n'est jamais
+envoyée (§25.2).
+
+### 25.2 Client et interface
+
+**Construction**, une fois, au démarrage du worker, si la clé est présente :
+
+```python
+AsyncAnthropic(
+    api_key=...,                     # ANTHROPIC_API_KEY, passée explicitement
+    base_url=...,                    # https://api.anthropic.com ; ANTHROPIC_BASE_URL si APP_ENV=test
+    max_retries=0,
+    timeout=httpx2.Timeout(...),     # llm.connect_timeout, llm.read_timeout
+    http_client=DefaultAsyncHttpxClient(follow_redirects=False),
+)
+```
+
+- **`max_retries=0`** (ADR-0022). Par défaut, le SDK rejoue deux fois, avec backoff, les erreurs de connexion, 408,
+  409, 429 et ≥ 500, en respectant `retry-after` (doc : `api/errors` et `cli-sdks-libraries/sdks/python` ; source SDK :
+  `DEFAULT_MAX_RETRIES = 2`). Ces reprises cachées multiplieraient les appels facturés, consommeraient la limite de
+  débit, masqueraient les 429 au disjoncteur et contrediraient la règle « un appel = une requête ». La reprise
+  appartient à la file et au disjoncteur (§23.5, §24.2, §26) : T-LLM-21 (§26.3).
+- **Aucune redirection suivie.** Les clients HTTP par défaut du SDK suivent les redirections (`follow_redirects=True`,
+  source SDK 1.9.0, `_base_client.py`, `_DefaultAsyncHttpxClient`) ; aucune page de la documentation n'en parle
+  (**à vérifier**). Le `LLMClient` fournit donc son propre client, construit avec `follow_redirects=False` ; une
+  réponse de redirection est une `LLMConfigError` (§25.4, T-LLM-20).
+- **`httpx2`** : le SDK 1.9.0 dépend de `httpx2`, et non de `httpx` ; le client fourni doit être un client `httpx2`
+  (doc : `cli-sdks-libraries/sdks/python` ; source SDK). Le `HttpClient` des collectors reste sur httpx (Partie IV
+  §21.1) : deux piles HTTP coexistent dans l'image (Partie VII §35).
+- **Hors du `HttpClient`** : pas de limiteur par hôte, pas de User-Agent de collecte, pas de garde anti-SSRF (Partie IV
+  §21.1) ; destination fixe.
+- **Timeouts** : connexion 5 s, lecture 60 s (`llm.connect_timeout`, `llm.read_timeout`). Le défaut du SDK (10 min)
+  n'est pas utilisé.
+
+**Interface** :
 
 ```python
 T = TypeVar("T", bound=BaseModel)
 
 @dataclass(frozen=True)
 class LLMResult(Generic[T]):
-    value: T                    # objet validé
-    dropped_items: int          # éléments de listes écartés à la validation
-    model: str | None           # modèle rapporté par le gateway
-    input_tokens: int | None
-    output_tokens: int | None
+    value: T                                    # objet validé
+    dropped_items: int                          # éléments de listes écartés à la validation
+    model: str                                  # modèle rapporté par la réponse
+    stop_reason: str
+    input_tokens: int
+    output_tokens: int
+    cache_creation_input_tokens: int | None     # tels que renvoyés, non exploités (§25.6)
+    cache_read_input_tokens: int | None
+    request_id: str | None
     latency_ms: int
 
-class GatewayHealth(BaseModel):
+class LLMHealth(BaseModel):
     reachable: bool
+    model_listed: bool
     detail: str | None
 
 class LLMClient:
@@ -279,54 +334,115 @@ class LLMClient:
         user: str,
         response_model: type[T],
         max_output_tokens: int,
-        temperature: float = 0.2,
     ) -> LLMResult[T]: ...
 
-    async def health(self) -> GatewayHealth: ...
+    async def health(self) -> LLMHealth: ...
 ```
 
-- **`generate`** fait un `POST {LLM_BASE_URL}/chat/completions` avec `model = LLM_MODEL`, les deux messages, `max_tokens` et `temperature`, plus `response_format={"type":"json_object"}` uniquement si `llm.json_mode = true`.
-- **`health`** fait un `GET {LLM_BASE_URL}/models`, avec un timeout de 5 s. Il ne consomme pas de quota de génération. Cette implémentation est **conditionnée par la mesure M6** (Partie VII §45.4) : si `GET /models` est absent ou peu fiable sur le gateway retenu, `health()` est adapté par ADR (Partie IX §54.3).
-- **Client HTTP dédié** (httpx asynchrone), distinct du `HttpClient` des collectors : pas de limiteur par hôte ni de User-Agent de collecte, et pas de garde anti-SSRF (Partie IV §21.1), `LLM_BASE_URL` pouvant être interne (`http://gateway:<port>/v1`, Partie VII §36.2).
-- **Destination unique** : le client n'appelle que `LLM_BASE_URL` et **ne suit aucune redirection vers un autre hôte** (T-LLM-20).
-- **Aucun retry interne.** Un appel = une requête. La résilience vit au niveau du job et du disjoncteur ; aucun appel n'est multiplié en silence.
-- **Timeouts** : connexion 5 s, lecture 60 s (configurables).
+- **`generate`** : `POST /v1/messages`, avec `model = llm.model`, `system` au premier niveau, un seul message `user`,
+  `max_tokens = max_output_tokens` et la sortie structurée (§25.3) (doc : `api/messages`).
+  - **Jamais `temperature`** : les modèles publiés après Claude Opus 4.6 refusent toute valeur autre que 1.0 par une
+    400 (doc : `api/messages`).
+  - Ni `stop_sequences`, ni outils, ni `thinking`, ni `effort` : les défauts de l'API s'appliquent (« À durcir pendant
+    la formation »). Le thinking compte dans `max_tokens` (doc : `build-with-claude/effort`) : les plafonds du §27.8
+    sont à recaler au choix du modèle (**à vérifier**, M6).
+- **`health`** : `GET /v1/models`, timeout de 5 s, en suivant la pagination (`limit` jusqu'à 1000, `has_more`) (doc :
+  `api/models/list`). Réussite = API joignable **et** `llm.model` présent dans la liste ; modèle absent →
+  `LLMConfigError`, donc `llm_config_error`. Facturation ou consommation de quota de cet appel : **à vérifier**, aucune
+  page ne le précise.
 
-### 25.3 Parsing et validation
+### 25.3 Sortie structurée, `stop_reason` et validation
 
-Réalisés **dans `LLMClient`**. Le handler reçoit un objet validé ou une exception typée.
+**Sortie structurée : structured outputs** (décision du 2026-09-30). Chaque tâche envoie le schéma JSON de son
+`response_model` dans `output_config.format = {"type": "json_schema", "schema": …}`. La fonction est disponible sans
+en-tête bêta ; l'ancien paramètre `output_format` est déprécié (doc : `build-with-claude/structured-outputs`).
 
-1. Réponse vide, `finish_reason = "length"` (sortie tronquée) ou absence de contenu → `LLMMalformed`.
-2. Extraction du JSON : retrait d'éventuelles balises de code, puis premier objet `{…}` équilibré du texte.
+- **Garantie** : le décodage contraint produit un JSON conforme au schéma, sauf en cas de `refusal` ou de `max_tokens`
+  (même page).
+- **Limites** (même page) : ni `minLength` / `maxLength`, ni `minimum` / `maximum` ; `additionalProperties` à `false` ;
+  casse des valeurs d'enum non garantie ; un schéma trop complexe est refusé par une 400. Le schéma envoyé est donc une
+  version compatible du `response_model`, sans bornes de longueur.
+- **La validation Pydantic reste la seule autorité** : `SoftStr` et `TolerantList` sont conservés.
+
+**Option écartée : tool use forcé.** `tool_choice` `any` ou `tool` renvoie une 400 sur Claude Opus 5.5, Sonnet 5.5,
+Fable 5.1 et Mythos 5.1 (doc : `api/errors`, « Forced tool use not supported » ; `agents-and-tools/tool-use/define-tools`).
+L'alternative `auto` avec `strict` ne garantit pas l'appel de l'outil, et le tool use forcé est incompatible avec le
+thinking manuel. L'option est écartée : elle ne fonctionne pas avec les modèles actuels.
+
+**`stop_reason`** : les sept valeurs documentées (doc : `build-with-claude/handling-stop-reasons` ; `api/messages`).
+Aucune sortie n'est écrite en base hors `end_turn` (T-LLM-22, §26.3).
+
+| `stop_reason` | Traitement |
+|---|---|
+| `end_turn` | validation (étapes ci-dessous) |
+| `max_tokens` | sortie tronquée → `LLMMalformed` |
+| `stop_sequence` | inattendue (aucune séquence envoyée) → `LLMMalformed` |
+| `tool_use` | inattendue (aucun outil envoyé) → `LLMMalformed` |
+| `pause_turn` | inattendue (aucun outil serveur) → `LLMMalformed` |
+| `refusal` | refus du modèle (réponse HTTP 200, facturée ; `stop_details.category`) → `LLMRefused` |
+| `model_context_window_exceeded` | entrée trop longue → `LLMBadRequest` |
+| valeur inconnue | → `LLMMalformed` |
+
+**Validation**, réalisée **dans `LLMClient`** ; le handler reçoit un objet validé ou une exception typée :
+
+1. Seuls les blocs `text` de `content` sont lus ; les blocs `thinking` éventuels sont ignorés. Aucun bloc `text`, ou
+   texte vide → `LLMMalformed`.
+2. Analyse JSON du texte, sans réparation ni extraction heuristique. JSON invalide → `LLMMalformed`.
 3. Validation par `response_model`.
 4. **Types utilitaires** fournis avec le client :
-   - `TolerantList[X]` : chaque élément est validé séparément ; un élément invalide est écarté et compté dans `dropped_items`, sans faire échouer la réponse ;
-   - `SoftStr(max, min)` : texte trimé ; au-delà de `max`, coupé sur une frontière de mot et suivi de `…` ; sous `min`, erreur de validation.
-5. Toute autre erreur de validation → `LLMMalformed`. **Aucune écriture** n'a lieu avant la fin de la validation (acquis).
+   - `TolerantList[X]` : chaque élément est validé séparément ; un élément invalide est écarté et compté dans
+     `dropped_items`, sans faire échouer la réponse ;
+   - `SoftStr(max, min)` : texte trimé ; au-delà de `max`, coupé sur une frontière de mot et suivi de `…` ; sous `min`,
+     erreur de validation.
+5. Toute autre erreur de validation → `LLMMalformed`. **Aucune écriture** n'a lieu avant la fin de la validation
+   (acquis).
 
 ### 25.4 Erreurs typées
 
-| Exception | Cause | Famille |
+Sources : doc `api/errors` et `api/rate-limits` ; source SDK 1.9.0, `_exceptions.py`.
+
+| Exception | Cause : statut HTTP, `error.type`, exception du SDK | Famille |
 |---|---|---|
-| `LLMUnavailable` | erreur de connexion ou DNS, timeout de connexion, 5xx | infrastructure |
-| `LLMRateLimited(retry_after)` | 429 | infrastructure |
-| `LLMConfigError` | 401 · 403 · 404 (clé ou modèle invalide) | infrastructure |
+| `LLMUnavailable` | `APIConnectionError` (connexion, DNS, timeout de connexion) · 500 `api_error`, 503, 504 `timeout_error` (`InternalServerError`) · 529 `overloaded_error` (`OverloadedError`) · 409 `conflict_error` (`ConflictError`) · tout autre ≥ 500 | infrastructure |
+| `LLMRateLimited(retry_after)` | 429 `rate_limit_error` (`RateLimitError`) ; `retry-after` en secondes | infrastructure |
+| `LLMSpendLimit` | 429 avec `error.details.error_code = enforced_spend_limit_reached` (plafond de dépense du palier, sans `retry-after`) · 400 `invalid_request_error` dont le message commence par « You have reached your specified API usage limits » ou « You have reached your specified workspace API usage limits » (limite fixée dans la Console) (doc : `api/rate-limits`) | infrastructure |
+| `LLMConfigError` | 401 `authentication_error` · 403 `permission_error` · 404 `not_found_error` · 402 `billing_error` (le SDK lève un `APIStatusError` générique) · réponse de redirection (§25.2) · `llm.model` absent de la configuration ou de la liste des modèles | infrastructure |
 | `LLMTimeout` | timeout de lecture | job |
-| `LLMMalformed` | JSON absent ou invalide, validation échouée, sortie vide ou tronquée, refus | job |
-| `LLMBadRequest` | 400 · 413 · 422 | non rejouable |
+| `LLMMalformed` | §25.3 : JSON absent ou invalide, validation échouée, sortie vide, tronquée ou inattendue | job |
+| `LLMRefused` | `stop_reason = refusal` | non rejouable |
+| `LLMBadRequest` | autre 400 `invalid_request_error` · 413 `request_too_large` · 422 (`UnprocessableEntityError`, non documenté par l'API) · `model_context_window_exceeded` · tout autre 4xx | non rejouable |
+
+- **Crédit prépayé épuisé** : statut et type **à vérifier** ; aucune page officielle ne les donne. Tant que ce n'est
+  pas vérifié, un tel cas pourrait être classé `LLMBadRequest`, donc `failed`.
+- **Timeout de connexion ou de lecture** : `APITimeoutError` ne les distingue pas par son type ; la distinction par la
+  cause `httpx2` sous-jacente est **à vérifier**.
+- **`request_id`** : en-tête `request-id` de chaque réponse, champ `request_id` du corps d'erreur (doc : `api/errors`) ;
+  journalisé avec l'erreur.
+- **En-têtes `anthropic-ratelimit-*`** (`limit`, `remaining`, `reset` au format RFC 3339) : journalisés sur un 429,
+  sans effet sur l'état ; seul `retry-after` fixe `open_until` (doc : `api/rate-limits`).
+- Les valeurs d'`error.type` peuvent s'enrichir avec le temps (doc : `api/errors`) : le classement se fait d'abord sur
+  le statut HTTP.
 
 Le traitement de chaque famille est décrit au §26.1.
 
 ### 25.5 Prompts
 
 - Un module par tâche (`app/llm/prompts/<task>.py`). Chacun expose la construction de `system` et `user`, le `response_model` et une constante `PROMPT_VERSION`, présente dans les logs.
+- `system` est envoyé au premier niveau de la requête ; le message `user` est unique (§25.2).
 - Le contenu des articles est une **donnée non fiable**. Il est placé dans le message `user`, entre délimiteurs explicites. Le prompt système indique qu'il ne contient aucune instruction à suivre.
 - **Protection contre l'injection** : une sortie bornée par le schéma, des topics choisis dans une liste fermée, des longueurs plafonnées, une sortie jamais exécutée et **toujours échappée** à l'affichage.
 
 ### 25.6 Observabilité
 
-- **Log par appel** : `task`, `job_id`, latence, tokens, classe d'erreur, `PROMPT_VERSION`. Jamais le prompt ni la réponse au niveau `info`. Au niveau `debug`, les 200 premiers caractères d'une réponse malformée.
-- **Métriques** : appels par tâche et par issue · tokens · latence · `dropped_items` · jobs `skipped` par motif · backlog par type et par statut · état du disjoncteur · consommation du budget quotidien.
+- **Log par appel** : `task`, `job_id`, `model`, `stop_reason`, `input_tokens`, `output_tokens`, `request_id`, latence,
+  classe d'erreur, `PROMPT_VERSION`. Jamais le prompt ni la réponse au niveau `info`. Au niveau `debug`, les 200
+  premiers caractères d'une réponse malformée.
+- **Champs de cache** : `cache_creation_input_tokens` et `cache_read_input_tokens` sont journalisés tels que l'`usage`
+  de la réponse les renvoie, éventuellement `null` (doc : `api/messages`). Ils ne sont pas exploités : aucun code ni
+  réglage de cache (Partie VIII §47.5, « rien par anticipation »).
+- **Métriques** : appels par tâche et par issue · `stop_reason` par tâche · tokens d'entrée et de sortie par tâche ·
+  latence · `dropped_items` · jobs `skipped` par motif · backlog par type et par statut · état du disjoncteur ·
+  consommation du budget (§24.3, #125).
 
 ## 26. Résilience LLM & retry
 
@@ -336,28 +452,29 @@ Principe et tableau de pannes : **acquis** (Partie II §9.1). Cette section pré
 
 | Famille | Tentative | Statut du job | Disjoncteur |
 |---|---|---|---|
-| **Infrastructure** (`LLMUnavailable`, `LLMRateLimited`, `LLMConfigError`) | **rendue** | `retry`, `next_attempt_at` = réouverture prévue | ouvert (§24.2) ; `LLMConfigError` déclenche en plus une **alerte de configuration** |
+| **Infrastructure** (`LLMUnavailable`, `LLMRateLimited`, `LLMSpendLimit`, `LLMConfigError`) | **rendue** | `retry`, `next_attempt_at` = réouverture prévue ; **jamais** `failed` | ouvert (§24.2) ; `LLMConfigError` déclenche en plus une **alerte de configuration** |
 | **Job** (`LLMMalformed`, `LLMTimeout`) | consommée | `retry` avec backoff §23.5, puis `dead_letter` | inchangé, sauf 3 `LLMTimeout` consécutifs → ouvert (cause `unavailable`) |
-| **Non rejouable** (`LLMBadRequest`) | — | `failed` | inchangé |
+| **Non rejouable** (`LLMBadRequest`, `LLMRefused`) | — | `failed` | inchangé |
 | **Exception inattendue** du handler | consommée | comme un échec du job | inchangé |
 
 Dans tous les cas, `last_error` reçoit la classe d'erreur et un message sans secret.
 
 ### 26.2 Garanties
 
-- **Gateway éteint pendant N heures** : aucun job ne passe en `dead_letter` du fait de la panne. Au retour, les jobs reprennent, les plus récents d'abord, et les jobs expirés sont `skipped`.
-- **Quota journalier épuisé** : le disjoncteur reste ouvert jusqu'au `Retry-After` (plafonné), puis un job test vérifie que le quota est revenu. Aucune rafale d'appels voués au 429.
+- **API indisponible pendant N heures** : aucun job ne passe en `dead_letter` du fait de la panne. Au retour, les jobs reprennent, les plus récents d'abord, et les jobs expirés sont `skipped`.
+- **Limite de débit atteinte (429)** : le disjoncteur reste ouvert jusqu'au `retry-after` (plafonné), puis un job test vérifie que la limite est levée. Aucune rafale d'appels voués au 429.
+- **Limite de dépense atteinte** (`LLMSpendLimit`) : aucun job ne passe en `failed` ni en `dead_letter` du fait de la limite ; la reprise relève du budget (§24.3, #125).
 - **Aucune écriture partielle** : validation complète, puis une transaction unique.
 
 ### 26.3 Scénarios de test obligatoires
 
 ```
-gateway down (connexion refusée) → disjoncteur ouvert → aucun claim LLM
-  → attempts inchangés → gateway up → sonde OK → job test OK → reprise, plus récents d'abord
+API down (connexion refusée ou 529) → disjoncteur ouvert → aucun claim LLM
+  → attempts inchangés → API up → sonde OK → job test OK → reprise, plus récents d'abord
 
-429 avec Retry-After: 120 → open_until = +120 s → half_open → job test → closed
+429 avec retry-after: 120 → open_until = +120 s → half_open → job test → closed
 
-429 persistant sans Retry-After → réouvertures en 60 s, 120 s, 240 s… plafonnées à 6 h
+429 persistant sans retry-after → réouvertures en 60 s, 120 s, 240 s… plafonnées à 6 h
 
 réponse non-JSON ×3 → dead_letter ; purge du contenu bloquée ; relance app → pending
 
@@ -365,10 +482,23 @@ réponse non-JSON ×3 → dead_letter ; purge du contenu bloquée ; relance app 
 
 3 timeouts consécutifs → disjoncteur ouvert
 
-LLM_BASE_URL absent → worker démarre, jobs créés, restent pending, /health = llm not_configured
+ANTHROPIC_API_KEY absent → worker démarre, jobs créés, restent pending, /health = llm not_configured
 
 kill -9 après l'appel LLM, avant la transaction → retry → rejoué → état final identique
 ```
+
+**Tests à créer au Sprint 6** (décision du 2026-09-30 : aucune ligne de catalogue sans test ; ils entrent au catalogue de
+la Partie VIII §50.5 avec leurs tests, et figurent au contenu du Sprint 6, VIII §47.2) :
+
+- **T-LLM-21** : client créé avec `max_retries=0` ; un 429, un 529 ou un 5xx donnent **une seule** requête dans le
+  journal du double (§25.2).
+- **T-LLM-22** : chaque `stop_reason` documenté reçoit son traitement (§25.3) ; aucune sortie écrite en base hors
+  `end_turn` ; `refusal` → `failed`.
+- **T-CFG-12** : `ANTHROPIC_BASE_URL` renseignée avec un `APP_ENV` autre que `test` → le worker refuse de démarrer
+  (§25.1, sur le modèle de T-CFG-09).
+- **Volet de T-SEC-08** (politique Compose) : aucune autre variable `ANTHROPIC_*` que la clé n'atteint le worker
+  (§25.1).
+- **Volet de T-SEC-02** : la clé `x-api-key` est masquée par le processeur de logs (Partie VII §42.4).
 
 ## 27. LLM Tasks & réduction des appels
 
@@ -519,10 +649,9 @@ Même logique, portée par `Event.title_origin` : `fallback` à la création (V-
 
 | Clé | Défaut | Section |
 |---|---|---|
+| `llm.model` | aucun (identifiant épinglé requis pour activer le LLM) | §25.1 |
 | `llm.max_concurrent` | 2 | §24.1 |
 | `llm.connect_timeout` · `read_timeout` | 5 s · 60 s | §25.2 |
-| `llm.json_mode` | `false` | §25.2 |
-| `llm.temperature` | 0,2 | §25.2 |
 | `llm.summary_language` | `fr` | §27.1 |
 | `llm.input_max_chars` | 6 000 | §27.2 |
 | `llm.max_topics_in_prompt` | 80 | §27.2 |
@@ -545,15 +674,34 @@ Les priorités par type sont des constantes du registre (§23.1), pas des régla
 
 ---
 
+## À durcir pendant la formation
+
+Points connus, **non spécifiés** (#123). Chacun entre par la règle de la Partie VIII §47.5 (une décision, puis une
+ligne du tableau, avant toute implémentation), au chapitre indiqué ; rien n'est préparé d'ici là. Quand un point
+recoupe un élément de la Partie X, il y renvoie au lieu de le décrire.
+
+- **Réparation d'une sortie invalide par un second appel** (Ch06) : renvoyer au modèle l'erreur de validation avant de
+  compter l'échec. Déplacé de « Reporté en V2 ».
+- **Thinking et effort pour `discover_topics`** (Ch07) : régler la réflexion et le niveau d'effort de la tâche la plus
+  analytique ; le thinking adaptatif ne se désactive pas sur Claude Opus 5.5 et compte dans `max_tokens` (doc :
+  `build-with-claude/effort`).
+- **Modèle par tâche** (Ch08) : un modèle par tâche au lieu d'un `llm.model` unique. Déplacé de « Reporté en V2 ». La
+  comparaison des modèles relève des évaluations (Partie X §64, X.6).
+- **Prompt caching de la liste des topics** (Ch08) : mettre en cache le préfixe commun des prompts d'`enrich_article`
+  et de `discover_topics` ; le minimum de tokens cachables dépend du modèle (doc : `build-with-claude/prompt-caching`).
+- **Batching** (Ch08) : Message Batches API pour les jobs non urgents (doc : `build-with-claude/batch-processing`), et
+  regroupement de plusieurs jobs par appel (décision 14). Déplacé de « Reporté en V2 ».
+- **Taux de cache et analyse du coût par tâche** (Ch08) : exploiter les champs de cache journalisés (§25.6) et ventiler
+  le coût réel par tâche. Le suivi du coût réel lui-même est en V1 (§24.3, #125).
+
+---
+
 ## Reporté en V2 (tracé depuis la Partie V-A)
 
 - **`analyze_trend`** : lecture qualitative des tendances par le LLM, avec sa table de résultats.
-- **Conversation** avec l'historique.
+- **Conversation** avec l'historique : candidate en Partie X §59 (X.1).
 - **Arbitrage des cas ambigus par `resolve_event`** : il suppose de pouvoir modifier l'appartenance des articles, ce que la V1 interdit.
-- **Batching** de plusieurs jobs par appel LLM.
 - **Enrichissement des membres non représentatifs** d'un Event.
-- **Modèle par tâche** (au lieu d'un `LLM_MODEL` unique).
 - **Ré-enrichissement en masse** après un changement de `PROMPT_VERSION` ou de modèle.
-- **Réparation d'une sortie malformée** par un second appel correctif.
 - **Priorité dynamique** (relever la priorité d'un job quand son Event devient chaud).
 - **Nettoyage des entités `origin=llm` orphelines** et fusion d'entités de types différents.

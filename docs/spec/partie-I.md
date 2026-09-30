@@ -178,7 +178,7 @@ Parties VII/VIII ; la Partie I n'en fixe que la **définition de succès** :
 | **Observable** | Tout incident majeur (source / worker / LLM down, budget LLM atteint, disque plein) est détectable via `/health` ou une alerte, **sans SSH**. |
 | **Résilient** | Les tests de résilience de la Partie VIII passent (LLM down · 429 · source down · worker restart · VPS reboot · backup restore) : tableau de la Partie VIII §50.6. |
 | **Low-cost** | Deux critères séparés. **Infrastructure** : coût récurrent ≤ **12 €/mois**. **LLM** : dépense ≤ **plafond mensuel**, configuré en USD (devise de facturation), défaut ≈ **15 €**, suivi en tokens et en coût réel, **plafond dur** appliqué par le worker, remis à zéro le 1er du mois (UTC). Le produit **fonctionne sans LLM**, à 0 € de LLM (ADR-0022). |
-| **LLM isolé** | L'API Claude n'est appelée que par le `LLMClient` du worker : changer de modèle = modifier `LLM_MODEL` ; couper le LLM = retirer `ANTHROPIC_API_KEY` ; **zéro** changement de code métier. |
+| **LLM isolé** | L'API Claude n'est appelée que par le `LLMClient` du worker : changer de modèle = modifier `llm.model` dans `config/pipeline.yaml` (identifiant épinglé, Partie V-A §25.1) ; couper le LLM = retirer `ANTHROPIC_API_KEY` ; **zéro** changement de code métier. |
 
 ## 5. Non-objectifs V1
 
