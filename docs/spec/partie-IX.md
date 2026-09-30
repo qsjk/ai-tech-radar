@@ -1,7 +1,7 @@
 # Partie IX — Gouvernance & démarrage
 
 > **Partie IX — Gouvernance & démarrage.** Version durcie issue de la revue §53–§57.
-> Dernière révision : 2026-09-30 (ADR-0022, #122 ; procédure P12, #130). Prend les Parties I, II, III, IV, V-A, V-B, VI, VII et VIII durcies comme acquis.
+> Dernière révision : 2026-09-30 (ADR-0022, #122 ; procédure P12, #130 ; points d'arrêt de formation, #133). Prend les Parties I, II, III, IV, V-A, V-B, VI, VII et VIII durcies comme acquis.
 
 **Nature de cette partie : une consolidation.** Elle rassemble les décisions verrouillées accumulées au fil du durcissement, la liste des ADR, l'arbre de documentation, le runbook et la mission de cadrage. Elle réconcilie ce que les Parties I à VIII ont fléché vers elle ; seul ce qui manquait pour rendre la gouvernance et le démarrage exécutables est durci à neuf.
 
@@ -312,6 +312,7 @@ Contenu :
 - **Lecture** : `SPEC.md`, puis la ou les parties du sprint en cours et le fichier `docs/sprints/sprint-NN.md`.
 - **Interdits** : modifier une décision verrouillée (§53) ; passer un ADR en `Accepté` ; trancher un conflit de spec ; démarrer un sprint dont le plan n'est pas validé ; implémenter un sprint suivant ; appeler un vrai provider dans un test ; ajouter une brique du §53.3.
 - **Arrêts obligatoires** : fin de chaque sprint (bilan dans `sprint-NN.md`) ; ADR proposé ; conflit ou trou dans la spec.
+- **Points d'arrêt de formation** (VIII §47.5) : zone soumise démarrée seulement sur le signal du propriétaire ; forme réservée du signal, jamais écrite par Claude Code ; renvoi à VIII §47.5, sans recopier le tableau (#133).
 - **Définition de terminé** : renvoi à VIII §51.
 - **Docker uniquement via `scripts/radar-dev`** (VIII §46.1, E22, ADR-0021) : jamais d'appel direct à `docker` ou `docker compose`, jamais les projets Compose `radar` ni `radar-load`.
 - **Commandes usuelles** de développement : lint, tests ; Compose local et e2e par `radar-dev`.

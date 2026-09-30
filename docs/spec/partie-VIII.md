@@ -1,7 +1,7 @@
 # Partie VIII — Livraison
 
 > **Partie VIII — Livraison.** Version durcie issue de la revue §46–§52.
-> Dernière révision : 2026-09-30 (ADR-0022, #122 ; créneaux de capacité, #126 ; contrat du `LLMClient`, #123 ; développer puis activer, `lab/`, #130). Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
+> Dernière révision : 2026-09-30 (ADR-0022, #122 ; créneaux de capacité, #126 ; contrat du `LLMClient`, #123 ; développer puis activer, `lab/`, #130 ; points d'arrêt de formation, #133). Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
 
 **Nature de cette partie : une agrégation.** Les tests, étapes CI et critères de production fléchés par les Parties I à VII sont rassemblés ici, rattachés à un identifiant et organisés par domaine. Les doublons sont réconciliés (§ « Réconciliations ») et seul ce qui manquait est durci à neuf.
 
@@ -197,13 +197,13 @@ n'engage pas le contrat du produit** : ce qu'il essaie n'est ni spécifié ni ad
 | S0 à S2 | cadrage, foundation, collecte (inchangés) | — | — | — | — |
 | S3 | Feed | — | — | S2 | — |
 | S4 | Embeddings & clustering | — | — | S2 | — |
-| S5 | File de jobs | — | Ch04–Ch06 (couche LLM) | S2 | — |
-| S6 | API Claude & LLMClient | — | Ch04–Ch06 | S5 | — |
-| S7 | Intelligence & purge | — | Ch04–Ch06 | S4, S6 | — |
-| S8 | Trends & émergence | — | — | S4, S7 | — |
+| S5 | File de jobs | — | Ch04–Ch06 (couche LLM ; indicatif, zone libre) | S2 | — |
+| S6 | API Claude & LLMClient | — | Ch04–Ch06 et relecture de V-A (point d'arrêt, §47.5) | S5 | — |
+| S7 | Intelligence & purge | — | Ch04–Ch06 et relecture de V-A (point d'arrêt, §47.5) | S4, S6 | — |
+| S8 | Trends & émergence | — | — (volet `discover_topics` : Ch04–Ch06, §47.5) | S4, S7 | — |
 | S9 | Dashboard | — | — | S3, S8 | — |
 | S10 | Alertes | — | — | S9 | — |
-| S11 | Production | — | — | tout ce qui précède | — |
+| S11 | Production | — | — (M6 de référence : Ch08, §47.5) | tout ce qui précède | — |
 | C-X.4 | PDF et images, sous réserve de l'ADR | X.4 | Ch07 | S7 | après la mise en production (D18), P12 |
 | C-X.1 | Assistant de veille, sous réserve de l'ADR | X.1 | Ch07, Ch09, Ch11 | S3, S4, S8, S9, budget (D17) | après la mise en production, socle D19 vert, P12 |
 | C-X.2 | `radar-mcp`, sous réserve de l'ADR | X.2 | Ch10 | S3, S4, S8 | après la mise en production, socle D19 vert, P12 |
@@ -211,7 +211,10 @@ n'engage pas le contrat du produit** : ce qu'il essaie n'est ni spécifié ni ad
 | C-X.7 | Outillage Claude Code, phase 1, sous réserve de son adoption (outillage de développement) | X.7 | Ch14 | aucune dépendance produit | sans objet (hors produit) |
 | C-X.5 | Sécurité LLM, sous réserve de son adoption (exigence transverse) | X.5 | Ch15 | créneaux qui exposent des outils (D19) | sans objet (toujours active) |
 | C-X.6 | Évaluations, sous réserve de son adoption (outillage de développement) | X.6 | Ch16 | S7 | sans objet (hors produit) |
-| phase Architect | X.8, X.9 (sous réserve de leur ADR), X.7 phase 2 (sous réserve de son adoption) | X.8 · X.9 · X.7 | phase Architect | S8 · S4 et X.1 · — | X.8, X.9 : après la mise en production, P12 |
+| C-X.7, phase 2 | Revue de PR en CI, sous réserve de son adoption (outillage de développement) | X.7 | Ch20 | aucune dépendance produit | sans objet (hors produit) |
+| phase Architect | X.8, X.9 (sous réserve de leur ADR) | X.8 · X.9 | phase Architect | S8 · S4 et X.1 | après la mise en production, P12 |
+
+La colonne « Chapitre » est **indicative** pour les zones libres ; les points d'arrêt, et le signal qui les lève, sont au §47.5.
 
 **Tensions entre chapitre et dépendances** (Partie X, §59 à §67) :
 - X.1 (Ch07, Ch09, Ch11) ne peut être développée qu'après S9 : si ces chapitres arrivent avant, l'exercice ne peut pas
@@ -398,7 +401,7 @@ Outillage de développement X.6, Partie X §64 ; chapitre Ch16 ; dépendances : 
 
 #### Phase Architect
 
-X.8 (Partie X §66, phase Architect), X.9 (§67, phase Architect Professional), chacune sous réserve de son ADR, développée à son chapitre derrière son flag désactivé et activée après la mise en production (P12), et la phase 2 de X.7 (§65, phase Architect), sous réserve de son adoption (§47.5, section distincte).
+X.8 (Partie X §66, phase Architect), X.9 (§67, phase Architect Professional), chacune sous réserve de son ADR, développée à son chapitre derrière son flag désactivé et activée après la mise en production (P12), La phase 2 de X.7 (§65, revue de PR en CI) relève du Ch20, sous réserve de son adoption (§47.5, section distincte).
 
 ### 47.3 Ce qui est validé au Sprint 11
 
@@ -456,6 +459,51 @@ créneau et ses tests. Sans flag, ils n'ont pas d'étape d'activation.
 |---|---|---|---|---|---|
 | *aucun à ce jour* | | | | | |
 
+**Points d'arrêt de formation** (décision du 2026-09-30, #133). Le projet sert de fil rouge à la formation du
+propriétaire (ADR-0022) : certaines zones ne sont pas démarrées avant que le propriétaire ait vu la matière. Ce bloc
+est la référence ; la Partie X §58.7 en reprend les capacités, et `CLAUDE.md` y renvoie.
+
+- **Zones libres**, sans condition de formation :
+  - le cœur déterministe : collecte, base, déduplication, scoring, clustering, tendances et émergence, dashboard,
+    alertes, production (S3, S4, S5, S8 hors `discover_topics`, S9, S10, S11 hors M6 de référence) ;
+  - le **mécanisme** du budget mensuel (#125 : contrat, données, réservation, états), avant le S6 ;
+  - l'outillage déjà adopté : `scripts/radar-dev`, skill `radar-dev` (#63), `.claude/settings.json` (#62) (E22,
+    ADR-0021) ; le `CLAUDE.md` racine (Partie IX §55.3) ;
+  - les issues transverses sans point d'arrêt (#128, #131).
+- **Zones soumises à un point d'arrêt** : chacune n'est démarrée qu'une fois **tous** ses chapitres validés.
+
+  | Zone | Débloquée par |
+  |---|---|
+  | S6, plan et développement (API Claude et `LLMClient`) ; modèle **provisoire** (#27) | Ch04, Ch05, Ch06 et relecture de la Partie V-A |
+  | S7 (tâches LLM, purge) : écrit explicitement, bien que S7 dépende déjà de S6 (D9) | Ch04, Ch05, Ch06 et relecture de la Partie V-A |
+  | S8, volet `discover_topics` (levé avec le S6) | Ch04, Ch05, Ch06 |
+  | Modèle épinglé **définitif** et **montant** du plafond mensuel (#125) | Ch08 |
+  | M6 de référence (pré-production, VII §45.4) | Ch08 |
+  | X.4 (PDF et images) | Ch07 |
+  | X.1 (assistant de veille) | Ch07, Ch09 et Ch11 |
+  | X.2 (`radar-mcp`) | Ch10 |
+  | X.3 (synthèse hebdomadaire) | Ch12 et Ch13 |
+  | X.7, configuration avancée de Claude Code (`CLAUDE.md` hiérarchique, règles par chemin, nouveaux skills et hooks) | Ch14 |
+  | X.7, revue de PR en CI (phase 2) | Ch20 |
+  | X.5, suite complète (le socle D19 de chaque créneau suit le chapitre de son créneau) | Ch15 |
+  | X.6 (évaluations) | Ch16 |
+  | X.8, X.9 | phase Architect (chapitres à préciser par le propriétaire) |
+
+- **Signal de déblocage** : un **commentaire** dans l'issue du sprint ou du créneau concerné, dont la **première
+  ligne** est exactement `[propriétaire] ChXX validé` (numéro sur deux chiffres, un commentaire par chapitre) ; pour la
+  relecture de la Partie V-A : `[propriétaire] relecture V-A faite`. Le signal n'est valide que là : ni corps d'issue,
+  ni PR, ni commit, ni message de session. Claude Code cite l'URL du commentaire dans le plan ou la PR qu'il démarre.
+- **Forme réservée** : ni Claude Code ni le copilote n'écrivent jamais ce préfixe dans un commentaire, une issue, une
+  PR ou un commit, même en citation ; ils parlent du « signal de validation du chapitre ChXX ». Seules la définition de
+  la forme, ici, et le renvoi de `CLAUDE.md` le citent. **Limite** : tous écrivent sous le même compte GitHub ; cette
+  forme est une **convention**, pas une preuve d'identité.
+- **Ordre** : signal, puis ADR de la capacité (D16), puis développement (D18) ; aucun ADR de capacité n'est proposé
+  avant le signal (D20).
+- **Sans signal** : Claude Code ne démarre pas la zone, rend compte, et propose une tâche déterministe prise dans ce
+  vivier, dans cet ordre : les issues libres du sprint courant, puis les issues transverses sans point d'arrêt
+  (#128, #131, mécanisme de #125).
+- Ce point d'arrêt s'ajoute à la validation du plan de chaque sprint (Partie IX §57.8) : deux verrous distincts.
+
 ---
 
 ## 48. Ordre d'implémentation — contraintes de dépendance
@@ -483,6 +531,7 @@ L'ordre des sprints (§47) est l'ordre d'implémentation. À l'intérieur d'un s
 | D17 | Budget mensuel plafonné (Partie V-A §24.3) **avant** tout créneau qui appelle l'API hors de la file `AIJob` (X.1, X.3, X.8) | le plafond doit tenir aussi pour les appels interactifs ou agentiques |
 | D18 | **Développement** d'un créneau au plus tôt après ses dépendances produit (S9 **avant** C-X.1, S10 **avant** C-X.3), derrière son flag désactivé ; **activation en production** d'une capacité du produit seulement après la décision de mise en production (§47.4, check-list §52), par P12, et, si elle expose des outils, avec son socle D19 vert | développer au chapitre, activer après la mise en production (décision du 2026-09-30, #130) ; l'assistant vit dans le dashboard ; la synthèse part par les canaux d'alerte |
 | D19 | Tout créneau qui expose des outils (X.1, X.2, X.3, X.8) livre un **socle de sécurité** : outils en lecture seule, moindre privilège, un test d'injection par le contenu d'article ; X.5 durcit ensuite l'ensemble | les outils sont livrés avant le chapitre sécurité (Ch15) |
+| D20 | Signal de validation de chapitre (§47.5, points d'arrêt de formation) **avant** le démarrage d'une zone soumise ; pour une capacité, **avant** la proposition de son ADR (D16) | la matière est vue avant le travail qui l'exerce (décision du 2026-09-30, #133) |
 
 ---
 
