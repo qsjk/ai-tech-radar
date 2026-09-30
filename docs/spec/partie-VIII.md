@@ -341,6 +341,23 @@ Entre la fin du Sprint 11 et la décision de mise en production, **au moins 14 j
 | Fin du warm-up de l'émergence ; job analytique sans erreur | J14 | `/api/health` |
 | Revue de la check-list §52, décision | ≥ J14 | `docs/go-live.md` |
 
+### 47.5 Feuille de route des capacités de l'écosystème Claude
+
+Les capacités de l'écosystème Claude (Agent SDK, MCP, outils, etc.) n'entrent dans le produit que **une par une**
+(ADR-0022, #122). Règle :
+
+- **une décision par capacité** : un ADR au prochain numéro libre (déclencheur du registre, Partie IX §54.3), accepté
+  par le propriétaire, puis **une ligne dans le tableau ci-dessous**, avant toute implémentation ;
+- **rien par anticipation** : une capacité absente du tableau n'est ni codée, ni préparée, ni ajoutée aux dépendances ;
+- **désactivable par configuration** : désactivée, la capacité laisse le produit dans l'état antérieur, cœur
+  déterministe et repli compris (DV-05) ;
+- **dans le budget** : son coût entre dans le plafond mensuel du LLM (Partie I §4.3, VII §45.1) ;
+- **dans un sprint** : la ligne indique le sprint qui la livre, avec ses identifiants de tests au catalogue (§50.5).
+
+| Capacité | ADR | Sprint | Clé de désactivation | Tests |
+|---|---|---|---|---|
+| *aucune à ce jour* | | | | |
+
 ---
 
 ## 48. Ordre d'implémentation — contraintes de dépendance
