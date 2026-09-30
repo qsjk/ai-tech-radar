@@ -169,7 +169,7 @@ ai-tech-radar/
 - **Plan et bilan** : le plan détaillé de chaque sprint est rédigé dans `docs/sprints/sprint-NN.md` et **validé avant l'implémentation** ; le bilan (écarts à la spec, dette tracée, identifiants couverts) y est ajouté en fin de sprint (Partie IX §57.8).
 - **Une fonction [core] ne dépend jamais d'un sprint AI** : tout ce qui est livré avant le Sprint 6 fonctionne sans LLM, et continue de fonctionner sans lui ensuite.
 - **Migrations par sprint** : chaque sprint ajoute ses tables et colonnes par migration Alembic. Le schéma cible complet est proposé au Sprint 0, mais pas créé d'un bloc.
-- **Créneaux de capacité** `C-X.n` : intercalés entre les sprints, **non numérotés**, chacun réservé à un élément candidat de la Partie X et **conditionné à son adoption** : ADR accepté pour une capacité du produit, ADR si la décision est structurante pour X.5, X.6 et X.7 (§47.5, D16). Sans ADR accepté, le créneau est sauté, sans renuméroter les sprints. Les sprints S3 à S11 gardent leur numéro et leur contenu, et s'enchaînent sans créneau : les créneaux viennent après S11 (D18).
+- **Créneaux de capacité** `C-X.n` : placés après S11, **non numérotés**, chacun réservé à un élément candidat de la Partie X et **conditionné à son adoption** : ADR accepté pour une capacité du produit, ADR si la décision est structurante pour X.5, X.6 et X.7 (§47.5, D16). Sans cette adoption, le créneau est sauté, sans renuméroter les sprints. Les sprints S3 à S11 gardent leur numéro et leur contenu, et s'enchaînent sans créneau : les créneaux viennent après S11 (D18).
 
 ### 47.2 Plan
 
