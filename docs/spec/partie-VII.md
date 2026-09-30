@@ -258,8 +258,8 @@ AWS_SECRET_ACCESS_KEY=
 
 # ── Optionnel : LLM, API Claude (ADR-0022) ─────────────────────────────────
 # Clé absente → LLM « not_configured » : le produit tourne sans LLM, aperçus
-# et titres en repli. Le modèle (llm.model) et le plafond mensuel de dépense
-# ne sont pas ici : ils vivent dans config/pipeline.yaml (Partie V-A §25.1).
+# et titres en repli. Le modèle n'est pas ici : llm.model, dans
+# config/pipeline.yaml (Partie V-A §25.1). Le plafond mensuel non plus (§45.1).
 ANTHROPIC_API_KEY=
 
 # ── Optionnel : canaux d'alerte (canal désactivé si incomplet) ─────────────
