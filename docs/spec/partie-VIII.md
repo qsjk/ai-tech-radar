@@ -493,9 +493,10 @@ est la référence ; la Partie X §58.7 en reprend les capacités, et `CLAUDE.md
   ligne** est exactement `[propriétaire] ChXX validé` (numéro sur deux chiffres, un commentaire par chapitre) ; pour la
   relecture de la Partie V-A : `[propriétaire] relecture V-A faite`. Le signal n'est valide que là : ni corps d'issue,
   ni PR, ni commit, ni message de session. Claude Code cite l'URL du commentaire dans le plan ou la PR qu'il démarre.
-- **Forme réservée** : ni Claude Code ni le copilote n'écrivent jamais le préfixe `[propriétaire]`, même en citation ;
-  ils parlent du « signal de validation du chapitre ChXX ». **Limite** : tous écrivent sous le même compte GitHub ;
-  cette forme est une **convention**, pas une preuve d'identité.
+- **Forme réservée** : ni Claude Code ni le copilote n'écrivent jamais ce préfixe dans un commentaire, une issue, une
+  PR ou un commit, même en citation ; ils parlent du « signal de validation du chapitre ChXX ». Seules la définition de
+  la forme, ici, et le renvoi de `CLAUDE.md` le citent. **Limite** : tous écrivent sous le même compte GitHub ; cette
+  forme est une **convention**, pas une preuve d'identité.
 - **Ordre** : signal, puis ADR de la capacité (D16), puis développement (D18) ; aucun ADR de capacité n'est proposé
   avant le signal (D20).
 - **Sans signal** : Claude Code ne démarre pas la zone, rend compte, et propose une tâche déterministe prise dans ce

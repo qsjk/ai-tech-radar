@@ -1,6 +1,6 @@
 # Partie X — Capacités Claude
 
-> **Partie X — Capacités Claude.** Squelette, créé le 2026-09-30 (ADR-0022, #126 ; développer puis activer, #130). Prend les Parties I à IX comme
+> **Partie X — Capacités Claude.** Squelette, créé le 2026-09-30 (ADR-0022, #126 ; développer puis activer, #130 ; points d'arrêt de formation, #133). Prend les Parties I à IX comme
 > acquis.
 > **Aucune capacité n'est adoptée.** Cette partie décrit des capacités **candidates** et n'autorise aucune
 > implémentation : seule une ligne de la Partie VIII §47.5, posée après l'acceptation d'un ADR, le fait. Aucun détail
@@ -34,7 +34,8 @@ l'ADR-0022 : X.1 à X.4, X.8 et X.9. Les autres éléments de cette partie n'en 
 Ce cycle vaut pour les capacités du produit ; X.5, X.6 et X.7 le suivent à l'identique, l'ADR n'étant exigé que si la
 décision est structurante (§58.1).
 
-1. Le chapitre de formation de la capacité arrive (ordre au §58.5).
+1. Le chapitre de formation de la capacité est **validé** par le signal du propriétaire (§58.7, Partie VIII §47.5) ;
+   aucun ADR de capacité n'est proposé avant (VIII §48, D20).
 2. Un ADR est proposé au prochain numéro libre (déclencheur du registre, Partie IX §54.3). Dans la même PR, le
    paragraphe de la capacité passe du squelette à la spécification, et les autres parties touchées sont mises à jour.
 3. Le propriétaire accepte l'ADR ; la capacité reçoit sa ligne dans VIII §47.5 (ADR, créneau, clé de désactivation,
@@ -74,7 +75,8 @@ Chaque paragraphe du §59 au §67 porte cinq rubriques : **objectif produit** (c
 ### 58.5 Ordre et chapitres
 
 Ordre des chapitres de la formation : Ch04–Ch06 couche LLM · Ch07–Ch11 assistant et MCP · Ch12–Ch13 agents · Ch14
-Claude Code · Ch15 sécurité · Ch16 évaluations · Ch17 cycle de vie. La spec ne fixe que cet ordre, jamais de date.
+Claude Code · Ch15 sécurité · Ch16 évaluations · Ch17 cycle de vie · Ch18 à Ch20, contenu à préciser par le
+propriétaire (Ch20 porte la revue de PR en CI de X.7) · phase Architect. La spec ne fixe que cet ordre, jamais de date.
 
 **Développer au chapitre, activer après la mise en production** (décision du 2026-09-30, #130) : chaque créneau est
 développé au moment de son chapitre, au plus tôt après ses dépendances produit, et s'intercale entre les sprints S3 à
@@ -86,8 +88,8 @@ S11, inchangés ; une capacité du produit n'est activée qu'après la décision
 | X.1 Assistant de veille conversationnel | §59 | capacité du produit | Ch07, Ch09, Ch11 | S9 | après la mise en production, socle D19 vert, P12 |
 | X.2 Serveur MCP `radar-mcp` | §60 | capacité du produit | Ch10 | S8 | après la mise en production, socle D19 vert, P12 |
 | X.3 Synthèse hebdomadaire | §61 | capacité du produit | Ch12, Ch13 | S10 | après la mise en production, socle D19 vert, P12 |
-| X.7 Outillage Claude Code du dépôt | §65 | outillage de développement | Ch14, puis phase Architect | aucune dépendance produit | sans objet |
-| X.5 Sécurité LLM | §63 | exigence transverse | Ch15 | créneaux qui exposent des outils (D19) | sans objet (toujours active) |
+| X.7 Outillage Claude Code du dépôt | §65 | outillage de développement | Ch14, puis Ch20 (phase 2) | aucune dépendance produit | sans objet |
+| X.5 Sécurité LLM | §63 | exigence transverse | Ch15 (suite complète) | créneaux qui exposent des outils (D19) | sans objet (toujours active) |
 | X.6 Évaluations | §64 | outillage de développement | Ch16 | S7 | sans objet |
 | X.8 Recherche approfondie | §66 | capacité du produit | phase Architect | S8 | après la mise en production, socle D19 vert, P12 |
 | X.9 RAG sur l'historique | §67 | capacité du produit | phase Architect Professional | S4, X.1 | après la mise en production, P12 |
@@ -98,6 +100,26 @@ S11, inchangés ; une capacité du produit n'est activée qu'après la décision
   trancher par les ADR de X.1, X.3 et X.8.
 - **Évaluations en CI** : voir §64 ; à trancher par l'ADR de X.6.
 - **Ch17 (cycle de vie)** n'est rattaché à aucun créneau.
+
+### 58.7 Points d'arrêt
+
+La règle, les zones libres, le signal de déblocage et le vivier de tâches déterministes sont fixés en Partie VIII
+§47.5 (décision du 2026-09-30, #133). Pour les éléments de cette partie, un travail ne démarre qu'une fois **tous**
+les chapitres suivants validés par le signal :
+
+| Élément | Débloqué par |
+|---|---|
+| X.4 (PDF et images) | Ch07 |
+| X.1 (assistant de veille) | Ch07, Ch09 et Ch11 |
+| X.2 (`radar-mcp`) | Ch10 |
+| X.3 (synthèse hebdomadaire) | Ch12 et Ch13 |
+| X.7, configuration avancée de Claude Code | Ch14 |
+| X.7, revue de PR en CI (phase 2) | Ch20 |
+| X.5, suite complète | Ch15 |
+| X.6 (évaluations) | Ch16 |
+| X.8, X.9 | phase Architect |
+
+Ordre pour une capacité : signal, puis ADR (VIII §48, D16), puis développement derrière son flag désactivé (D18).
 
 ---
 
@@ -213,9 +235,9 @@ S11, inchangés ; une capacité du produit n'est activée qu'après la décision
 | Rubrique | Contenu |
 |---|---|
 | Objectif produit | Industrialiser le développement du dépôt avec Claude Code |
-| Périmètre V1 minimal | `CLAUDE.md` hiérarchique, rules par chemin, skills, hooks ; puis (phase 2) revue de PR en CI en headless, sortie JSON validée |
-| Dépendances | aucune dépendance produit ; skill `radar-dev` (#107) ; ADR-0021 |
-| Chapitre | Ch14, puis phase Architect (phase 2) |
+| Périmètre V1 minimal | **Configuration avancée de Claude Code** : `CLAUDE.md` hiérarchique, règles par chemin, nouveaux skills et hooks (Ch14) ; puis (phase 2) revue de PR en CI en headless, sortie JSON validée (Ch20). Hors X.7 : l'outillage déjà adopté, `scripts/radar-dev`, skill `radar-dev` (#63), `.claude/settings.json` (#62), et le `CLAUDE.md` racine (Partie IX §55.3), zones libres (VIII §47.5) |
+| Dépendances | aucune dépendance produit ; ADR-0021 |
+| Chapitre | Ch14, puis Ch20 (phase 2) |
 | Statut | candidate — à spécifier au chapitre Ch14 ; **outillage de développement**, hors du produit (§58.1) : ADR si la décision est structurante (Partie IX §53.1) |
 
 **Conflits** :
@@ -224,7 +246,8 @@ S11, inchangés ; une capacité du produit n'est activée qu'après la décision
 - DV-19 : la revue bloque-t-elle la CI ?
 - `CLAUDE.md` hiérarchique face à Partie IX §55.3 (« règles permanentes, courtes, qui renvoient à la spec ») ;
 - hooks et skills face à ADR-0021 (Docker seulement par `scripts/radar-dev`) ;
-- utile dès maintenant : une partie existe déjà (`CLAUDE.md`, #107) avant le chapitre.
+- utile dès maintenant : l'outillage déjà adopté (#62, #63) et le `CLAUDE.md` racine précèdent le chapitre ; ils
+  restent hors X.7 (décision du 2026-09-30, #133).
 
 ## 66. X.8 — Recherche approfondie sur un sujet émergent
 
