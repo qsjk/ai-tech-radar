@@ -1,7 +1,7 @@
 # Partie VIII — Livraison
 
 > **Partie VIII — Livraison.** Version durcie issue de la revue §46–§52.
-> Dernière révision : 2026-09-30 (ADR-0022, #122 ; créneaux de capacité, #126 ; contrat du `LLMClient`, #123). Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
+> Dernière révision : 2026-09-30 (ADR-0022, #122 ; créneaux de capacité, #126 ; contrat du `LLMClient`, #123 ; développer puis activer, `lab/`, #130). Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
 
 **Nature de cette partie : une agrégation.** Les tests, étapes CI et critères de production fléchés par les Parties I à VII sont rassemblés ici, rattachés à un identifiant et organisés par domaine. Les doublons sont réconciliés (§ « Réconciliations ») et seul ce qui manquait est durci à neuf.
 
@@ -132,6 +132,7 @@ ai-tech-radar/
 │   ├── load.py                # script de charge
 │   └── radar-dev              # environnement local de développement (E22, ADR-0021)
 ├── tests/                     # §50.2
+├── lab/                       # exercices de formation hors produit, projet uv séparé (règle ci-dessous)
 └── docs/                      # arbre détaillé : Partie IX §55.1
     ├── spec/                  # partie-I.md … partie-IV.md, partie-V-A.md, partie-V-B.md,
     │                          # partie-VI.md … partie-IX.md, partie-X.md
@@ -147,6 +148,21 @@ ai-tech-radar/
 - **Aucun argument libre n'est transmis à `docker`** : le seul argument admis, un nom de service, est validé contre une liste fermée. Une sous-commande ou un argument hors liste renvoie le code `2` sans rien exécuter (contrat de la Partie IX §56.3).
 - Projet Compose de développement dédié, jamais `radar` ni `radar-load`.
 - Outil de développement seulement : ni la CI ni le VPS ne l'utilisent.
+
+**`lab/`** (décision du 2026-09-30, #130) : exercices de formation **jetables**, hors produit (par exemple : strict tool use
+en mode `auto`, tool use forcé sur un modèle qui l'accepte encore, comparaisons ponctuelles de modèles). **`lab/`
+n'engage pas le contrat du produit** : ce qu'il essaie n'est ni spécifié ni adopté (Partie X, §47.5).
+- **Projet uv séparé** : `lab/pyproject.toml` et `lab/uv.lock`, hors du lock racine ; ses dépendances n'entrent ni dans
+  `uv.lock` ni dans l'image.
+- **Isolé du produit** : jamais importé par `app/`, `tests/` ni `scripts/`, et n'importe pas `app/`.
+- **Exclusions** : de l'image (`.dockerignore`, vérifié à l'étape 5), de la CI (§49.2), de la traçabilité du catalogue
+  et de la couverture (§50.3, §50.8).
+- **Restent applicables** : l'analyse de secrets, qui porte sur tout le dépôt (§49.2, étape 1) ; la règle de langue
+  du dépôt ; `ruff`, lancé localement dans `lab/`.
+- **API réelle** : appelée à la main seulement, jamais en CI, avec une **clé et un workspace de la Console Anthropic
+  distincts** du produit, qui ont leur propre limite de dépense ; la clé vit dans `lab/.env`, ignoré par git.
+- **Frontière avec X.6** (Partie X §64) : `lab/` accueille des exercices jetables ; les évaluations maintenues sur les
+  prompts du produit relèvent de X.6.
 
 ### 46.2 Règles
 
@@ -169,37 +185,42 @@ ai-tech-radar/
 - **Plan et bilan** : le plan détaillé de chaque sprint est rédigé dans `docs/sprints/sprint-NN.md` et **validé avant l'implémentation** ; le bilan (écarts à la spec, dette tracée, identifiants couverts) y est ajouté en fin de sprint (Partie IX §57.8).
 - **Une fonction [core] ne dépend jamais d'un sprint AI** : tout ce qui est livré avant le Sprint 6 fonctionne sans LLM, et continue de fonctionner sans lui ensuite.
 - **Migrations par sprint** : chaque sprint ajoute ses tables et colonnes par migration Alembic. Le schéma cible complet est proposé au Sprint 0, mais pas créé d'un bloc.
-- **Créneaux de capacité** `C-X.n` : placés après S11, **non numérotés**, chacun réservé à un élément candidat de la Partie X et **conditionné à son adoption** : ADR accepté pour une capacité du produit, ADR si la décision est structurante pour X.5, X.6 et X.7 (§47.5, D16). Sans cette adoption, le créneau est sauté, sans renuméroter les sprints. Les sprints S3 à S11 gardent leur numéro et leur contenu, et s'enchaînent sans créneau : les créneaux viennent après S11 (D18).
+- **Créneaux de capacité** `C-X.n` : **non numérotés**, chacun réservé à un élément candidat de la Partie X et **conditionné à son adoption** : ADR accepté pour une capacité du produit, ADR si la décision est structurante pour X.5, X.6 et X.7 (§47.5, D16). Sans cette adoption, le créneau est sauté, sans renuméroter les sprints. Les sprints S3 à S11 gardent leur numéro et leur contenu.
+- **Développer, puis activer** (décision du 2026-09-30, #130) : une capacité du produit est **développée et fusionnée derrière son flag désactivé** au moment de son chapitre de formation, au plus tôt après ses dépendances produit ; son créneau s'intercale alors entre les sprints. Son **activation en production** attend la décision de mise en production (§47.4, check-list §52) et suit la procédure P12 (Partie IX §56.6) (§47.5, D18).
 
 ### 47.2 Plan
 
-**Ordre** (décision du 2026-09-30, #126 et revue de #127) : **V1 en production d'abord**. S3 à S11 s'enchaînent sans créneau ; les créneaux `C-X.n` viennent après S11, dans l'ordre des chapitres. La spec fixe l'ordre des chapitres de formation, jamais leurs dates (Partie X §58.5).
+**Ordre** (décisions du 2026-09-30, #126, revue de #127 et #130) : **développer au chapitre, activer après la mise en production**. S3 à S11 gardent leur ordre et leur contenu. Chaque créneau `C-X.n` est développé au moment de son chapitre, au plus tôt après ses dépendances produit, et s'intercale entre les sprints ; une capacité du produit n'est activée en production qu'après la décision de mise en production (§47.4, check-list §52). La spec fixe l'ordre des chapitres de formation, jamais leurs dates (Partie X §58.5) : l'intercalage réel relève du calendrier.
 
-| Étape | Contenu | Capacité | Chapitre | Dépendances produit |
-|---|---|---|---|---|
-| S0 à S2 | cadrage, foundation, collecte (inchangés) | — | — | — |
-| S3 | Feed | — | — | S2 |
-| S4 | Embeddings & clustering | — | — | S2 |
-| S5 | File de jobs | — | Ch04–Ch06 (couche LLM) | S2 |
-| S6 | API Claude & LLMClient | — | Ch04–Ch06 | S5 |
-| S7 | Intelligence & purge | — | Ch04–Ch06 | S4, S6 |
-| S8 | Trends & émergence | — | — | S4, S7 |
-| S9 | Dashboard | — | — | S3, S8 |
-| S10 | Alertes | — | — | S9 |
-| S11 | Production | — | — | tout ce qui précède |
-| C-X.4 | PDF et images, sous réserve de l'ADR | X.4 | Ch07 | S7 ; S11 (D18) |
-| C-X.1 | Assistant de veille, sous réserve de l'ADR | X.1 | Ch07, Ch09, Ch11 | S3, S4, S8, S9, budget (D17) ; S11 (D18) |
-| C-X.2 | `radar-mcp`, sous réserve de l'ADR | X.2 | Ch10 | S3, S4, S8 ; S11 (D18) |
-| C-X.3 | Synthèse hebdomadaire, sous réserve de l'ADR | X.3 | Ch12, Ch13 | S8, S10, budget (D17) ; S11 (D18) |
-| C-X.7 | Outillage Claude Code, phase 1, sous réserve de son adoption (outillage de développement) | X.7 | Ch14 | S11 (D18) ; aucune dépendance produit |
-| C-X.5 | Sécurité LLM, sous réserve de son adoption (exigence transverse) | X.5 | Ch15 | S11 (D18) ; créneaux qui exposent des outils (D19) |
-| C-X.6 | Évaluations, sous réserve de son adoption (outillage de développement) | X.6 | Ch16 | S7, S11 (D18) |
-| après la V1 | X.8, X.9 (sous réserve de leur ADR), X.7 phase 2 (sous réserve de son adoption) | X.8 · X.9 · X.7 | phase Architect | S8 · S4 et X.1 · — |
+| Étape | Contenu | Élément | Chapitre | Développement au plus tôt après | Activation en production |
+|---|---|---|---|---|---|
+| S0 à S2 | cadrage, foundation, collecte (inchangés) | — | — | — | — |
+| S3 | Feed | — | — | S2 | — |
+| S4 | Embeddings & clustering | — | — | S2 | — |
+| S5 | File de jobs | — | Ch04–Ch06 (couche LLM) | S2 | — |
+| S6 | API Claude & LLMClient | — | Ch04–Ch06 | S5 | — |
+| S7 | Intelligence & purge | — | Ch04–Ch06 | S4, S6 | — |
+| S8 | Trends & émergence | — | — | S4, S7 | — |
+| S9 | Dashboard | — | — | S3, S8 | — |
+| S10 | Alertes | — | — | S9 | — |
+| S11 | Production | — | — | tout ce qui précède | — |
+| C-X.4 | PDF et images, sous réserve de l'ADR | X.4 | Ch07 | S7 | après la mise en production (D18), P12 |
+| C-X.1 | Assistant de veille, sous réserve de l'ADR | X.1 | Ch07, Ch09, Ch11 | S3, S4, S8, S9, budget (D17) | après la mise en production, socle D19 vert, P12 |
+| C-X.2 | `radar-mcp`, sous réserve de l'ADR | X.2 | Ch10 | S3, S4, S8 | après la mise en production, socle D19 vert, P12 |
+| C-X.3 | Synthèse hebdomadaire, sous réserve de l'ADR | X.3 | Ch12, Ch13 | S8, S10, budget (D17) | après la mise en production, socle D19 vert, P12 |
+| C-X.7 | Outillage Claude Code, phase 1, sous réserve de son adoption (outillage de développement) | X.7 | Ch14 | aucune dépendance produit | sans objet (hors produit) |
+| C-X.5 | Sécurité LLM, sous réserve de son adoption (exigence transverse) | X.5 | Ch15 | créneaux qui exposent des outils (D19) | sans objet (toujours active) |
+| C-X.6 | Évaluations, sous réserve de son adoption (outillage de développement) | X.6 | Ch16 | S7 | sans objet (hors produit) |
+| phase Architect | X.8, X.9 (sous réserve de leur ADR), X.7 phase 2 (sous réserve de son adoption) | X.8 · X.9 · X.7 | phase Architect | S8 · S4 et X.1 · — | X.8, X.9 : après la mise en production, P12 |
 
-**Tensions entre chapitre et dépendances** (Partie X, §59 à §67) : les chapitres Ch07 à Ch11 arrivent pendant les
-sprints S8 à S11, avant leurs créneaux, placés après la mise en production ; Ch10 (X.2) tombe entre Ch09 et Ch11
-(X.1) ; X.5 (Ch15) durcit des outils livrés avant lui, d'où le socle de D19 ; X.6 (Ch16) et X.7 (Ch14) seraient
-utiles plus tôt, dès le S7 et dès maintenant ; Ch17 n'est rattaché à aucune étape.
+**Tensions entre chapitre et dépendances** (Partie X, §59 à §67) :
+- X.1 (Ch07, Ch09, Ch11) ne peut être développée qu'après S9 : si ces chapitres arrivent avant, l'exercice ne peut pas
+  être pratiqué sur le produit au chapitre ; Ch10 (X.2) tombe entre Ch09 et Ch11 (X.1) ;
+- X.5 (Ch15) durcit des outils développés avant lui, d'où le socle de D19 ;
+- X.6 (Ch16) et X.7 (Ch14) seraient utiles plus tôt, dès le S7 et dès maintenant ; Ch17 n'est rattaché à aucune étape ;
+- un créneau développé avant S11 place du code dormant, et ses dépendances, dans l'image validée en pré-production
+  (surface d'attaque, taille d'image M8, audit §49.4) ;
+- les créneaux intercalés allongent le calendrier jusqu'à la mise en production (`planning.md` §8).
 
 #### Sprint 0 — Cadrage *(sans code applicatif)*
 
@@ -345,37 +366,39 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - la pré-production démarre sur le VPS cible, déployée par `scripts/deploy.sh`.
 - **Tests** : T-OPS-* (dont T-OPS-17) · T-BKP-* (dont T-BKP-10 à 12) · T-SEC-* · T-RES-* · T-CFG-04 (complet).
 
+*Les blocs de créneau sont regroupés ci-dessous ; chacun s'intercale entre les sprints au moment de son chapitre, au plus tôt après ses dépendances (tableau d'ordre ci-dessus).*
+
 #### Créneau C-X.4 — PDF et images *(sous réserve de l'ADR)*
 
-Capacité X.4, Partie X §62 ; chapitre Ch07 ; dépendances : S7, S11 (D18). Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
+Capacité X.4, Partie X §62 ; chapitre Ch07 ; développement au plus tôt après S7, derrière son flag désactivé ; activation après la mise en production (D18, P12). Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
 
 #### Créneau C-X.1 — Assistant de veille conversationnel *(sous réserve de l'ADR)*
 
-Capacité X.1, Partie X §59 ; chapitre Ch07, Ch09, Ch11 ; dépendances : S3, S4, S8, S9, S11 (D18), budget mensuel (D17), socle de sécurité (D19). Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
+Capacité X.1, Partie X §59 ; chapitre Ch07, Ch09, Ch11 ; développement au plus tôt après S3, S4, S8, S9 et le budget mensuel (D17), derrière son flag désactivé, avec le socle de sécurité (D19) ; activation après la mise en production (D18, P12). Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
 
 #### Créneau C-X.2 — Serveur MCP `radar-mcp` *(sous réserve de l'ADR)*
 
-Capacité X.2, Partie X §60 ; chapitre Ch10 ; dépendances : S3, S4, S8, S11 (D18), socle de sécurité (D19). Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
+Capacité X.2, Partie X §60 ; chapitre Ch10 ; développement au plus tôt après S3, S4 et S8, derrière son flag désactivé, avec le socle de sécurité (D19) ; activation après la mise en production (D18, P12). Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
 
 #### Créneau C-X.3 — Synthèse hebdomadaire *(sous réserve de l'ADR)*
 
-Capacité X.3, Partie X §61 ; chapitre Ch12, Ch13 ; dépendances : S8, S10, S11 (D18), budget mensuel (D17), socle de sécurité (D19). Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
+Capacité X.3, Partie X §61 ; chapitre Ch12, Ch13 ; développement au plus tôt après S8, S10 et le budget mensuel (D17), derrière son flag désactivé, avec le socle de sécurité (D19) ; activation après la mise en production (D18, P12). Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
 
 #### Créneau C-X.7 — Outillage Claude Code, phase 1 *(sous réserve de son adoption)*
 
-Outillage de développement X.7, Partie X §65 ; chapitre Ch14 ; dépendances : S11 (D18), aucune dépendance produit. Contenu, acceptation et tests : fixés par le plan du créneau, et par un ADR si la décision est structurante (Partie IX §53.1), puis reportés dans la section distincte du §47.5. Sans cette inscription, le créneau est sauté.
+Outillage de développement X.7, Partie X §65 ; chapitre Ch14 ; aucune dépendance produit ; hors produit, sans activation. Contenu, acceptation et tests : fixés par le plan du créneau, et par un ADR si la décision est structurante (Partie IX §53.1), puis reportés dans la section distincte du §47.5. Sans cette inscription, le créneau est sauté.
 
 #### Créneau C-X.5 — Sécurité LLM *(sous réserve de son adoption)*
 
-Exigence transverse X.5, Partie X §63 ; chapitre Ch15 ; dépendances : S11 (D18), créneaux qui exposent des outils (D19). Contenu, acceptation et tests : fixés par le plan du créneau, et par un ADR si la décision est structurante (Partie IX §53.1), puis reportés dans la section distincte du §47.5. Sans cette inscription, le créneau est sauté.
+Exigence transverse X.5, Partie X §63 ; chapitre Ch15 ; dépendances : créneaux qui exposent des outils (D19) ; exigence transverse, sans flag ni activation. Contenu, acceptation et tests : fixés par le plan du créneau, et par un ADR si la décision est structurante (Partie IX §53.1), puis reportés dans la section distincte du §47.5. Sans cette inscription, le créneau est sauté.
 
 #### Créneau C-X.6 — Évaluations *(sous réserve de son adoption)*
 
-Outillage de développement X.6, Partie X §64 ; chapitre Ch16 ; dépendances : S7, S11 (D18). Contenu, acceptation et tests : fixés par le plan du créneau, et par un ADR si la décision est structurante (Partie IX §53.1), puis reportés dans la section distincte du §47.5. Sans cette inscription, le créneau est sauté.
+Outillage de développement X.6, Partie X §64 ; chapitre Ch16 ; dépendances : S7 ; hors produit, sans activation. Contenu, acceptation et tests : fixés par le plan du créneau, et par un ADR si la décision est structurante (Partie IX §53.1), puis reportés dans la section distincte du §47.5. Sans cette inscription, le créneau est sauté.
 
-#### Après la V1
+#### Phase Architect
 
-X.8 (Partie X §66, phase Architect), X.9 (§67, phase Architect Professional), chacune sous réserve de son ADR, et la phase 2 de X.7 (§65, phase Architect), sous réserve de son adoption (§47.5, section distincte).
+X.8 (Partie X §66, phase Architect), X.9 (§67, phase Architect Professional), chacune sous réserve de son ADR, développée à son chapitre derrière son flag désactivé et activée après la mise en production (P12), et la phase 2 de X.7 (§65, phase Architect), sous réserve de son adoption (§47.5, section distincte).
 
 ### 47.3 Ce qui est validé au Sprint 11
 
@@ -413,19 +436,21 @@ ont leur propre section, ci-dessous. Règle :
 - **une décision par capacité** : un ADR au prochain numéro libre (déclencheur du registre, Partie IX §54.3), accepté
   par le propriétaire, puis **une ligne dans le tableau ci-dessous**, avant toute implémentation ;
 - **rien par anticipation** : une capacité absente du tableau n'est ni codée, ni préparée, ni ajoutée aux dépendances ;
+- **développer, puis activer** (#130) : une fois la ligne posée, la capacité est développée et fusionnée au moment de son chapitre, derrière son **flag désactivé par défaut** ; elle n'est **activée en production** qu'après la décision de mise en production (§47.4, check-list §52), par la procédure P12 (Partie IX §56.6) ; une capacité qui expose des outils exige en plus son socle D19 vert. L'ADR précède toujours le développement ; seule l'activation attend ;
+- **tests** : ceux de la capacité tournent flag activé, plus un test « flag coupé = état antérieur » ; l'e2e (étape 6) tourne avec les flags par défaut, donc désactivés, et les T-RES y restent verts ;
 - **désactivable par configuration** : désactivée, la capacité laisse le produit dans l'état antérieur, cœur
   déterministe et repli compris (DV-05) ;
 - **dans le budget** : son coût entre dans le plafond mensuel du LLM (Partie I §4.3, VII §45.1) ;
 - **dans un sprint** : la ligne indique le sprint ou le créneau `C-X.n` (§47.2) qui la livre, avec ses identifiants de tests au catalogue (§50.5).
 
-| Capacité | Partie X | ADR | Sprint ou créneau | Clé de désactivation | Tests |
-|---|---|---|---|---|---|
-| *aucune à ce jour* | | | | | |
+| Capacité | Partie X | ADR | Créneau de développement | Clé de désactivation | Tests | Activée en production (date, P12) |
+|---|---|---|---|---|---|---|
+| *aucune à ce jour* | | | | | | |
 
 **Exigence transverse et outillage de développement** (X.5, X.6, X.7 ; Partie X §58.1). Ils ne sont pas des
 capacités du produit au sens de l'ADR-0022 : ils ne portent pas de clé de désactivation. Leur adoption passe par un
 ADR si la décision est structurante (Partie IX §53.1) ; elle est inscrite ici avant toute implémentation, avec son
-créneau et ses tests.
+créneau et ses tests. Sans flag, ils n'ont pas d'étape d'activation.
 
 | Élément | Partie X | Nature | ADR (si structurante) | Sprint ou créneau | Tests |
 |---|---|---|---|---|---|
@@ -454,9 +479,9 @@ L'ordre des sprints (§47) est l'ordre d'implémentation. À l'intérieur d'un s
 | D13 | Séquence d'envoi des alertes (Sprint 10) **avant** les alertes `system` (Sprint 11) | même séquence T1 → envoi → T2 |
 | D14 | `ops.tick` et conditions **avant** le statut `degraded` | l'app ne fait que lire `SystemState` |
 | D15 | Backup et `restore-test` **avant** la pré-production | aucune donnée réelle sans backup |
-| D16 | ADR accepté et ligne au §47.5 **avant** tout créneau `C-X.n` (pour X.5, X.6 et X.7 : ligne de la section distincte, ADR si la décision est structurante) | aucune capacité par anticipation (ADR-0022, §47.5) |
+| D16 | ADR accepté et ligne au §47.5 **avant** le développement de tout créneau `C-X.n` (pour X.5, X.6 et X.7 : ligne de la section distincte, ADR si la décision est structurante) ; seule l'activation attend (D18) | aucune capacité par anticipation (ADR-0022, §47.5) |
 | D17 | Budget mensuel plafonné (Partie V-A §24.3) **avant** tout créneau qui appelle l'API hors de la file `AIJob` (X.1, X.3, X.8) | le plafond doit tenir aussi pour les appels interactifs ou agentiques |
-| D18 | S11 (V1 en production) **avant** tout créneau `C-X.n` ; S9 **avant** C-X.1 et S10 **avant** C-X.3 en découlent | V1 en production d'abord (décision du 2026-09-30) ; l'assistant vit dans le dashboard ; la synthèse part par les canaux d'alerte |
+| D18 | **Développement** d'un créneau au plus tôt après ses dépendances produit (S9 **avant** C-X.1, S10 **avant** C-X.3), derrière son flag désactivé ; **activation en production** d'une capacité du produit seulement après la décision de mise en production (§47.4, check-list §52), par P12, et, si elle expose des outils, avec son socle D19 vert | développer au chapitre, activer après la mise en production (décision du 2026-09-30, #130) ; l'assistant vit dans le dashboard ; la synthèse part par les canaux d'alerte |
 | D19 | Tout créneau qui expose des outils (X.1, X.2, X.3, X.8) livre un **socle de sécurité** : outils en lecture seule, moindre privilège, un test d'injection par le contenu d'article ; X.5 durcit ensuite l'ensemble | les outils sont livrés avant le chapitre sécurité (Ch15) |
 
 ---
@@ -481,11 +506,11 @@ Chaque étape bloque les suivantes. Les travaux d'une même étape peuvent tourn
 
 | # | Étape | Contenu | Bloquant |
 |---|---|---|---|
-| 1 | **Statique** | `ruff check` · `ruff format --check` · `mypy` (strict sur `app/`) · eslint (dont `react/no-danger` : interdiction de `dangerouslySetInnerHTML`) · `tsc --noEmit` · `uv lock --check` · `npm ci` · analyse de secrets de type gitleaks, **sur tout l'historique** · **traçabilité du catalogue** (`scripts/check-test-catalog.py`, §50.3) | oui |
+| 1 | **Statique** | hors `lab/` (§46.1), sauf l'analyse de secrets : `ruff check` · `ruff format --check` · `mypy` (strict sur `app/`) · eslint (dont `react/no-danger` : interdiction de `dangerouslySetInnerHTML`) · `tsc --noEmit` · `uv lock --check` · `npm ci` · analyse de secrets de type gitleaks, **sur tout l'historique** · **traçabilité du catalogue** (`scripts/check-test-catalog.py`, §50.3) | oui |
 | 2 | **Configuration** | `python -m app.cli validate-config` sur `config/`, invariant `clustering.embedding_wait + clustering.tick < llm.delay.enrich_article` compris · `docker compose config` avec `.env.example` · `caddy validate` sur `docker/Caddyfile`, variables de `.env.example` injectées · **politique Compose** (T-SEC-08) sur la sortie de `docker compose config` | oui |
 | 3 | **Audit** | audit des dépendances backend (type `pip-audit`, à partir de `uv.lock`) et frontend (`npm audit --audit-level=high`), confronté à `.audit-exceptions.yaml` (§49.4) | oui, sur `high` et `critical` |
-| 4 | **Tests** | pytest unitaire et intégration, réseau bloqué (§50.1), couverture mesurée et publiée dans le résumé du job · vitest | oui |
-| 5 | **Build** | images `radar-backend:<sha>` et `radar-caddy:<sha>` ; vérifications : modèle d'embeddings présent dans l'image (**activée au Sprint 4**, avec les embeddings), utilisateur non-root, aucun `.env` dans les couches | oui |
+| 4 | **Tests** | pytest unitaire et intégration (hors `lab/`), réseau bloqué (§50.1), couverture mesurée et publiée dans le résumé du job · vitest | oui |
+| 5 | **Build** | images `radar-backend:<sha>` et `radar-caddy:<sha>` ; vérifications : modèle d'embeddings présent dans l'image (**activée au Sprint 4**, avec les embeddings), utilisateur non-root, aucun `.env` dans les couches, aucun fichier de `lab/` dans l'image | oui |
 | 6 | **e2e Compose** | `docker compose -f docker-compose.yml -f docker-compose.test.yml up` sur les images de l'étape 5, avec les doubles (double de l'API Claude, faux serveur de sources, dépôt restic local) · tests `@pytest.mark.e2e` : `/health`, auth, en-têtes et logs Caddy, réseau, racine en lecture seule, backup et restauration, scénarios `T-RES-*` | oui |
 
 `scripts/deploy.sh` exige que **l'étape 6** soit verte pour le sha déployé.
@@ -555,6 +580,7 @@ Fixtures et doubles : `tests/fixtures/` (réponses HTTP par type, configurations
 
 - Chaque ligne du §50.5 porte un identifiant `T-<DOMAINE>-nn` et un niveau.
 - **Source unique** : `scripts/check-test-catalog.py` extrait les identifiants de `docs/spec/partie-VIII.md`.
+- **`lab/` hors traçabilité** (§46.1) : il n'est pas lu par `check-test-catalog.py`, et aucun marqueur `spec` n'y est admis.
 - **Marqueur** : un test couvre un identifiant par `@pytest.mark.spec("T-CLU-03")`, ou par un tag `[T-FE-01]` dans le nom d'un test vitest. Un identifiant peut être couvert par plusieurs tests ; un test peut en couvrir plusieurs.
 - **Contrôles bloquants** :
   - tout identifiant de niveau U, I, E ou F **d'un sprint clos** a au moins un test. La liste de ces identifiants est lue dans les `docs/sprints/sprint-NN.md` de ces sprints ; le contrôle devient **complet** (tous les identifiants du catalogue) au Sprint 11, critère §52 A2 ;
@@ -713,7 +739,7 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | T-LLM-16 | Fixtures de prompts : snapshot du prompt construit par `PROMPT_VERSION` ; template modifié sans changement de version → échec ; parsing des sorties de référence enregistrées | U | V-A → VIII · décision 15 |
 | T-LLM-17 | Observabilité : log par appel avec `task`, `job_id`, `model`, `stop_reason`, tokens d'entrée et de sortie, champs de cache tels que renvoyés, `request_id`, latence, classe d'erreur et `PROMPT_VERSION` ; jamais le prompt ni la réponse au niveau `info` | U | V-A §25.6 |
 | T-LLM-18 | `enrich_article` remplace les trois familles `method=llm` en une transaction et passe `summary_origin` à `llm` ; `resolve_event` ne touche ni à l'appartenance ni aux compteurs et passe `title_origin` à `llm` ; `discover_topics` écrit les colonnes `llm_*` du candidat sans jamais l'écarter | I | V-A §27 |
-| T-LLM-19 | LLM isolé : changer de modèle par la seule clé `llm.model` de `pipeline.yaml`, sans changement de code ; aucun identifiant de modèle en dur dans le code ; aucun module hors du `LLMClient` n'importe le SDK `anthropic` | I | Partie I §4.3 |
+| T-LLM-19 | LLM isolé : changer de modèle par la seule clé `llm.model` de `pipeline.yaml`, sans changement de code ; aucun identifiant de modèle en dur dans le code ; aucun module de `app/` hors du `LLMClient` n'importe le SDK `anthropic` (`lab/` exclu, §46.1) | I | Partie I §4.3 |
 | T-LLM-20 | Le `LLMClient` ne suit aucune redirection (client `httpx2` avec `follow_redirects=False`) : une réponse de redirection → `LLMConfigError` | U | V-A §25.2 |
 
 #### T-EMB — Embeddings *(III §12 · V-A §24.4)*
@@ -918,7 +944,7 @@ Le critère « Résilient » de la Partie I est atteint quand toutes les lignes 
 
 ### 50.8 Couverture
 
-Mesurée à l'étape 4 (branches comprises) et publiée dans le résumé du job. **Non bloquante.** Une baisse notable est un signal de revue, pas un critère d'échec : le critère bloquant est la traçabilité (§50.3).
+Mesurée à l'étape 4 (branches comprises), hors `lab/` (§46.1), et publiée dans le résumé du job. **Non bloquante.** Une baisse notable est un signal de revue, pas un critère d'échec : le critère bloquant est la traçabilité (§50.3).
 
 ---
 

@@ -1,6 +1,6 @@
 # Partie X — Capacités Claude
 
-> **Partie X — Capacités Claude.** Squelette, créé le 2026-09-30 (ADR-0022, #126). Prend les Parties I à IX comme
+> **Partie X — Capacités Claude.** Squelette, créé le 2026-09-30 (ADR-0022, #126 ; développer puis activer, #130). Prend les Parties I à IX comme
 > acquis.
 > **Aucune capacité n'est adoptée.** Cette partie décrit des capacités **candidates** et n'autorise aucune
 > implémentation : seule une ligne de la Partie VIII §47.5, posée après l'acceptation d'un ADR, le fait. Aucun détail
@@ -39,16 +39,22 @@ décision est structurante (§58.1).
    paragraphe de la capacité passe du squelette à la spécification, et les autres parties touchées sont mises à jour.
 3. Le propriétaire accepte l'ADR ; la capacité reçoit sa ligne dans VIII §47.5 (ADR, créneau, clé de désactivation,
    tests).
-4. Le créneau réservé en VIII §47.2 devient un créneau planifié, avec son plan validé, puis l'implémentation commence
-   (VIII §48, D16).
+4. **Développement** : au moment du chapitre, au plus tôt après les dépendances produit, le créneau réservé en VIII
+   §47.2 devient un créneau planifié, avec son plan validé. La capacité est développée et fusionnée **derrière son flag
+   désactivé par défaut** (VIII §48, D16, D18).
+5. **Activation en production** : seulement après la décision de mise en production (Partie VIII §47.4, check-list §52), par la procédure P12 (Partie IX §56.6) ; une capacité qui
+   expose des outils exige en plus son socle D19 vert. La date d'activation est portée au tableau de VIII §47.5.
+
+X.5, X.6 et X.7 n'ont pas d'étape 5 : sans flag, ils n'ont rien à activer (§58.1).
 
 Une capacité absente de VIII §47.5 n'est ni codée, ni préparée, ni ajoutée aux dépendances, même si elle est décrite
 ici (VIII §47.5, « rien par anticipation »).
 
 ### 58.3 Règles communes
 
-- **Désactivable par configuration** : toute capacité du produit (X.1 à X.4, X.8, X.9 ; ADR-0022). Désactivée, elle
-  laisse le produit dans l'état antérieur, cœur déterministe et repli compris (DV-05). La clé est fixée par l'ADR.
+- **Désactivable par configuration** : toute capacité du produit (X.1 à X.4, X.8, X.9 ; ADR-0022), **désactivée par
+  défaut** jusqu'à son activation (§58.2). Désactivée, elle laisse le produit dans l'état antérieur, cœur déterministe
+  et repli compris (DV-05). La clé est fixée par l'ADR.
   X.5, X.6 et X.7 ne sont pas des capacités du produit (§58.1) : la règle ne les concerne pas.
 - **Dans le budget** : le coût de chaque capacité du produit entre dans le plafond mensuel du LLM (Partie I §4.3, VII §45.1,
   V-A §24.3).
@@ -56,7 +62,8 @@ ici (VIII §47.5, « rien par anticipation »).
   le moindre privilège et un test d'injection par le contenu d'article ; X.5 durcit ensuite l'ensemble (VIII §48,
   D19).
 - **Tests** : les identifiants de la capacité entrent au catalogue (VIII §50.5) avec leurs tests, au moment de son
-  créneau ; aucun test n'appelle l'API réelle (VIII §50.1).
+  développement ; ils tournent flag activé, plus un test « flag coupé = état antérieur » ; l'e2e tourne avec les flags
+  par défaut, donc désactivés (VIII §47.5). Aucun test n'appelle l'API réelle (VIII §50.1).
 
 ### 58.4 Rubriques d'une capacité
 
@@ -69,20 +76,21 @@ Chaque paragraphe du §59 au §67 porte cinq rubriques : **objectif produit** (c
 Ordre des chapitres de la formation : Ch04–Ch06 couche LLM · Ch07–Ch11 assistant et MCP · Ch12–Ch13 agents · Ch14
 Claude Code · Ch15 sécurité · Ch16 évaluations · Ch17 cycle de vie. La spec ne fixe que cet ordre, jamais de date.
 
-**V1 en production d'abord** (décision du 2026-09-30, revue de #127) : S3 à S11 s'enchaînent sans créneau ; les
-créneaux viennent après S11, dans l'ordre des chapitres (VIII §47.2, D18).
+**Développer au chapitre, activer après la mise en production** (décision du 2026-09-30, #130) : chaque créneau est
+développé au moment de son chapitre, au plus tôt après ses dépendances produit, et s'intercale entre les sprints S3 à
+S11, inchangés ; une capacité du produit n'est activée qu'après la décision de mise en production (Partie VIII §47.4, check-list §52) (VIII §47.2, D18).
 
-| Élément | § | Nature | Chapitre | Créneau (VIII §47.2) |
-|---|---|---|---|---|
-| X.4 Lecture des PDF et images | §62 | capacité du produit | Ch07 | C-X.4, après S11 |
-| X.1 Assistant de veille conversationnel | §59 | capacité du produit | Ch07, Ch09, Ch11 | C-X.1, après C-X.4 |
-| X.2 Serveur MCP `radar-mcp` | §60 | capacité du produit | Ch10 | C-X.2, après C-X.1 |
-| X.3 Synthèse hebdomadaire | §61 | capacité du produit | Ch12, Ch13 | C-X.3, après C-X.2 |
-| X.7 Outillage Claude Code du dépôt | §65 | outillage de développement | Ch14, puis phase Architect | C-X.7, après C-X.3 ; phase 2 après la V1 |
-| X.5 Sécurité LLM | §63 | exigence transverse | Ch15 | C-X.5, après C-X.7 |
-| X.6 Évaluations | §64 | outillage de développement | Ch16 | C-X.6, après C-X.5 |
-| X.8 Recherche approfondie | §66 | capacité du produit | phase Architect | après la V1 |
-| X.9 RAG sur l'historique | §67 | capacité du produit | phase Architect Professional | après la V1 |
+| Élément | § | Nature | Chapitre | Développement au plus tôt après (VIII §47.2) | Activation en production |
+|---|---|---|---|---|---|
+| X.4 Lecture des PDF et images | §62 | capacité du produit | Ch07 | S7 | après la mise en production, P12 |
+| X.1 Assistant de veille conversationnel | §59 | capacité du produit | Ch07, Ch09, Ch11 | S9 | après la mise en production, socle D19 vert, P12 |
+| X.2 Serveur MCP `radar-mcp` | §60 | capacité du produit | Ch10 | S8 | après la mise en production, socle D19 vert, P12 |
+| X.3 Synthèse hebdomadaire | §61 | capacité du produit | Ch12, Ch13 | S10 | après la mise en production, socle D19 vert, P12 |
+| X.7 Outillage Claude Code du dépôt | §65 | outillage de développement | Ch14, puis phase Architect | aucune dépendance produit | sans objet |
+| X.5 Sécurité LLM | §63 | exigence transverse | Ch15 | créneaux qui exposent des outils (D19) | sans objet (toujours active) |
+| X.6 Évaluations | §64 | outillage de développement | Ch16 | S7 | sans objet |
+| X.8 Recherche approfondie | §66 | capacité du produit | phase Architect | S8 | après la mise en production, socle D19 vert, P12 |
+| X.9 RAG sur l'historique | §67 | capacité du produit | phase Architect Professional | S4, X.1 | après la mise en production, P12 |
 
 ### 58.6 Conflits transverses
 
@@ -110,8 +118,8 @@ créneaux viennent après S11, dans l'ordre des chapitres (VIII §47.2, D18).
 - V-A décisions 1 et 18 (catalogue des `job_type` et jobs créables par l'app, listes fermées) ;
 - nouvelles tables et leur rétention (Partie III §13) ;
 - coût interactif dans le plafond et priorité face aux jobs (sous-plafond, §58.6) ;
-- la tension de chapitre : Ch07 à Ch11 arrivent avant la mise en production, et le créneau C-X.1 après S11 ; Ch10
-  (X.2) tombe entre Ch09 et Ch11 ;
+- la tension de chapitre : X.1 ne peut être développée qu'après S9 ; si Ch07 à Ch11 arrivent avant, l'exercice ne peut
+  pas être pratiqué sur le produit au chapitre ; Ch10 (X.2) tombe entre Ch09 et Ch11 ;
 - **à vérifier** : streaming (SSE) derrière Caddy, sous la CSP `default-src 'self'` (DV-15).
 
 ## 60. X.2 — Serveur MCP `radar-mcp`
@@ -171,13 +179,14 @@ créneaux viennent après S11, dans l'ordre des chapitres (VIII §47.2, D18).
 | Rubrique | Contenu |
 |---|---|
 | Objectif produit | Rendre sûres les capacités qui lisent du contenu tiers ou exposent des outils |
-| Périmètre V1 minimal | Injection de prompt par le contenu des articles ; moindre privilège des outils ; données personnelles (PII) |
+| Périmètre V1 minimal | Injection de prompt par le contenu des articles ; moindre privilège des outils ; données personnelles (PII). **Suite de tests d'injection par le contenu d'article** (décision du 2026-09-30, #130) : un corpus d'articles piégés, défini par X.5, rejoué contre le double de l'API ; elle vérifie la **plomberie** du produit (délimiteurs, sortie bornée par le schéma, topics en liste fermée, aucun outil exécuté, sortie échappée). Le comportement réel du modèle face à ce corpus relève de X.6 (§64) |
 | Dépendances | V-A §25.5 · socle livré par X.1, X.2, X.3 (§58.3) |
 | Chapitre | Ch15 |
 | Statut | candidate — à spécifier au chapitre Ch15 ; **exigence transverse**, pas une capacité du produit (§58.1) : ADR si la décision est structurante (Partie IX §53.1) |
 
 **Conflits** :
-- recouvre V-A §25.5 et T-LLM-15 ;
+- la suite **complète** T-LLM-15 et le test d'injection du socle D19 de chaque créneau, sans les remplacer ;
+  l'activation d'une capacité à outils reste conditionnée au socle D19 vert, pas à cette suite (VIII §48) ;
 - périmètre des PII dans des articles publics à définir ;
 - dépendance inversée : les outils de X.1, X.2 et X.3 sont livrés avant Ch15, d'où le socle du §58.3.
 
@@ -186,8 +195,8 @@ créneaux viennent après S11, dans l'ordre des chapitres (VIII §47.2, D18).
 | Rubrique | Contenu |
 |---|---|
 | Objectif produit | Mesurer la qualité des tâches LLM et détecter les régressions |
-| Périmètre V1 minimal | Jeu d'articles étiquetés ; graders ; régression par `PROMPT_VERSION` et par modèle, en CI |
-| Dépendances | S7 (prompts, `PROMPT_VERSION`, fixtures) |
+| Périmètre V1 minimal | Jeu d'articles étiquetés ; graders ; régression par `PROMPT_VERSION` et par modèle, en CI ; comportement réel du modèle face au corpus d'injection défini par X.5 (§63). Suite **maintenue** sur les prompts du produit, à distinguer des exercices jetables de `lab/` (VIII §46.1) |
+| Dépendances | S7 (prompts, `PROMPT_VERSION`, fixtures) · corpus d'injection de X.5 |
 | Chapitre | Ch16 |
 | Statut | candidate — à spécifier au chapitre Ch16 ; **outillage de développement**, hors du produit (§58.1) : ADR si la décision est structurante (Partie IX §53.1) |
 

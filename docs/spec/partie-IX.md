@@ -1,7 +1,7 @@
 # Partie IX — Gouvernance & démarrage
 
 > **Partie IX — Gouvernance & démarrage.** Version durcie issue de la revue §53–§57.
-> Dernière révision : 2026-09-30 (ADR-0022, #122). Prend les Parties I, II, III, IV, V-A, V-B, VI, VII et VIII durcies comme acquis.
+> Dernière révision : 2026-09-30 (ADR-0022, #122 ; procédure P12, #130). Prend les Parties I, II, III, IV, V-A, V-B, VI, VII et VIII durcies comme acquis.
 
 **Nature de cette partie : une consolidation.** Elle rassemble les décisions verrouillées accumulées au fil du durcissement, la liste des ADR, l'arbre de documentation, le runbook et la mission de cadrage. Elle réconcilie ce que les Parties I à VIII ont fléché vers elle ; seul ce qui manquait pour rendre la gouvernance et le démarrage exécutables est durci à neuf.
 
@@ -545,6 +545,22 @@ Sans copie de `RESTIC_PASSWORD` hors du VPS, tous les backups sont perdus avec l
 | `/health` → 502 | `docker compose ps` : `app` arrêté, ou `migrate` en échec | `docker compose logs migrate app` ; si la révision est inconnue du code, P2 |
 | `/health` injoignable | VPS, DNS, Caddy, certificat | accès SSH ; `docker compose ps` ; `docker compose logs caddy` ; console du fournisseur si le VPS ne répond pas |
 | Certificat expirant | logs Caddy (ACME) | ports 80/443 et DNS ; `docker compose restart caddy` |
+
+#### P12 — Activer une capacité
+
+Décision du 2026-09-30 (#130) ; règle « développer, puis activer » de la Partie VIII §47.5 et de la Partie X §58.2.
+
+- **Quand** : une capacité du produit (Partie X, X.1 à X.4, X.8, X.9), développée et fusionnée derrière son flag
+  désactivé, doit être mise en service.
+- **Prérequis** : ADR accepté et ligne au tableau de VIII §47.5 ; décision de mise en production prise (VIII §47.4,
+  check-list §52) ; pour une capacité qui expose des outils, socle de sécurité D19 vert (VIII §48) ; budget mensuel en
+  place (VIII §48, D17) si elle appelle l'API hors de la file.
+- **Étapes** : activer le flag de la capacité selon son support, fixé par l'ADR : `pipeline.yaml` par P10 puis P1, ou
+  `Setting` dans le dashboard ; porter la date d'activation au tableau de VIII §47.5.
+- **Vérification** : **observation de 7 jours** des conditions `system` (VII §39.5), du budget LLM (V-A §24.3) et des
+  erreurs LLM (`/api/health`, métriques V-A §25.6, `failed` et `dead_letter` de la capacité).
+- **Retour arrière** : couper le flag par le même support. La capacité désactivée laisse le produit dans l'état
+  antérieur (Partie X §58.3, DV-05).
 
 ---
 
