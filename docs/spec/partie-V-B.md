@@ -1,7 +1,7 @@
 # Partie V-B — Intelligence : clustering, trends & sujets émergents
 
 > **Partie V-B — Clustering, trends & sujets émergents.** Version durcie issue de la revue §28–§30.
-> Dernière révision : 2026-09-22. Prend les Parties I, II, III, IV et V-A durcies comme acquis.
+> Dernière révision : 2026-09-30 (ADR-0022, #122). Prend les Parties I, II, III, IV et V-A durcies comme acquis.
 
 > **Déjà tranché ailleurs, non repris ici** : couche cœur déterministe sans LLM (Partie II §6) ; Event créé sans LLM avec titre de repli, `resolve_event` qui enrichit sans toucher à l'appartenance ni aux compteurs (Partie II §7.3, V-A §27.3) ; un calcul cosine, deux seuils (Partie II décision 4, restreinte ici) ; fenêtre glissante en mémoire, ligne `Embedding` à vecteur `NULL` exclue (Partie III §12.4, V-A §24.4) ; liaisons `method=keyword` produites par le relevance filter (Partie IV §20.4) ; catalogue et gardes des jobs LLM (V-A §23) ; rattachement déterministe de l'historique à un topic créé (V-A §24.6, précisé ici).
 
@@ -246,7 +246,7 @@ si distinct_source_count ≥ 2 et
 | Panne | Comportement |
 |---|---|
 | **Moteur d'embeddings `down`** | voie 2 immédiate (sans attendre `embedding_wait`) sur les critères U et E ; pas de dédup rétroactive ; seconde passe cosine au retour du moteur, pour les articles encore dans la fenêtre. **La hotness survit** (Partie II §9.1) |
-| **Gateway LLM indisponible** | aucun effet : l'étage ne dépend d'aucun résultat LLM. Les `resolve_event` et `enrich_article` créés attendent (V-A §26) |
+| **LLM indisponible** (API Claude en panne, ou LLM non configuré) | aucun effet : l'étage ne dépend d'aucun résultat LLM. Les `resolve_event` et `enrich_article` créés attendent (V-A §26) |
 | **Worker redémarré** | matrice reconstruite ; les articles non marqués sont réévalués ; aucune double application (§28.13) |
 
 ### 28.13 Idempotence
@@ -296,7 +296,7 @@ Produit les `Signal` par topic et par fenêtre. Étage **cœur** : sans LLM, sur
 | **Entrée** | articles `ready` (hors `duplicate`) de `published_at ≥ window_end − 60 j`, leurs liaisons `ArticleTopic` et `ArticleEntity` `method=keyword`, `Source` ; topics `enabled` ; Signal précédent de chaque (topic, période) |
 | **Sortie** | une ligne `Signal` par topic activé et par période ∈ {`24h`, `7d`, `30d`} |
 | **Tables écrites** | `Signal` · `SystemState.trends_last_run` |
-| **Ne lit jamais** | liaisons `method=llm` : une panne du gateway ne doit pas fabriquer un faux `declining` (V-A) |
+| **Ne lit jamais** | liaisons `method=llm` : une panne du LLM ne doit pas fabriquer un faux `declining` (V-A) |
 | **Exécution** | lecture paginée, calcul en mémoire hors event-loop (Partie II §8.4), écriture par lots de `trends.write_batch` topics (20), une transaction par lot |
 
 ### 29.2 Assiette
