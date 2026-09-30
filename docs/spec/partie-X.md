@@ -1,6 +1,6 @@
 # Partie X — Capacités Claude
 
-> **Partie X — Capacités Claude.** Squelette, créé le 2026-09-30 (ADR-0022, #126 ; développer puis activer, #130 ; points d'arrêt de formation, #133). Prend les Parties I à IX comme
+> **Partie X — Capacités Claude.** Squelette, créé le 2026-09-30 (ADR-0022, #126 ; développer puis activer, #130 ; points d'arrêt de formation, #133 ; signal en deux temps, #135). Prend les Parties I à IX comme
 > acquis.
 > **Aucune capacité n'est adoptée.** Cette partie décrit des capacités **candidates** et n'autorise aucune
 > implémentation : seule une ligne de la Partie VIII §47.5, posée après l'acceptation d'un ADR, le fait. Aucun détail
@@ -34,8 +34,9 @@ l'ADR-0022 : X.1 à X.4, X.8 et X.9. Les autres éléments de cette partie n'en 
 Ce cycle vaut pour les capacités du produit ; X.5, X.6 et X.7 le suivent à l'identique, l'ADR n'étant exigé que si la
 décision est structurante (§58.1).
 
-1. Le chapitre de formation de la capacité est **validé** par le signal du propriétaire (§58.7, Partie VIII §47.5) ;
-   aucun ADR de capacité n'est proposé avant (VIII §48, D20).
+1. Le chapitre de formation de la capacité est **ouvert** par le signal d'ouverture du propriétaire (§58.7, Partie VIII
+   §47.5) ; aucun ADR de capacité n'est proposé avant (VIII §48, D20). Pour une capacité à plusieurs chapitres, chaque
+   chapitre ouvre sa part, fixée par l'ADR.
 2. Un ADR est proposé au prochain numéro libre (déclencheur du registre, Partie IX §54.3). Dans la même PR, le
    paragraphe de la capacité passe du squelette à la spécification, et les autres parties touchées sont mises à jour.
 3. Le propriétaire accepte l'ADR ; la capacité reçoit sa ligne dans VIII §47.5 (ADR, créneau, clé de désactivation,
@@ -43,10 +44,12 @@ décision est structurante (§58.1).
 4. **Développement** : au moment du chapitre, au plus tôt après les dépendances produit, le créneau réservé en VIII
    §47.2 devient un créneau planifié, avec son plan validé. La capacité est développée et fusionnée **derrière son flag
    désactivé par défaut** (VIII §48, D16, D18).
-5. **Activation en production** : seulement après la décision de mise en production (Partie VIII §47.4, check-list §52), par la procédure P12 (Partie IX §56.6) ; une capacité qui
-   expose des outils exige en plus son socle D19 vert. La date d'activation est portée au tableau de VIII §47.5.
+5. **Validation** : chacun des chapitres de la capacité est validé par le signal de validation du propriétaire.
+6. **Activation en production** : seulement après la validation de **tous** ses chapitres et la décision de mise en
+   production (Partie VIII §47.4, check-list §52), par la procédure P12 (Partie IX §56.6) ; une capacité qui expose des
+   outils exige en plus son socle D19 vert. La date d'activation est portée au tableau de VIII §47.5.
 
-X.5, X.6 et X.7 n'ont pas d'étape 5 : sans flag, ils n'ont rien à activer (§58.1).
+X.5, X.6 et X.7 n'ont pas d'étape 6 : sans flag, ils n'ont rien à activer (§58.1).
 
 Une capacité absente de VIII §47.5 n'est ni codée, ni préparée, ni ajoutée aux dépendances, même si elle est décrite
 ici (VIII §47.5, « rien par anticipation »).
@@ -104,10 +107,11 @@ S11, inchangés ; une capacité du produit n'est activée qu'après la décision
 ### 58.7 Points d'arrêt
 
 La règle, les zones libres, le signal de déblocage et le vivier de tâches déterministes sont fixés en Partie VIII
-§47.5 (décision du 2026-09-30, #133). Pour les éléments de cette partie, un travail ne démarre qu'une fois **tous**
-les chapitres suivants validés par le signal :
+§47.5 (décisions du 2026-09-30, #133, #135). Pour les éléments de cette partie, chaque chapitre ci-dessous est
+d'abord **ouvert**, ce qui ouvre sa part (relecture, ADR, développement), puis **validé** ; l'activation exige la
+validation de **tous** les chapitres de l'élément :
 
-| Élément | Débloqué par |
+| Élément | Chapitres |
 |---|---|
 | X.4 (PDF et images) | Ch07 |
 | X.1 (assistant de veille) | Ch07, Ch09 et Ch11 |
@@ -119,7 +123,7 @@ les chapitres suivants validés par le signal :
 | X.6 (évaluations) | Ch16 |
 | X.8, X.9 | phase Architect |
 
-Ordre pour une capacité : signal, puis ADR (VIII §48, D16), puis développement derrière son flag désactivé (D18).
+Ordre pour une capacité : ouverture, ADR (VIII §48, D16), développement derrière son flag désactivé (D18), validation de tous ses chapitres, activation (P12) (D20).
 
 ---
 
