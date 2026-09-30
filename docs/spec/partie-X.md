@@ -69,15 +69,18 @@ Chaque paragraphe du §59 au §67 porte cinq rubriques : **objectif produit** (c
 Ordre des chapitres de la formation : Ch04–Ch06 couche LLM · Ch07–Ch11 assistant et MCP · Ch12–Ch13 agents · Ch14
 Claude Code · Ch15 sécurité · Ch16 évaluations · Ch17 cycle de vie. La spec ne fixe que cet ordre, jamais de date.
 
+**V1 en production d'abord** (décision du 2026-09-30, revue de #127) : S3 à S11 s'enchaînent sans créneau ; les
+créneaux viennent après S11, dans l'ordre des chapitres (VIII §47.2, D18).
+
 | Élément | § | Nature | Chapitre | Créneau (VIII §47.2) |
 |---|---|---|---|---|
-| X.1 Assistant de veille conversationnel | §59 | capacité du produit | Ch07, Ch09, Ch11 | C-X.1, après S9 |
+| X.4 Lecture des PDF et images | §62 | capacité du produit | Ch07 | C-X.4, après S11 |
+| X.1 Assistant de veille conversationnel | §59 | capacité du produit | Ch07, Ch09, Ch11 | C-X.1, après C-X.4 |
 | X.2 Serveur MCP `radar-mcp` | §60 | capacité du produit | Ch10 | C-X.2, après C-X.1 |
-| X.3 Synthèse hebdomadaire | §61 | capacité du produit | Ch12, Ch13 | C-X.3, après S11 |
-| X.4 Lecture des PDF et images | §62 | capacité du produit | Ch07 | C-X.4, après S7 |
+| X.3 Synthèse hebdomadaire | §61 | capacité du produit | Ch12, Ch13 | C-X.3, après C-X.2 |
+| X.7 Outillage Claude Code du dépôt | §65 | outillage de développement | Ch14, puis phase Architect | C-X.7, après C-X.3 ; phase 2 après la V1 |
 | X.5 Sécurité LLM | §63 | exigence transverse | Ch15 | C-X.5, après C-X.7 |
 | X.6 Évaluations | §64 | outillage de développement | Ch16 | C-X.6, après C-X.5 |
-| X.7 Outillage Claude Code du dépôt | §65 | outillage de développement | Ch14, puis phase Architect | C-X.7, après C-X.3 ; phase 2 après la V1 |
 | X.8 Recherche approfondie | §66 | capacité du produit | phase Architect | après la V1 |
 | X.9 RAG sur l'historique | §67 | capacité du produit | phase Architect Professional | après la V1 |
 
@@ -107,8 +110,8 @@ Claude Code · Ch15 sécurité · Ch16 évaluations · Ch17 cycle de vie. La spe
 - V-A décisions 1 et 18 (catalogue des `job_type` et jobs créables par l'app, listes fermées) ;
 - nouvelles tables et leur rétention (Partie III §13) ;
 - coût interactif dans le plafond et priorité face aux jobs (sous-plafond, §58.6) ;
-- la tension de chapitre : Ch07 arrive avec C-X.4, deux sprints avant les dépendances de X.1 ; Ch10 (X.2) tombe
-  entre Ch09 et Ch11 ;
+- la tension de chapitre : Ch07 à Ch11 arrivent avant la mise en production, et le créneau C-X.1 après S11 ; Ch10
+  (X.2) tombe entre Ch09 et Ch11 ;
 - **à vérifier** : streaming (SSE) derrière Caddy, sous la CSP `default-src 'self'` (DV-15).
 
 ## 60. X.2 — Serveur MCP `radar-mcp`
