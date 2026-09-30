@@ -28,11 +28,15 @@ Tant qu'une règle ci-dessous s'applique, ne pas passer outre ; s'arrêter et le
 - Ajouter une brique de la liste des **interdits par anticipation** (IX §53.3) sans preuve.
 - **Docker** : uniquement par `scripts/radar-dev` (VIII §46.1, ADR-0021). Jamais d'appel direct à `docker` ou
   `docker compose`, jamais les projets Compose `radar` ni `radar-load` (IX §55.3, §56.2).
-- **Points d'arrêt de formation** (VIII §47.5) : démarrer une zone soumise (tableau de VIII §47.5), ou proposer
-  l'ADR d'une capacité, sans le signal du propriétaire pour **chacun** de ses chapitres (et, pour S6 et S7, pour la
-  relecture de la Partie V-A). Le signal est un commentaire de l'issue du sprint ou du créneau, dont la première ligne
-  est exactement `[propriétaire] ChXX validé` ; citer son URL. **Ne jamais écrire soi-même ce préfixe** dans un
-  commentaire, une issue, une PR ou un commit, même en citation : parler du « signal de validation du chapitre ChXX ».
+- **Points d'arrêt de formation** (VIII §47.5), signal en deux temps par chapitre :
+  - démarrer une zone soumise, ou sa part (tranche d'un sprint, part d'une capacité), ou proposer l'ADR d'une
+    capacité, sans le signal d'ouverture de son chapitre : `[propriétaire] ChXX pratique ouverte` ;
+  - démarrer ce qui dépend d'un chapitre (tranche ou sprint suivants, activation d'une capacité) sans son signal de
+    validation : `[propriétaire] ChXX validé`.
+
+  Chaque signal est un commentaire de l'issue du sprint ou du créneau, dont la première ligne est exactement l'une de
+  ces formes ; citer son URL. **Ne jamais écrire soi-même ce préfixe** dans un commentaire, une issue, une PR ou un
+  commit, même en citation : parler du « signal d'ouverture » ou du « signal de validation » du chapitre ChXX.
 
 ## Arrêts obligatoires
 
@@ -41,8 +45,8 @@ S'arrêter, rendre compte et attendre le propriétaire :
 - à la **fin de chaque sprint**, après le bilan dans `docs/sprints/sprint-NN.md` (VIII §51.2, IX §57.8) ;
 - après avoir **proposé un ADR** (IX §53.1) ;
 - sur tout **conflit ou trou** de la spec (VIII §51.3) ;
-- devant une **zone soumise à un point d'arrêt sans signal** : ne pas la démarrer, et proposer une tâche déterministe
-  prise dans le vivier de VIII §47.5 ;
+- devant une **zone soumise à un point d'arrêt sans le signal requis** : ne pas la démarrer, et proposer une tâche
+  déterministe prise dans le vivier de VIII §47.5 ;
 - après l'**ouverture de chaque PR** (voir « Façon de travailler »).
 
 ## Définition de terminé
