@@ -1,7 +1,7 @@
 # Partie VI — Interfaces
 
 > **Partie VI — Interfaces.** Version durcie issue de la revue §31–§34.
-> Dernière révision : 2026-09-23. Prend les Parties I, II, III, IV, V-A et V-B durcies comme acquis.
+> Dernière révision : 2026-09-30 (ADR-0022, #122). Prend les Parties I, II, III, IV, V-A et V-B durcies comme acquis.
 
 > **Déjà tranché ailleurs, non repris ici** : l'app insère des `AIJob` de types prédéfinis (`enrich_article`, `resolve_event`) et n'en exécute jamais aucun ; elle répond immédiatement (Partie II §8.3, V-A §23.6) · coordination app ↔ worker par la base, sans IPC (Partie II §8.2) · alertes émises par le worker, sans reprise en V1 (Partie II §9.4) · tables `UserPreference`, `Setting`, `ReadState`, `EmergingDecision`, `AlertLog` (Partie III §11.12–11.13) · formule d'importance, fusion d'Events, catégories de tendance, cycle des candidats émergents (V-B) · repli / enrichi (`summary_origin`, `title_origin`, V-A §27.6–27.7) · le dashboard, la recherche, la hotness et les alertes déterministes fonctionnent sans la couche AI (Partie II §6).
 
@@ -223,7 +223,7 @@ Lecture de `SystemState`, affiché en permanence tant qu'une condition est vraie
 | alertes `failed` sur 24 h > 0 | « N alertes non envoyées » (lien vers §33.10) |
 | condition `system` active (Partie VII §39.5), au minimum `backup_*`, `restore_test_*`, `disk_*` et `no_alert_channel` | nom de la condition et « depuis <since> » |
 
-Le bandeau ne fait **aucun appel** au gateway ni au worker : il ne lit que la base.
+Le bandeau ne fait **aucun appel** à l'API LLM ni au worker : il ne lit que la base.
 
 ### 31.11 Contrat d'API
 
@@ -233,7 +233,7 @@ Le bandeau ne fait **aucun appel** au gateway ni au worker : il ne lit que la ba
 - **Erreurs** : `{"error": {"code": "<code>", "message": "<texte>"}}` ; codes HTTP 400 · 403 · 404 · 409 · 422. Le 401 est émis par Caddy (§32).
 - **Pagination keyset** sur tout endpoint de liste : réponse `{"items": [...], "next_cursor": <opaque> | null}`, paramètres `cursor` et `limit` (défaut 20, maximum 50). Le curseur encode `(valeur de tri, kind, id)`. **Aucun offset**, **aucun total** calculé (hors compteur Unread de l'Overview) — lectures courtes (Partie II §8.6).
 - Lectures en `read_session` ; écritures en `write_session`, quelques lignes par requête.
-- **Aucun endpoint ne dépend de la couche AI** : tous restent pleinement fonctionnels gateway éteint. Seuls changent les marqueurs de repli et la disponibilité des boutons de régénération.
+- **Aucun endpoint ne dépend de la couche AI** : tous restent pleinement fonctionnels LLM indisponible ou coupé. Seuls changent les marqueurs de repli et la disponibilité des boutons de régénération.
 
 **Schéma `StorySummary`** (entrées de Feed et d'Overview) :
 

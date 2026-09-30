@@ -1,7 +1,7 @@
 # Partie II — Architecture
 
 > **Partie II — Architecture.** Version durcie issue de la revue §6–§9.
-> Dernière révision : 2026-09-23. Prend la Partie I durcie comme acquis
+> Dernière révision : 2026-09-30 (ADR-0022, #122). Prend la Partie I durcie comme acquis
 > (objectif à 3 piliers, garantie transverse « fonctionner sans AI », hotness déterministe).
 
 ---
@@ -43,7 +43,7 @@ L'architecture repose sur **deux couches nettement séparées**.
 ### 6.1 Corollaires
 
 1. **Aucun collector n'attend jamais une réponse LLM.** Le LLM n'est jamais appelé depuis un collector ni depuis une requête HTTP entrante. Toute opération LLM passe par la **file de jobs asynchrone** (§23).
-2. **Aucune fonction `[core]` de la Partie I (§3) ne dépend de la couche AI.** C'est le critère de vérification de cette séparation : si une fonction étiquetée `[core]` cesse de fonctionner gateway éteint, l'architecture est en faute.
+2. **Aucune fonction `[core]` de la Partie I (§3) ne dépend de la couche AI.** C'est le critère de vérification de cette séparation : si une fonction étiquetée `[core]` cesse de fonctionner LLM coupé, l'architecture est en faute.
 3. **Les embeddings appartiennent à la couche cœur**, pas à la couche AI. Ils sont calculés localement, sur CPU, sans appel réseau — leur indisponibilité est un mode de panne **distinct** d'une panne LLM (§9).
 4. **Le sens de la dépendance est unique** : la couche AI lit ce que la couche cœur a produit et y ajoute ; la couche cœur ne lit jamais un résultat AI pour prendre une décision structurante.
 
@@ -107,7 +107,7 @@ Après l'`INSERT`, l'architecture n'est plus un tuyau : c'est un **hub**. Des pr
   │                │             │      Dashboard            Alerts
   │ Ingestion      │ Embeddings  │ AI Job Queue   Recherche (FTS5)   /health
   │ (7.1)          │     ▼       │      ▼
-  │                │ Similarité  │  LLMClient → LLM Gateway → Providers
+  │                │ Similarité  │  LLMClient → API Claude (SDK anthropic)
   │                │     │       │      (résumés, topics, entités,
   │                │     ▼       │       resolve_event)
   │                │ ┌───┴────┐  │
@@ -131,7 +131,7 @@ Après l'`INSERT`, l'architecture n'est plus un tuyau : c'est un **hub**. Des pr
 | **Hotness** | cœur | `distinct_source_count` matérialisé sur l'`Event`, recalculé depuis les membres à chaque rattachement, jamais incrémenté (Partie V-B §28.9) |
 | **Trend Engine** | cœur | produit les `Signal` par topic et par fenêtre |
 | **Purge** | cœur | efface `Article.content` après traitement + délai de grâce (§8.5) |
-| **AI Job Queue → LLMClient** | AI | seul point de contact avec un provider ; **enrichit**, ne crée rien de structurant |
+| **AI Job Queue → LLMClient** | AI | seul point de contact avec l'API Claude ; **enrichit**, ne crée rien de structurant |
 | **Recherche (FTS5)** | cœur | table virtuelle SQLite, plein texte sur titre + aperçu, combinée aux filtres SQL |
 
 **Supprimé** : la boîte `Analytics`, jamais définie ailleurs dans la spec. Le besoin est couvert par le Dashboard (§31) et la fonction 13 de la Partie I (recherche et filtrage de l'historique).
@@ -153,7 +153,7 @@ Aucun maillon n'appelle le LLM. Le job `resolve_event` remplace ensuite le titre
 
 ### 8.1 Les services
 
-Trois services **permanents**, plus un one-shot et un service optionnel (Partie VII §36.2) :
+Trois services **permanents**, plus un one-shot (Partie VII §36.2) :
 
 ```
 caddy                    app                         worker
@@ -171,7 +171,6 @@ caddy                    app                         worker
                                                       └── backup + test de restauration
 
 migrate   one-shot : alembic upgrade head, avant app et worker
-gateway   gateway LLM auto-hébergé, optionnel (profil Compose gateway)
 ```
 
 **Décision** : le frontend est servi **par Caddy** en fichiers statiques. FastAPI n'expose que l'API et `/health`, et ne sert pas la SPA. Aucun conteneur applicatif n'expose de port public (§37).
@@ -226,7 +225,7 @@ Le raccourci « le worker écrit, l'app lit » est **faux** : les deux processus
 
 Le worker est un **processus `asyncio` unique**.
 
-- **Le travail I/O-bound** (HTTP vers les sources, appels au gateway) vit dans l'event-loop.
+- **Le travail I/O-bound** (HTTP vers les sources, appels à l'API Claude) vit dans l'event-loop.
 - **Tout travail CPU-bound s'exécute hors de l'event-loop**, via `asyncio.to_thread` ou un `ThreadPoolExecutor` à taille bornée (≤ nombre de vCPU). Sont concernés : **calcul d'embeddings · similarité cosine numpy · extraction trafilatura · hashing de contenu**.
 
 > Aucune opération CPU-bound ne s'exécute directement dans une coroutine du scheduler ou de la boucle de jobs. Sans cette règle, un embedding de deux secondes gèle le scheduler, les collecteurs et la boucle AI pendant toute sa durée.
@@ -267,7 +266,7 @@ La configuration détaillée est en Partie III (§10). Ici, seules les **contrai
 
 La cible `< 10 000 articles/jour` représente environ **7 écritures/minute en moyenne** : le **débit n'est pas le facteur limitant** pour SQLite en WAL. Les points de contention réels sont ceux du §8.6 et la règle CPU du §8.4.
 
-**Hypothèses à vérifier par la mesure avant la mise en production** (§21 de la V0.3 impose déjà cette démarche pour le gateway) :
+**Hypothèses à vérifier par la mesure avant la mise en production** (§21 de la V0.3 imposait déjà cette démarche pour le gateway LLM, retiré depuis par l'ADR-0022) :
 
 - empreinte RAM du moteur d'embeddings chargé en permanence dans le worker ;
 - durée d'un cosine brute-force sur la fenêtre glissante lorsqu'elle atteint son régime nominal ;
@@ -282,8 +281,8 @@ Chaque mode de panne est spécifié sur **quatre colonnes** : ce qui se dégrade
 
 | Panne | Dégradation | Détection | Reprise | Idempotence |
 |---|---|---|---|---|
-| **LLM Gateway indisponible** | résumés, topics, entités, `resolve_event` suspendus. **Ingestion, dédup, events, hotness, trends, dashboard, recherche, alertes déterministes → OK.** Aperçus et titres d'`Event` restent en **repli déterministe**. | disjoncteur LLM ouvert, exposé par `llm_gateway` dans `/health` | jobs en `pending`/`retry` **sans consommer de tentative**, repris automatiquement au retour du gateway ; familles d'échec et disjoncteur : Partie V-A §26 | **chaque `job_type` est rejouable sans effet de bord** : un seul job actif par cible et par type (index unique partiel), et chaque job **remplace** ses propres résultats pour sa cible (Partie III §11.10). Un job ayant écrit son résultat puis mort avant `completed` est rejoué sans dupliquer. |
-| **Gateway non configuré** (`LLM_BASE_URL` absent) | aucun enrichissement : le produit tourne à 0 € sans LLM, aperçus et titres en repli | `llm_gateway` = `not_configured` | aucune : disjoncteur ouvert en permanence, jobs créés et laissés en `pending` (Partie V-A §24.2) | — |
+| **API Claude indisponible** | résumés, topics, entités, `resolve_event` suspendus. **Ingestion, dédup, events, hotness, trends, dashboard, recherche, alertes déterministes → OK.** Aperçus et titres d'`Event` restent en **repli déterministe**. | disjoncteur LLM ouvert, exposé par `llm_gateway` dans `/health` | jobs en `pending`/`retry` **sans consommer de tentative**, repris automatiquement au retour de l'API ; familles d'échec et disjoncteur : Partie V-A §26 | **chaque `job_type` est rejouable sans effet de bord** : un seul job actif par cible et par type (index unique partiel), et chaque job **remplace** ses propres résultats pour sa cible (Partie III §11.10). Un job ayant écrit son résultat puis mort avant `completed` est rejoué sans dupliquer. |
+| **LLM non configuré** (`ANTHROPIC_API_KEY` absent) | aucun enrichissement : le produit tourne sans LLM, à 0 € de LLM, aperçus et titres en repli | `llm_gateway` = `not_configured` | aucune : disjoncteur ouvert en permanence, jobs créés et laissés en `pending` (Partie V-A §24.2) | — |
 | **Moteur d'embeddings indisponible** *(distinct du LLM : local, CPU)* | similarité sémantique perdue → pas de `duplicate` rétroactif, pas de candidat par cosine. **Dédup exacte et clustering par entités / URL croisées continuent → la hotness survit** : les liaisons d'entités `method=keyword` issues de `config/entities.yaml` ne dépendent d'aucun LLM (Partie III décision 1). | échec du lot d'embeddings de la file dérivée (les embeddings n'ont pas d'`AIJob`) : `SystemState.embeddings` = `down` (Partie V-A §24.4) | backoff du tick de la file dérivée, reprise automatique ; un article en échec répété reçoit une ligne `Embedding` en échec après `embeddings.max_failures` ; le clustering tourne en mode dégradé sur les critères restants | rejouer un embedding écrase la ligne `Embedding` (clé `article_id` + `model`) |
 | **Réponse LLM malformée** (JSON invalide) | le job échoue | validation Pydantic | `retry`, puis `dead_letter` après `max_attempts` | aucune écriture partielle : la validation précède l'écriture |
 
@@ -321,8 +320,8 @@ Chaque ligne ci-dessus doit avoir un test. Les scénarios de bout en bout à aut
 T-RES-06  reboot simulé → containers restart → DB available → worker resumes
           → scheduler resumes → aucun job dupliqué, aucun misfire en rafale
 
-T-RES-01  gateway down → ingestion continue → events créés → hotness affichée
-          → jobs en retry → gateway up → reprise sans doublon
+T-RES-01  API LLM down → ingestion continue → events créés → hotness affichée
+          → jobs en retry → API LLM up → reprise sans doublon
 
 T-RES-05  worker kill -9 pendant un job → restart → job requalifié retry
           → rejoué → résultat unique
@@ -330,7 +329,7 @@ T-RES-05  worker kill -9 pendant un job → restart → job requalifié retry
 
 Le test de reboot est scindé : **reboot simulé** en CI (T-RES-06) et **reboot réel** du VPS en pré-production (T-RES-09, mesure M10).
 
-> **Critère de validation de la Partie II** : gateway LLM éteint, le produit doit rester utilisable de bout en bout — collecte, déduplication, événements, **hotness**, dashboard, recherche et alertes déterministes. Si l'une de ces fonctions tombe, la séparation des deux couches (§6) n'est pas respectée.
+> **Critère de validation de la Partie II** : LLM indisponible ou coupé, le produit doit rester utilisable de bout en bout — collecte, déduplication, événements, **hotness**, dashboard, recherche et alertes déterministes. Si l'une de ces fonctions tombe, la séparation des deux couches (§6) n'est pas respectée.
 
 ---
 

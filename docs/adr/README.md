@@ -15,9 +15,9 @@ prix (IX §54.1). Format, règles et registre : IX §54.2–§54.3. Gabarit : [`
 | [0004](0004-deux-processus-sans-ipc.md) | Deux processus sans IPC, écrivain unique par table | Accepté | 2026-09-23 | DV-06 | — |
 | [0005](0005-fastapi-un-processus-uvicorn.md) | FastAPI, un seul processus uvicorn | Accepté | 2026-09-23 | DV-07 | — |
 | [0006](0006-apscheduler-3x.md) | APScheduler 3.x | Accepté | 2026-09-23 | DV-08 | — |
-| [0007](0007-llm-api-openai-compatible-optionnel.md) | Accès LLM par API OpenAI-compatible, gateway hors app, LLM optionnel | Accepté | 2026-09-23 | DV-09 | — |
+| [0007](0007-llm-api-openai-compatible-optionnel.md) | Accès LLM par API OpenAI-compatible, gateway hors app, LLM optionnel | Remplacé par 0022 | 2026-09-30 | DV-09 | remplacé par [0022](0022-api-claude-directe-et-budget-plafonne.md) |
 | [0008](0008-embeddings-fastembed-modele.md) | Moteur et modèle d'embeddings | Accepté | 2026-09-23 | DV-10 | — |
-| [0009](0009-topologie-docker-compose-vps-unique.md) | Topologie Docker Compose sur VPS unique | Accepté | 2026-09-23 | DV-11 | — |
+| [0009](0009-topologie-docker-compose-vps-unique.md) | Topologie Docker Compose sur VPS unique | Remplacé par 0022 | 2026-09-30 | DV-11 | remplacé par [0022](0022-api-claude-directe-et-budget-plafonne.md) |
 | [0010](0010-exposition-et-cloisonnement.md) | Exposition et cloisonnement : Caddy, segmentation réseau, conteneurs durcis, anti-SSRF | Accepté | 2026-09-23 | DV-12 | — |
 | [0011](0011-authentification-dashboard.md) | Authentification du dashboard | Accepté | 2026-09-23 | DV-13 | — |
 | [0012](0012-semantique-health.md) | Sémantique de /health | Accepté | 2026-09-23 | DV-14 | — |
@@ -29,6 +29,10 @@ prix (IX §54.1). Format, règles et registre : IX §54.2–§54.3. Gabarit : [`
 | [0018](0018-tracabilite-du-catalogue.md) | Traçabilité du catalogue, pas de seuil de couverture | Accepté | 2026-09-23 | DV-20 | — |
 | [0019](0019-spec-dans-le-depot.md) | Spec dans le dépôt, SPEC.md en index | Accepté | 2026-09-23 | DV-21 | — |
 | [0021](0021-acces-cloisonne-a-docker-en-developpement.md) | Accès cloisonné de Claude Code à Docker en développement | Accepté | 2026-09-23 | aucune (structurante) ; E22 | — |
+| [0022](0022-api-claude-directe-et-budget-plafonne.md) | API Claude en direct, LLM optionnel à budget mensuel plafonné | Accepté | 2026-09-30 | DV-09, DV-11 | remplace 0007 et 0009 |
 
-**À venir** (IX §54.3) : 0020, gateway LLM retenu, au Sprint 6 (numéro réservé par le registre) ; ADR conditionnels,
-au prochain numéro libre, seulement si leur déclencheur survient.
+**Numéro 0020** : réservé au « gateway LLM retenu » (Sprint 6), créneau clos sans objet par l'ADR-0022 ; jamais
+attribué, jamais réutilisé (IX §54.2, §54.3).
+
+**À venir** (IX §54.3) : ADR conditionnels, au prochain numéro libre, seulement si leur déclencheur survient ; un ADR
+par capacité de l'écosystème Claude (VIII §47.5).

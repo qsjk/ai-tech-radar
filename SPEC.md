@@ -3,7 +3,7 @@
 Plateforme personnelle de veille technologique qui collecte, dédoublonne, regroupe et hiérarchise l'actualité technique,
 et reste pleinement utilisable quand l'intelligence AI est indisponible.
 
-**Version** : V0.4, impacts reportés le 2026-09-23 (Sprint 0 : T0.1, puis réconciliation de la Partie VII par T0.2b, #67). Le contenu vit dans `docs/spec/`, une partie par fichier ; ce fichier n'en est que l'index.
+**Version** : V0.4, impacts reportés le 2026-09-23 (Sprint 0 : T0.1, puis réconciliation de la Partie VII par T0.2b, #67) ; réorientation vers l'API Claude le 2026-09-30 (ADR-0022, #122). Le contenu vit dans `docs/spec/`, une partie par fichier ; ce fichier n'en est que l'index.
 
 ## Sommaire
 
@@ -13,7 +13,7 @@ et reste pleinement utilisable quand l'intelligence AI est indisponible.
 | [II — Architecture](docs/spec/partie-II.md) | §6 Principe fondamental · §7 Architecture cible · §8 Architecture des processus · §9 Résilience |
 | [III — Données](docs/spec/partie-III.md) | §10 SQLite · §11 Modèle de données · §12 Embeddings · §13 Rétention des données |
 | [IV — Pipeline d'ingestion](docs/spec/partie-IV.md) | §14 Pipeline · §15 Collectors · §16 Seed des sources, topics et entités · §17 Extraction de contenu · §18 Normalisation · §19 Déduplication exacte · §20 Relevance filter · §21 Rate limiting, quota et scheduler · §22 Authentification des APIs |
-| [V-A — Intelligence : machinerie & tâches LLM](docs/spec/partie-V-A.md) | §23 AI Job Queue · §24 Worker & scheduler · §25 LLM Gateway & LLMClient · §26 Résilience LLM & retry · §27 LLM Tasks & réduction des appels |
+| [V-A — Intelligence : machinerie & tâches LLM](docs/spec/partie-V-A.md) | §23 AI Job Queue · §24 Worker & scheduler · §25 API Claude & LLMClient · §26 Résilience LLM & retry · §27 LLM Tasks & réduction des appels |
 | [V-B — Intelligence : clustering, trends & sujets émergents](docs/spec/partie-V-B.md) | §28 Event clustering · §29 Trend Engine · §30 Emerging topics |
 | [VI — Interfaces](docs/spec/partie-VI.md) | §31 Dashboard · §32 Auth dashboard · §33 Alerts · §34 Préférences utilisateur |
 | [VII — Ops & Production](docs/spec/partie-VII.md) | §35 Stack · §36 Infra / VPS · §37 HTTPS & Caddy · §38 Backup & restore · §39 Monitoring · §40 Health endpoint · §41 Monitoring externe · §42 Logging · §43 Sécurité · §44 Stockage · §45 Coût & performance cibles |

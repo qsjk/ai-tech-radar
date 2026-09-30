@@ -1,8 +1,8 @@
 # Partie I — Vision & Objectifs
 
 > **Partie I — Vision & Objectifs.** Version durcie issue de la revue §1–§5.
-> Dernière révision : 2026-09-23. Les décisions tranchées lors de la revue
-> sont récapitulées ci-dessous, puis intégrées au fil des sections.
+> Dernière révision : 2026-09-30 (ADR-0022, #122). Les décisions tranchées lors
+> de la revue sont récapitulées ci-dessous, puis intégrées au fil des sections.
 
 ---
 
@@ -14,8 +14,9 @@
 4. **Canaux V1 = RSS + GitHub + Hacker News + Reddit + YouTube**, plus le collector **`webpage`** en dernier recours (Partie IV). **Newsletters (email) → V2.**
 5. **Recherche = 13ᵉ fonction** explicite, **déterministe** (plein-texte simple + filtres structurés). Recherche sémantique **hors V1**.
 6. **« Sans refonte »** défini en **3 niveaux** (config / config / nouveau collector) + garde-fou « toucher au modèle core ou au pipeline = refonte ». Cf. §2.
-7. **Portable** et **Provider-independent** traités comme **contraintes transverses** (toujours vraies), hors ordre de priorité §4.
+7. **Portable** et **LLM isolé** traités comme **contraintes transverses** (toujours vraies), hors ordre de priorité §4. *« LLM isolé » remplace « Provider-independent » (ADR-0022, #122).*
 8. Chaque **fonction (§3) est étiquetée** *core déterministe* ou *AI-dépendante*.
+9. **LLM = API Claude en direct**, par le SDK `anthropic`, **optionnel** et tenu par un **budget mensuel plafonné** ; les capacités de l'écosystème Claude (Agent SDK, MCP…) n'arrivent qu'une par une, chacune par sa décision (ADR-0022, #122). Cf. §4, §4.3, §5.
 
 ---
 
@@ -143,19 +144,19 @@ Précisions sur les fonctions non triviales :
 ## 4. Philosophie générale
 
 Le système doit être **Simple · Portable · Observable · Résilient · Low-cost ·
-Provider-independent**.
+LLM isolé**.
 
 Architecture privilégiée :
 
 ```
-Code déterministe  +  Jobs asynchrones  +  LLM comme service interchangeable
+Code déterministe  +  Jobs asynchrones  +  LLM optionnel, isolé derrière LLMClient
 ```
 
 plutôt que « LLM au centre de toute l'application ».
 
 ### 4.1 Contraintes transverses (non arbitrées)
 
-**Portable** et **Provider-independent** sont des **contraintes toujours vraies**,
+**Portable** et **LLM isolé** sont des **contraintes toujours vraies**,
 hors de l'ordre de priorité ci-dessous : elles ne se négocient pas contre
 d'autres qualités.
 
@@ -174,10 +175,10 @@ Parties VII/VIII ; la Partie I n'en fixe que la **définition de succès** :
 |---|---|
 | **Simple** | ≤ 3–4 services Docker **permanents** (le service one-shot `migrate` n'est pas compté, Partie VII §36.2) ; démarrage local en **une** commande (`docker compose up`) ; aucune techno bannie (§5). |
 | **Portable** | Migration vers un autre VPS = restauration du dernier backup (ou copie de `radar.db` **à l'arrêt**) + `.env` + `docker compose up -d`, **sans modification de code** (Partie VII §36.4). |
-| **Observable** | Tout incident majeur (source / worker / LLM down, disque plein) est détectable via `/health` ou une alerte, **sans SSH**. |
+| **Observable** | Tout incident majeur (source / worker / LLM down, budget LLM atteint, disque plein) est détectable via `/health` ou une alerte, **sans SSH**. |
 | **Résilient** | Les tests de résilience de la Partie VIII passent (LLM down · 429 · source down · worker restart · VPS reboot · backup restore) : tableau de la Partie VIII §50.6. |
-| **Low-cost** | Coût récurrent ≤ **12 €/mois** ; le produit **fonctionne avec un LLM à 0 €**. |
-| **Provider-independent** | Changer de provider LLM = modifier `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` ; **zéro** changement de code métier. |
+| **Low-cost** | Deux critères séparés. **Infrastructure** : coût récurrent ≤ **12 €/mois**. **LLM** : dépense ≤ **plafond mensuel**, configuré en USD (devise de facturation), défaut ≈ **15 €**, suivi en tokens et en coût réel, **plafond dur** appliqué par le worker, remis à zéro le 1er du mois (UTC). Le produit **fonctionne sans LLM**, à 0 € de LLM (ADR-0022). |
+| **LLM isolé** | L'API Claude n'est appelée que par le `LLMClient` du worker : changer de modèle = modifier `LLM_MODEL` ; couper le LLM = retirer `ANTHROPIC_API_KEY` ; **zéro** changement de code métier. |
 
 ## 5. Non-objectifs V1
 
@@ -198,9 +199,12 @@ Ne **pas** développer en V1 :
   relevance filter, dans le respect des rate limits et de `robots.txt`.
   Interdit : crawl de sites entiers, moissonnage en masse, ignorance de
   `robots.txt`* ;
-- **agent web autonome** ;
-- **gateway LLM maison** — *l'**auto-hébergement d'un gateway open-source
-  existant** (OmniRoute, etc.) reste autorisé.*
+- **agent web autonome** — *les capacités agentiques de l'écosystème Claude
+  (Agent SDK, MCP…) n'entrent que une par une, chacune par sa décision inscrite
+  à la feuille de route de la Partie VIII §47.5, désactivable par configuration
+  (ADR-0022)* ;
+- **gateway LLM**, maison ou auto-hébergé — *l'API Claude est appelée en
+  direct par le worker (ADR-0022).*
 
 ### 5.1 Non-objectifs implicites (rendus explicites)
 

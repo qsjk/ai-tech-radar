@@ -1,7 +1,7 @@
 # Partie VIII — Livraison
 
 > **Partie VIII — Livraison.** Version durcie issue de la revue §46–§52.
-> Dernière révision : 2026-09-23. Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
+> Dernière révision : 2026-09-30 (ADR-0022, #122). Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
 
 **Nature de cette partie : une agrégation.** Les tests, étapes CI et critères de production fléchés par les Parties I à VII sont rassemblés ici, rattachés à un identifiant et organisés par domaine. Les doublons sont réconciliés (§ « Réconciliations ») et seul ce qui manquait est durci à neuf.
 
@@ -35,13 +35,13 @@
 14. **Déploiement V1 manuel, verrouillé par la CI** : `scripts/deploy.sh` refuse de déployer un sha dont la CI (e2e compris) n'est pas verte, puis exécute la séquence VII §36.9. Aucun contournement en V1 ; un rollback redéploie un tag précédent, déjà vert.
 15. **Fixtures de prompts précisées.**
     - Un snapshot du prompt construit par `PROMPT_VERSION` : modifier un template sans changer la version fait échouer la CI.
-    - Le parsing est testé sur des **sorties réelles enregistrées** une fois par `scripts/record-llm-fixtures`, lancé à la main contre un vrai gateway et **jamais en CI**.
+    - Le parsing est testé sur des **sorties réelles enregistrées** une fois par `scripts/record-llm-fixtures`, lancé à la main contre l'API Claude, coût imputé au budget mensuel, et **jamais en CI**.
 16. **Tests frontend limités en V1** : vitest et testing-library sur quelques composants critiques, plus la règle lint. Pas de test navigateur (Playwright) en V1.
 17. **Six domaines de tests ajoutés au catalogue**, qui n'avaient jamais été fléchés vers VIII : base et migrations (III), étages purs du pipeline (IV), client HTTP (IV), purge et rétention (II §8.5, III §13), frontend (VI), démarrage et configuration.
 18. **Pré-production obligatoire d'au moins 14 jours** sur le VPS cible, avec les sources réelles, avant la décision de mise en production. C'est la durée du warm-up de l'émergence (`emerging.warmup`) ; elle couvre aussi la calibration et les mesures sur données réelles.
 19. **L'instance de pré-production est l'instance de production** : sa base est conservée à la bascule, ce qui préserve `trends_since` et l'historique. Une remise à zéro reste permise si la calibration change fortement les seuils, décision consignée dans `docs/go-live.md`.
 20. **Tests de charge jamais sur le volume de production** : les profils synthétiques (VII §45.3) tournent dans un projet Compose distinct (`-p radar-load`) avec son propre volume, sur le même VPS.
-21. **Un gateway LLM n'est pas requis pour la mise en production.** Le produit fonctionne à 0 € sans LLM (Partie I) ; les résumés restent alors en repli. Si un gateway est configuré, la mesure M6 doit être validée.
+21. **Un LLM n'est pas requis pour la mise en production.** Le produit fonctionne sans LLM, à 0 € de LLM (Partie I) ; les résumés restent alors en repli. Si le LLM est configuré (API Claude, ADR-0022), la mesure M6 doit être validée.
 22. **La spec vit dans le dépôt** sous `docs/spec/`, une partie par fichier. `SPEC.md` à la racine devient l'index : sommaire, règles de lecture et **lien** vers les décisions verrouillées (Partie IX §53), sans en recopier la liste. La CI extrait les identifiants de test directement de `docs/spec/partie-VIII.md`, source unique.
 23. **Liste d'hôtes autorisés réservée aux tests** : les doubles de test tournent sur des adresses privées que la garde anti-SSRF refuse. Une liste d'hôtes autorisés (`HTTP_TEST_ALLOW_HOSTS`) n'est lue que si `APP_ENV=test` ; le worker **refuse de démarrer** si elle est renseignée avec `APP_ENV=production`. Voir Partie IV §21.1.
 24. **Procédure de restauration outillée** (`scripts/restore.sh`) pour être testable en e2e. Elle applique le contrat VII §38.5, suppression des `-wal` / `-shm` comprise.
@@ -137,7 +137,7 @@ ai-tech-radar/
     │                          # partie-VI.md … partie-IX.md
     ├── adr/                   # README.md (index), _template.md, NNNN-slug.md
     ├── sprints/               # sprint-00-cadrage.md, sprint-NN.md (plan + bilan)
-    ├── architecture.md · database.md · collectors.md · llm-gateway.md · trends.md
+    ├── architecture.md · database.md · collectors.md · llm.md · trends.md
     ├── deployment.md · monitoring.md · backup-restore.md · measurements.md
     └── runbook.md · testing.md · go-live.md
 ```
@@ -150,7 +150,7 @@ ai-tech-radar/
 
 ### 46.2 Règles
 
-- **Versions épinglées partout** : `uv.lock` et `package-lock.json` commités ; images de base et images tierces (Caddy, gateway) à un tag précis, jamais `latest`. Mise à jour = commit dédié, passé en CI.
+- **Versions épinglées partout** : `uv.lock` et `package-lock.json` commités ; images de base et images tierces (Caddy) à un tag précis, jamais `latest`. Mise à jour = commit dédié, passé en CI.
 - **Aucun secret dans le dépôt** : `.env` dans `.gitignore` et `.dockerignore` ; aucun `COPY .env` ; analyse de secrets en CI (§49.2). Les fixtures ne contiennent que des secrets **factices**, reconnaissables (`FAKE-…`).
 - **`config/` est versionné** : c'est la configuration fonctionnelle. Les secrets et les paramètres de déploiement restent dans `.env` (VII §36.7).
 - **Branches** : `main` protégée (étapes 1 à 5 de la CI requises avant fusion) ; travail sur branche et PR, même en solo, pour que la CI tourne avant `main`.
@@ -245,16 +245,16 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - `job_type` inconnu → `failed`, le worker continue.
 - **Tests** : T-JOB-* (T-JOB-04 hors `candidate_decided`, complété au Sprint 8) · T-DB-09 · T-DB-12 (`AIJob.status`).
 
-#### Sprint 6 — LLM Gateway & LLMClient
+#### Sprint 6 — API Claude & LLMClient
 
 **Contenu** :
-- **Client** : `LLMClient` (interface typée, parsing et validation, `TolerantList` / `SoftStr`, erreurs typées, aucun retry interne) ; disjoncteur LLM à trois états ; budget quotidien et réserve de l'app ; gateway non configuré ; observabilité (§25.6).
-- **Doubles** : faux gateway OpenAI-compatible.
-- **Gateway** : choix documenté dans `docs/llm-gateway.md`, ADR, profil Compose `gateway` si auto-hébergé ; première mesure M6 contre le gateway retenu.
+- **Client** : `LLMClient` (interface typée, parsing et validation, `TolerantList` / `SoftStr`, erreurs typées, aucun retry interne) ; disjoncteur LLM à trois états ; budget mensuel plafonné (V-A §24.3, à réviser, ADR-0022) ; LLM non configuré ; observabilité (§25.6).
+- **Doubles** : double de l'API Messages de Claude, joint par `ANTHROPIC_BASE_URL` en test seulement.
+- **API Claude** : SDK `anthropic` confiné au `LLMClient`, modèle et budget documentés dans `docs/llm.md` ; première mesure M6 contre l'API Claude.
 
 **Acceptation** :
-- les huit scénarios de V-A §26.3 passent contre le faux gateway ;
-- `LLM_BASE_URL` absent → produit fonctionnel ; dans `/api/health`, le composant `llm_gateway` est en statut `disabled`, raison `not_configured` (VII §40.3).
+- les huit scénarios de V-A §26.3 passent contre le double de l'API ;
+- `ANTHROPIC_API_KEY` absent → produit fonctionnel ; dans `/api/health`, le composant `llm_gateway` est en statut `disabled`, raison `not_configured` (VII §40.3).
 - **Tests** : T-LLM-01 à 17, 19, 20 · T-RES-01 (partie file de jobs).
 
 #### Sprint 7 — Intelligence & purge
@@ -266,9 +266,9 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - **Prompts** : fixtures par `PROMPT_VERSION`, avec les sorties de référence enregistrées.
 
 **Acceptation** :
-- gateway coupé puis rétabli : reprise sans doublon, les plus récents d'abord ;
+- API LLM coupée puis rétablie : reprise sans doublon, les plus récents d'abord ;
 - contenu purgé selon la table III §13, jamais en présence d'un `dead_letter` ;
-- API complète avec le gateway éteint.
+- API complète avec le LLM indisponible.
 - **Tests** : T-LLM-18 (hors volet `discover_topics`, complété au Sprint 8) · T-JOB-06 · T-CLU-08 et 12 · T-PRG-* (T-PRG-06 complété au Sprint 8, volet `AlertLog` de T-PRG-05 au Sprint 10) · T-API-08 à 10, 14 · T-SEC-04 · T-RES-01 · T-RES-02 (hors alertes).
 
 #### Sprint 8 — Trends & émergence
@@ -288,7 +288,7 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 **Acceptation** :
 - une story n'apparaît qu'une fois dans l'Overview ;
 - la sourdine donne le même résultat côté app et côté worker ;
-- produit utilisable de bout en bout gateway éteint, hors alertes.
+- produit utilisable de bout en bout LLM indisponible, hors alertes.
 - **Tests** : T-API-01 à 04, 11 à 13 · T-FE-06 · T-CFG-08.
 
 #### Sprint 10 — Alertes
@@ -341,6 +341,23 @@ Entre la fin du Sprint 11 et la décision de mise en production, **au moins 14 j
 | Fin du warm-up de l'émergence ; job analytique sans erreur | J14 | `/api/health` |
 | Revue de la check-list §52, décision | ≥ J14 | `docs/go-live.md` |
 
+### 47.5 Feuille de route des capacités de l'écosystème Claude
+
+Les capacités de l'écosystème Claude (Agent SDK, MCP, outils, etc.) n'entrent dans le produit que **une par une**
+(ADR-0022, #122). Règle :
+
+- **une décision par capacité** : un ADR au prochain numéro libre (déclencheur du registre, Partie IX §54.3), accepté
+  par le propriétaire, puis **une ligne dans le tableau ci-dessous**, avant toute implémentation ;
+- **rien par anticipation** : une capacité absente du tableau n'est ni codée, ni préparée, ni ajoutée aux dépendances ;
+- **désactivable par configuration** : désactivée, la capacité laisse le produit dans l'état antérieur, cœur
+  déterministe et repli compris (DV-05) ;
+- **dans le budget** : son coût entre dans le plafond mensuel du LLM (Partie I §4.3, VII §45.1) ;
+- **dans un sprint** : la ligne indique le sprint qui la livre, avec ses identifiants de tests au catalogue (§50.5).
+
+| Capacité | ADR | Sprint | Clé de désactivation | Tests |
+|---|---|---|---|---|
+| *aucune à ce jour* | | | | |
+
 ---
 
 ## 48. Ordre d'implémentation — contraintes de dépendance
@@ -392,7 +409,7 @@ Chaque étape bloque les suivantes. Les travaux d'une même étape peuvent tourn
 | 3 | **Audit** | audit des dépendances backend (type `pip-audit`, à partir de `uv.lock`) et frontend (`npm audit --audit-level=high`), confronté à `.audit-exceptions.yaml` (§49.4) | oui, sur `high` et `critical` |
 | 4 | **Tests** | pytest unitaire et intégration, réseau bloqué (§50.1), couverture mesurée et publiée dans le résumé du job · vitest | oui |
 | 5 | **Build** | images `radar-backend:<sha>` et `radar-caddy:<sha>` ; vérifications : modèle d'embeddings présent dans l'image (**activée au Sprint 4**, avec les embeddings), utilisateur non-root, aucun `.env` dans les couches | oui |
-| 6 | **e2e Compose** | `docker compose -f docker-compose.yml -f docker-compose.test.yml up` sur les images de l'étape 5, avec les doubles (faux gateway, faux serveur de sources, dépôt restic local) · tests `@pytest.mark.e2e` : `/health`, auth, en-têtes et logs Caddy, réseau, racine en lecture seule, backup et restauration, scénarios `T-RES-*` | oui |
+| 6 | **e2e Compose** | `docker compose -f docker-compose.yml -f docker-compose.test.yml up` sur les images de l'étape 5, avec les doubles (double de l'API Claude, faux serveur de sources, dépôt restic local) · tests `@pytest.mark.e2e` : `/health`, auth, en-têtes et logs Caddy, réseau, racine en lecture seule, backup et restauration, scénarios `T-RES-*` | oui |
 
 `scripts/deploy.sh` exige que **l'étape 6** soit verte pour le sha déployé.
 
@@ -455,7 +472,7 @@ Chaque étape bloque les suivantes. Les travaux d'une même étape peuvent tourn
 | Frontend (vitest) | F | `frontend/src/**/*.test.tsx` | étape 4 |
 | Manuel sur le VPS cible | M | procédure dans `docs/`, preuve dans `docs/go-live.md` ou `docs/measurements.md` | pré-production (§47.4) |
 
-Fixtures et doubles : `tests/fixtures/` (réponses HTTP par type, configurations invalides, sorties LLM enregistrées, petits jeux de données) et `tests/fakes/` (faux gateway, faux serveur de sources). Le mode d'emploi figure dans `docs/testing.md`.
+Fixtures et doubles : `tests/fixtures/` (réponses HTTP par type, configurations invalides, sorties LLM enregistrées, petits jeux de données) et `tests/fakes/` (double de l'API Claude, faux serveur de sources). Le mode d'emploi figure dans `docs/testing.md`.
 
 ### 50.3 Traçabilité du catalogue
 
@@ -475,11 +492,11 @@ Fixtures et doubles : `tests/fixtures/` (réponses HTTP par type, configurations
 
 | Double / jeu | Rôle | Exigences |
 |---|---|---|
-| **Faux gateway** OpenAI-compatible (`tests/fakes/fake_gateway.py`, aussi en conteneur e2e) | tous les tests LLM | scriptable par test : réponse valide · JSON malformé · sortie tronquée (`finish_reason = length`) · vide · refus · 429 avec ou sans `Retry-After` (secondes et date) · 5xx · 401 / 403 / 404 · 400 / 413 / 422 · latence réglable (timeout) · connexion refusée · `GET /models` ; journal des requêtes reçues, pour vérifier « aucun appel » |
+| **Double de l'API Messages de Claude** (remplace le faux gateway, ADR-0022 ; aussi en conteneur e2e), joint par `ANTHROPIC_BASE_URL` avec `APP_ENV=test` | tous les tests LLM | scriptable par test : réponse valide · JSON malformé · sortie tronquée (`stop_reason = max_tokens`) · vide · refus · 429 avec ou sans `retry-after` · 529 surchargé · 5xx · 401 / 403 / 404 · 400 / 413 / 422 · latence réglable (timeout) · connexion refusée · `GET /v1/models` ; journal des requêtes reçues, pour vérifier « aucun appel ». Liste à réviser avec V-A §25.4 |
 | **Faux serveur de sources** (`tests/fakes/fake_sources.py`, aussi en conteneur e2e) | collectors, extraction, `robots.txt`, SSRF | sert les fixtures par type ; codes 304, 401, 403 (avec et sans `x-ratelimit-remaining: 0`), 404, 410, 429, 5xx, timeout, redirections (dont vers une adresse privée), corps trop gros, `Content-Type` non HTML, pagination interruptible |
 | **Fixtures par type** (`tests/fixtures/http/<type>/`) | T-COL-01 | RSS et Atom · GitHub releases · Algolia HN · Reddit RSS avec `[link]` · YouTube RSS · `webpage` avec gabarit conforme et cassé |
 | **Fixtures de prompts** (`tests/fixtures/llm/<task>/<PROMPT_VERSION>/`) | T-LLM-16 | snapshot du prompt construit (`system` et `user`) pour une entrée de référence, empreinte du template ; sorties réelles enregistrées (valides, limites, malformées) |
-| **`scripts/record-llm-fixtures.py`** | enregistrer des sorties réelles | lancé **à la main** contre un vrai gateway, jamais en CI ; écrit sous `tests/fixtures/llm/` ; aucune donnée d'article réelle non publique |
+| **`scripts/record-llm-fixtures.py`** | enregistrer des sorties réelles | lancé **à la main** contre l'API Claude, coût imputé au budget mensuel, jamais en CI ; écrit sous `tests/fixtures/llm/` ; aucune donnée d'article réelle non publique |
 | **Dépôt restic local** | T-BKP-*, T-RES-07 | dépôt `restic` sur système de fichiers local dans les tests ; dépôt injoignable simulé par un chemin ou un hôte invalide |
 | **SMTP et Telegram factices** | T-ALR-*, T-SEC-01 | serveur SMTP local de capture ; faux endpoint Telegram joignable par la liste de test, qui capture le corps et renvoie les erreurs demandées |
 | **Jeu synthétique** (`scripts/synthetic-dataset.py`) | T-CLU, T-TRD, T-EMG, mesures | profils **réaliste** (≈ 2 000 `ready` sur 72 h) et **cible** (10 000 items par jour, tous `ready`), graine fixe ; Events multi-sources, releases successives, entités omniprésentes, termes émergents, doublons de même source |
@@ -601,13 +618,13 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 
 | ID | Test | Niv. | Origine |
 |---|---|---|---|
-| T-LLM-01 | Gateway down (connexion refusée) → disjoncteur ouvert → aucun claim LLM → tentatives inchangées → gateway up → sonde OK → job test OK → reprise, les plus récents d'abord | I | V-A §26.3 |
+| T-LLM-01 | API LLM down (connexion refusée) → disjoncteur ouvert → aucun claim LLM → tentatives inchangées → API up → sonde OK → job test OK → reprise, les plus récents d'abord | I | V-A §26.3 |
 | T-LLM-02 | 429 avec `Retry-After: 120` → `open_until = +120 s` → `half_open` → job test → `closed` | I | V-A §26.3 |
 | T-LLM-03 | 429 persistant sans `Retry-After` → réouvertures à 60 s, 120 s, 240 s…, plafonnées à 6 h | I | V-A §26.3 |
 | T-LLM-04 | Réponse non JSON × 3 → `dead_letter` ; purge du contenu bloquée ; relance par l'app → `pending` | I | V-A §26.3 |
 | T-LLM-05 | Élément d'entité invalide dans une réponse valide → écarté, `dropped_items = 1`, job `completed` | I | V-A §26.3 |
 | T-LLM-06 | 3 timeouts consécutifs → disjoncteur ouvert (cause `unavailable`) | I | V-A §26.3 |
-| T-LLM-07 | `LLM_BASE_URL` absent → worker démarré, jobs créés et `pending`, `llm_gateway` à `not_configured` | I | V-A §26.3 |
+| T-LLM-07 | `ANTHROPIC_API_KEY` absent → worker démarré, jobs créés et `pending`, `llm_gateway` à `not_configured` | I | V-A §26.3 |
 | T-LLM-08 | `kill -9` après l'appel LLM, avant la transaction → `retry` → rejoué → état final identique | E | V-A §26.3 |
 | T-LLM-09 | Erreurs typées : connexion / DNS / 5xx → `LLMUnavailable` · 429 → `LLMRateLimited` · 401 / 403 / 404 → `LLMConfigError` (plus alerte de configuration) · timeout de lecture → `LLMTimeout` · malformé, vide, tronqué, refus → `LLMMalformed` · 400 / 413 / 422 → `LLMBadRequest` → `failed` ; `last_error` sans secret | I | V-A §25.4, §26.1 |
 | T-LLM-10 | Extraction du JSON : balises de code retirées, premier objet `{…}` équilibré | U | V-A §25.3 |
@@ -619,8 +636,8 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | T-LLM-16 | Fixtures de prompts : snapshot du prompt construit par `PROMPT_VERSION` ; template modifié sans changement de version → échec ; parsing des sorties de référence enregistrées | U | V-A → VIII · décision 15 |
 | T-LLM-17 | Observabilité : log par appel avec `task`, `job_id`, latence, tokens, classe d'erreur et `PROMPT_VERSION` ; jamais le prompt ni la réponse au niveau `info` | U | V-A §25.6 |
 | T-LLM-18 | `enrich_article` remplace les trois familles `method=llm` en une transaction et passe `summary_origin` à `llm` ; `resolve_event` ne touche ni à l'appartenance ni aux compteurs et passe `title_origin` à `llm` ; `discover_topics` écrit les colonnes `llm_*` du candidat sans jamais l'écarter | I | V-A §27 |
-| T-LLM-19 | Indépendance du provider : passer d'un faux gateway à un autre (base URL, clé, modèle différents) par les seules variables `LLM_*`, sans changement de code | I | Partie I §4.3 |
-| T-LLM-20 | Le `LLMClient` refuse une redirection vers un autre hôte que celui de `LLM_BASE_URL` | U | V-A §25.2 |
+| T-LLM-19 | LLM isolé : changer de modèle par la seule variable `LLM_MODEL`, sans changement de code ; aucun module hors du `LLMClient` n'importe le SDK `anthropic` | I | Partie I §4.3 |
+| T-LLM-20 | Le `LLMClient` refuse une redirection vers un autre hôte que celui de l'API Claude (ou de `ANTHROPIC_BASE_URL` en test) | U | V-A §25.2 |
 
 #### T-EMB — Embeddings *(III §12 · V-A §24.4)*
 
@@ -662,7 +679,7 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | T-TRD-02 | Parent : union distincte des descendants, sans double compte | I | V-B → VIII |
 | T-TRD-03 | EMA après un trou de plusieurs heures : `α` calculé sur l'écart réel, sans rattrapage | U | V-B → VIII |
 | T-TRD-04 | Upsert idempotent sur `(topic_id, period, window_end)` | I | V-B → VIII |
-| T-TRD-05 | Liaisons `llm` sans effet sur les mentions ; gateway coupé → aucun faux `declining` | I | V-B → VIII · V-A |
+| T-TRD-05 | Liaisons `llm` sans effet sur les mentions ; API LLM coupée → aucun faux `declining` | I | V-B → VIII · V-A |
 | T-TRD-06 | Mentions sur `published_at`, articles `ready` hors doublons ; catégories `established` / `trending` / `rising` / `declining`, `NULL` si le support est insuffisant | U | V-B §29.2, §29.6 |
 
 #### T-EMG — Émergence & « Create topic » *(V-B §30)*
@@ -692,7 +709,7 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | T-API-07 | Filtres du Feed : topic, source, entité, date, importance, non lu, suivis, `q` | I | VI décision 10 |
 | T-API-08 | Régénération : 202 immédiat ; `already_active` sur un job actif ; `jobs_in_progress` exposé ; action indisponible sur Event mono-source, `archived`, `merged` et LLM `not_configured` | I | VI → VIII |
 | T-API-09 | `dead_letter` : relance, abandon, 409 si le statut a changé | I | VI → VIII |
-| T-API-10 | API complète gateway éteint, puis gateway non configuré : aucun endpoint en erreur | I | VI → VIII · II §9.5 |
+| T-API-10 | API complète LLM indisponible, puis LLM non configuré : aucun endpoint en erreur | I | VI → VIII · II §9.5 |
 | T-API-11 | Importance exposée sur 0–100, `NULL` si absente ; valeurs de tendance `NULL` jamais converties en 0 | I | VI décision 3 · V-B |
 | T-API-12 | Related topics déterministes : parent, enfants, top 5 par co-occurrence `keyword` sur 30 j | I | VI décision 9 |
 | T-API-13 | `/api/status`, `/api/health` et `/health` calculés par le même module, avec le même seuil de heartbeat | I | VII §40.1 |
@@ -790,9 +807,9 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 
 | ID | Test | Niv. | Origine |
 |---|---|---|---|
-| T-RES-01 | **LLM down** : gateway coupé → ingestion continue → Events créés → hotness affichée → jobs en `retry` sans consommer de tentative → gateway rétabli → reprise sans doublon, les plus récents d'abord | E | II §9.5 · V-A §26.2 |
-| T-RES-02 | **Produit sans LLM de bout en bout** (critère de validation de la Partie II) : gateway éteint, puis non configuré → collecte, dédup, Events, hotness, dashboard, recherche et alertes déterministes opérationnels | E | II §9.5 |
-| T-RES-03 | **429** : source en 429 (`Retry-After` court et long) et gateway en 429 → aucune rafale, reprise conforme | E | Partie I §4.3 · IV §21.3 · V-A §26.3 |
+| T-RES-01 | **LLM down** : API LLM coupée → ingestion continue → Events créés → hotness affichée → jobs en `retry` sans consommer de tentative → API LLM rétablie → reprise sans doublon, les plus récents d'abord | E | II §9.5 · V-A §26.2 |
+| T-RES-02 | **Produit sans LLM de bout en bout** (critère de validation de la Partie II) : API LLM indisponible, puis LLM non configuré → collecte, dédup, Events, hotness, dashboard, recherche et alertes déterministes opérationnels | E | II §9.5 |
+| T-RES-03 | **429** : source en 429 (`Retry-After` court et long) et API LLM en 429 → aucune rafale, reprise conforme | E | Partie I §4.3 · IV §21.3 · V-A §26.3 |
 | T-RES-04 | **Source down** : une source en 5xx ou timeout → les autres continuent, disjoncteur ouvert, reprise au retour | E | Partie I §4.3 · II §9.3 |
 | T-RES-05 | **Worker restart** : `kill -9` pendant un job, pendant une pagination, pendant une évaluation de clustering → redémarrage par Docker → requalification → résultat unique, aucun doublon | E | II §9.5 · V-B |
 | T-RES-06 | **Reboot simulé** : arrêt brutal de tous les conteneurs puis relance par le démon, sans `migrate` → base disponible, worker et scheduler repris, aucun job dupliqué, aucun misfire en rafale | E | II §9.5 |
@@ -879,8 +896,8 @@ Toute divergence entre le code et la spec se résout **avant** la fin du sprint 
 | B1 | Ingestion automatique de toutes les sources activées de `sources.yaml`, pour les types présents (`rss`, `github`, `hackernews`, `reddit`, `youtube`, `webpage`) ; aucune source en disjoncteur ouvert sans cause identifiée | `/api/health` (`sources`) |
 | B2 | Normalisation, dédup exacte et relevance : invariant de compteurs tenu sur les `CollectorRun` des 24 dernières heures | requête de contrôle |
 | B3 | Events et hotness : au moins un Event multi-sources, affiché une seule fois dans l'Overview, badge corroboré | capture du dashboard |
-| B4 | Topics et entités `keyword` sur les articles `ready` ; `llm` en plus si un gateway est configuré | dashboard |
-| B5 | Résumés : repli présent sur tout article `ready` ; enrichis si un gateway est configuré | dashboard |
+| B4 | Topics et entités `keyword` sur les articles `ready` ; `llm` en plus si le LLM est configuré | dashboard |
+| B5 | Résumés : repli présent sur tout article `ready` ; enrichis si le LLM est configuré | dashboard |
 | B6 | Tendances : Signal horaire calculé, `trends_last_run` à jour, `NULL` affiché « données insuffisantes » pendant le cold start | `/api/health` |
 | B7 | Émergence : warm-up terminé ; job analytique exécuté sans erreur depuis au moins 24 h | `/api/health` |
 | B8 | Dashboard : toutes les vues ; recherche plein texte ; filtres ; lu / non lu ; préférences | parcours manuel consigné |
@@ -899,12 +916,12 @@ Toute divergence entre le code et la spec se résout **avant** la fin du sprint 
 
 | # | Critère | Preuve |
 |---|---|---|
-| D1 | Compose de production : `caddy`, `app`, `worker` permanents (+ `gateway` en profil), `migrate` one-shot, `restart: unless-stopped` | `docker compose ps` |
+| D1 | Compose de production : `caddy`, `app`, `worker` permanents, `migrate` one-shot, `restart: unless-stopped` | `docker compose ps` |
 | D2 | HTTPS : certificat Let's Encrypt valide, redirection HTTP → HTTPS, DNS A (et AAAA) en place | navigateur, `curl -I` |
 | D3 | SQLite : WAL actif, `journal_size_limit` posé, volume local | `app.cli health` |
 | D4 | `/health = ok` ; aucune condition active sans cause comprise | `/health`, `/api/health` |
 | D5 | Logs JSON avec rotation (10 Mo × 5 par service), `DEBUG` inactif | `docker inspect`, logs |
-| D6 | `mem_limit` fixés sur `worker` (et `gateway`) à pic M1 × 1,5 | `docker-compose.yml` |
+| D6 | `mem_limit` fixés sur `worker` à pic M1 × 1,5 | `docker-compose.yml` |
 | D7 | Racine en lecture seule validée sur le VPS (T-SEC-09 rejoué sur place) | `go-live.md` |
 | D8 | Hôte durci (VII §43.1) : SSH par clé, `PermitRootLogin no`, pare-feu (SSH, 80, 443/tcp, 443/udp), mises à jour de sécurité automatiques ; seul `caddy` publie des ports | `go-live.md` |
 | D9 | `.env` en `600`, copie de référence hors VPS avec `RESTIC_PASSWORD` | `go-live.md` |
@@ -925,7 +942,7 @@ Toute divergence entre le code et la spec se résout **avant** la fin du sprint 
 |---|---|---|
 | F1 | M1 à M10 consignés dans `docs/measurements.md`, chacun dans son critère ou couvert par un ADR | `measurements.md` |
 | F2 | Calibration `cluster-calibrate` réalisée sur données réelles ; échantillons relus ; seuils retenus committés dans `pipeline.yaml` ; décision de conservation ou de remise à zéro de la base consignée (décision 19) | `measurements.md`, `go-live.md` |
-| F3 | Si un gateway est configuré : M6 validée contre le gateway retenu | `measurements.md` |
+| F3 | Si le LLM est configuré : M6 validée contre l'API Claude | `measurements.md` |
 | F4 | Seuils marqués ⚖ (VII §39.4) recalés d'après M3 | `pipeline.yaml` |
 
 ### G. Critères « c'est atteint » de la Partie I §4.3
@@ -936,14 +953,14 @@ Toute divergence entre le code et la spec se résout **avant** la fin du sprint 
 | G2 | **Portable** : migration de VPS = backup + `.env` + `docker compose up -d`, sans modification de code | C3 |
 | G3 | **Observable** : tout incident majeur détectable via `/health` ou une alerte, sans SSH | T-OPS-06, T-OPS-12, E4 |
 | G4 | **Résilient** : tableau §50.6 vert | C1 à C3 |
-| G5 | **Low-cost** : coût mensuel estimé ≤ 12 €, détaillé par poste | `go-live.md` |
-| G6 | **Provider-independent** : changement de provider par les seules variables `LLM_*` | T-LLM-19 |
+| G5 | **Low-cost** : coût d'infrastructure estimé ≤ 12 €/mois, détaillé par poste ; dépense LLM ≤ plafond mensuel, limite de la Console Anthropic réglée | `go-live.md` |
+| G6 | **LLM isolé** : changement de modèle par la seule variable `LLM_MODEL` ; SDK `anthropic` confiné au `LLMClient` | T-LLM-19 |
 
 ### H. Documentation
 
 | # | Critère |
 |---|---|
-| H1 | Présents et à jour : `docs/architecture.md`, `database.md`, `collectors.md`, `trends.md`, `deployment.md`, `monitoring.md`, `backup-restore.md`, `measurements.md`, `runbook.md`, `testing.md`, `go-live.md`, et `llm-gateway.md` si un gateway est utilisé |
+| H1 | Présents et à jour : `docs/architecture.md`, `database.md`, `collectors.md`, `trends.md`, `deployment.md`, `monitoring.md`, `backup-restore.md`, `measurements.md`, `runbook.md`, `testing.md`, `go-live.md`, et `llm.md` si le LLM est utilisé |
 | H2 | ADR présents pour les décisions verrouillées et celles désignées en Parties VII et VIII |
 | H3 | Spec dans `docs/spec/` conforme au code déployé (§51.3) |
 
@@ -975,7 +992,7 @@ Toute divergence entre le code et la spec se résout **avant** la fin du sprint 
 **Décisions à poids réel, prises par défaut puis validées avec la partie** (Partie IX décision 12) :
 1. Pré-production d'au moins 14 jours avant la décision (décision 18).
 2. Instance de pré-production = instance de production, base conservée à la bascule (décision 19).
-3. Gateway LLM non requis pour la mise en production (décision 21).
+3. LLM non requis pour la mise en production (décision 21).
 4. Spec dans `docs/spec/`, `SPEC.md` en index, identifiants extraits de la spec par la CI (décision 22).
 5. `HTTP_TEST_ALLOW_HOSTS` réservé à `APP_ENV=test`, refus de démarrer en production (décision 23).
 6. `scripts/restore.sh` qui outille la procédure VII §38.5 (décision 24).
@@ -992,4 +1009,4 @@ Toute divergence entre le code et la spec se résout **avant** la fin du sprint 
 - **Environnement de staging distinct** de la production.
 - **Seuil de couverture bloquant**, si la traçabilité du catalogue s'avère insuffisante.
 - **Reconstruction et redéploiement automatiques** des images sur correctif de sécurité.
-- **Enregistrement automatisé et périodique** des fixtures LLM contre le gateway retenu.
+- **Enregistrement automatisé et périodique** des fixtures LLM contre l'API Claude.

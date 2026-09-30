@@ -1,7 +1,7 @@
 # Partie IX — Gouvernance & démarrage
 
 > **Partie IX — Gouvernance & démarrage.** Version durcie issue de la revue §53–§57.
-> Dernière révision : 2026-09-23. Prend les Parties I, II, III, IV, V-A, V-B, VI, VII et VIII durcies comme acquis.
+> Dernière révision : 2026-09-30 (ADR-0022, #122). Prend les Parties I, II, III, IV, V-A, V-B, VI, VII et VIII durcies comme acquis.
 
 **Nature de cette partie : une consolidation.** Elle rassemble les décisions verrouillées accumulées au fil du durcissement, la liste des ADR, l'arbre de documentation, le runbook et la mission de cadrage. Elle réconcilie ce que les Parties I à VIII ont fléché vers elle ; seul ce qui manquait pour rendre la gouvernance et le démarrage exécutables est durci à neuf.
 
@@ -24,8 +24,8 @@
 4. **Seul le propriétaire du projet accepte un ADR.** Claude Code rédige un ADR en statut `Proposé` et **s'arrête**. Il ne change jamais une décision verrouillée, ne tranche jamais un conflit entre parties de la spec, et ne démarre jamais un sprint non validé.
 5. **Liste §53 regroupée par familles et dédoublonnée** (21 entrées `DV-nn`). Ajouts par rapport à la liste accumulée : **cœur déterministe + couche AI asynchrone**, **FTS5**, **React · TypeScript · Vite**. Caddy seul point d'entrée est rattaché à l'entrée « exposition et cloisonnement ».
 6. **Embeddings : le moteur est verrouillé, pas le modèle.** fastembed (onnxruntime), CPU, multilingue, ≤ 384 dimensions. Le modèle précis (cible `paraphrase-multilingual-MiniLM-L12-v2`) et son éventuel repli relèvent de l'ADR-0008, produit au Sprint 0.
-7. **« Gateway LLM externe » reformulé** : accès LLM uniquement par une API OpenAI-compatible, derrière un gateway hors de l'app, sans SDK de provider, et **optionnel**.
-8. **ADR produits à trois moments** : 19 ADR au Sprint 0 · l'ADR du gateway retenu au **Sprint 6** (et non au Sprint 0) · des ADR **conditionnels**, sur déclencheur listé.
+7. **« Gateway LLM externe » reformulé** : accès LLM uniquement par une API OpenAI-compatible, derrière un gateway hors de l'app, sans SDK de provider, et **optionnel**. *Remplacée le 2026-09-30 par l'ADR-0022 (#122) : API Claude en direct par le SDK `anthropic`, LLM optionnel à budget mensuel plafonné (§53.2, DV-09).*
+8. **ADR produits à trois moments** : 19 ADR au Sprint 0 · l'ADR du gateway retenu au **Sprint 6** (et non au Sprint 0) · des ADR **conditionnels**, sur déclencheur listé. *Le créneau du Sprint 6 est clos sans objet par l'ADR-0022 (§54.3).*
 9. **Format ADR fixé** : `docs/adr/NNNN-slug.md`, statut `Proposé` · `Accepté` · `Rejeté` · `Remplacé par NNNN`, champ **Preuve** obligatoire quand l'ADR remplace une décision verrouillée. Un ADR accepté n'est jamais réécrit.
 10. **La spec vit dans `docs/spec/`**, un fichier par partie : `partie-I.md` … `partie-IV.md`, `partie-V-A.md`, `partie-V-B.md`, `partie-VI.md` … `partie-IX.md`. **`SPEC.md` devient l'index** : sommaire, règles de lecture, lien vers §53, **sans copie** de la liste (précise VIII décision 22).
 11. **Report des impacts = première tâche du Sprint 0**, dans une PR dédiée relue avant toute autre tâche. Une fois reportées, les sections « Impacts à répercuter » et les marqueurs « (proposé) » / « à confirmer » disparaissent de `docs/spec/`.
@@ -58,6 +58,7 @@
 | V0.3 §53 | « external LLM gateway » | API OpenAI-compatible, gateway hors app, optionnel (décision 7) |
 | V0.3 §54 | un ADR par décision verrouillée « et chaque choix structurant » | registre à trois moments (§54.3) ; regroupement par décision réversible indépendamment |
 | Brief de revue | ADR du gateway au Sprint 0 | au Sprint 6, avec M6 (VIII §47.2 Sprint 6) |
+| Besoin validé le 2026-09-29 (#122) | DV-09 : API OpenAI-compatible derrière un gateway, LLM à 0 € ; DV-11 : `gateway` en profil optionnel ; ADR 0020 au Sprint 6 | API Claude en direct par le SDK `anthropic`, LLM optionnel à budget mensuel plafonné, plus de gateway ; créneau 0020 clos sans objet (ADR-0022) |
 | V0.3 §55 | 8 documents | arbre complet (§55.1) : `docs/spec/`, `docs/sprints/`, index d'ADR, `trends.md`, `measurements.md`, `testing.md`, `go-live.md` |
 | VIII décision 22 | `SPEC.md` = sommaire, **décisions verrouillées**, renvois | `SPEC.md` = sommaire, règles de lecture, **lien** vers §53 (décision 1) |
 | VIII §47.2 Sprint 11 | documentation d'exploitation livrée au Sprint 11 | créée au fil des sprints, **finalisée** au Sprint 11 (§55.4) |
@@ -123,14 +124,14 @@ Une ligne par décision, son origine et son ADR (§54.3).
 
 | ID | Décision | Origine | ADR |
 |---|---|---|---|
-| DV-09 | **Accès LLM uniquement par une API OpenAI-compatible**, derrière un gateway hors de l'app ; aucun SDK de provider dans le code ; **LLM optionnel** : le produit est complet à 0 € sans lui | II · V-A §25 · VIII décision 21 | 0007 |
+| DV-09 | **Accès LLM par l'API Claude en direct**, via le SDK `anthropic`, depuis le seul `LLMClient` du worker ; aucun gateway ; `ANTHROPIC_BASE_URL` refusée hors `APP_ENV=test` ; **LLM optionnel** : le produit est complet sans lui ; **budget mensuel plafonné**, suivi en tokens et en coût réel, plafond dur appliqué par le worker | I §4.3 · II · V-A §25 · VII §45.1 · VIII décision 21 | 0022 (remplace 0007) |
 | DV-10 | **Embeddings locaux sur CPU** : fastembed (onnxruntime), sans PyTorch ; modèle multilingue ≤ 384 dimensions, intégré à l'image au build. Le modèle précis n'est pas verrouillé | III §12.1 · VII décision 9 | 0008 |
 
 **D. Infrastructure et exposition**
 
 | ID | Décision | Origine | ADR |
 |---|---|---|---|
-| DV-11 | **Docker Compose sur un VPS unique** : trois services permanents `caddy` · `app` · `worker`, `migrate` one-shot, `gateway` en profil optionnel ; une image backend et une image Caddy taggées par sha | VII §36.1–§36.2 | 0009 |
+| DV-11 | **Docker Compose sur un VPS unique** : trois services permanents `caddy` · `app` · `worker`, `migrate` one-shot ; une image backend et une image Caddy taggées par sha | VII §36.1–§36.2 | 0022 (remplace 0009) |
 | DV-12 | **Exposition et cloisonnement** : Caddy seul point d'entrée et seul service qui publie des ports ; segmentation réseau (`app` sans sortie Internet, `worker` sans accès à `app`, `migrate` sans réseau) ; conteneurs non-root, `cap_drop: ALL`, racine en lecture seule ; garde anti-SSRF dans le `HttpClient` | VII §36.2, §36.5, §43 | 0010 |
 | DV-13 | **Auth = `basic_auth` Caddy** (bcrypt) sur tout sauf `/health`, plus anti-CSRF dans l'app ; `DASHBOARD_TOKEN` retiré | VI §32 · VII §37 | 0011 |
 | DV-14 | **Sémantique de `/health`** : public `{status}` = `ok` · `degraded` · `down` (200 / 200 / 503) ; `down` = base inaccessible ou heartbeat périmé ; détail authentifié sur `/api/health` | VI décision 14 · VII §40 | 0012 |
@@ -183,7 +184,7 @@ Le §53 dit **quoi** ; l'ADR dit **pourquoi**, contre quoi, et à quel prix. Un 
 | Statut | `Proposé` · `Accepté` · `Rejeté` · `Remplacé par NNNN` |
 | Date | date du dernier changement de statut |
 | Décision(s) couverte(s) | identifiants `DV-nn` et paragraphes de la spec |
-| Contexte | le problème, les contraintes (Partie I : low-cost, mono-utilisateur, provider-independent, portable) |
+| Contexte | le problème, les contraintes (Partie I : low-cost, mono-utilisateur, LLM isolé, portable) |
 | Décision | la décision, en une à trois phrases |
 | Alternatives écartées | chacune avec la raison du rejet |
 | Conséquences | ce qu'on gagne, ce qu'on accepte de perdre, ce qui deviendrait une preuve de réexamen |
@@ -207,9 +208,9 @@ Le §53 dit **quoi** ; l'ADR dit **pourquoi**, contre quoi, et à quel prix. Un 
 | 0004 | Deux processus sans IPC, écrivain unique par table | DV-06 |
 | 0005 | FastAPI, un seul processus uvicorn | DV-07 |
 | 0006 | APScheduler 3.x | DV-08 |
-| 0007 | Accès LLM par API OpenAI-compatible, gateway hors app, LLM optionnel | DV-09 |
+| 0007 | Accès LLM par API OpenAI-compatible, gateway hors app, LLM optionnel — *remplacé par 0022* | DV-09 |
 | 0008 | Moteur et modèle d'embeddings (modèle retenu, repli éventuel, révision épinglée) | DV-10 |
-| 0009 | Topologie Docker Compose sur VPS unique | DV-11 |
+| 0009 | Topologie Docker Compose sur VPS unique — *remplacé par 0022* | DV-11 |
 | 0010 | Exposition et cloisonnement : Caddy, segmentation réseau, conteneurs durcis, anti-SSRF | DV-12 |
 | 0011 | Authentification du dashboard | DV-13 |
 | 0012 | Sémantique de `/health` | DV-14 |
@@ -225,10 +226,16 @@ Le §53 dit **quoi** ; l'ADR dit **pourquoi**, contre quoi, et à quel prix. Un 
 
 | ADR | Titre | Sprint | Appui |
 |---|---|---|---|
-| 0020 | Gateway LLM retenu | 6 | `docs/llm-gateway.md`, première mesure M6 |
+| 0020 | Gateway LLM retenu — *sans objet : créneau clos par l'ADR-0022* | — | — |
 | 0021 | Accès cloisonné de Claude Code à Docker en développement | 0 (T0.9) | E22 du rapport de cadrage ; poste de développement (Q-01) ; avant le premier Compose du Sprint 1 |
 
-Si aucun gateway n'est retenu à ce stade, l'ADR 0020 le consigne (produit sans LLM, VIII décision 21).
+Le créneau 0020 est clos sans objet : l'ADR-0022 retire le gateway (#122). Le numéro n'est jamais attribué ni réutilisé (§54.2).
+
+**Produits sur preuve** (remplacent l'ADR d'une décision verrouillée, §53.1)
+
+| ADR | Titre | Couvre | Preuve | Remplace |
+|---|---|---|---|---|
+| 0022 | API Claude en direct, LLM optionnel à budget mensuel plafonné | DV-09, DV-11 | besoin fonctionnel validé par le propriétaire le 2026-09-29 (#122) | 0007, 0009 |
 
 L'ADR 0021 figure ici, et non parmi les conditionnels : il n'attend aucun déclencheur, il est rédigé au Sprint 0 parce que le Sprint 1 en a besoin. Il ne figure pas non plus dans la liste « Produits au Sprint 0 », réservée aux ADR des décisions verrouillées (§53.2) : il ne couvre aucune `DV-nn`, c'est une décision structurante (§53.1).
 
@@ -237,7 +244,8 @@ L'ADR 0021 figure ici, et non parmi les conditionnels : il n'attend aucun décle
 | Déclencheur | Objet de l'ADR | Référence |
 |---|---|---|
 | Une bibliothèque frontend exige des styles injectés | élargissement de `style-src` | VII §37.3 · VIII §46.2 |
-| M6 montre `GET /models` absent ou peu fiable | `LLMClient.health()` adapté | VII §45.4 M6 |
+| M6 montre `GET /v1/models` de l'API Claude absent ou peu fiable | `LLMClient.health()` adapté | VII §45.4 M6 |
+| Adoption d'une capacité de l'écosystème Claude (Agent SDK, MCP…) | la capacité, sa désactivation par configuration, son coût dans le plafond mensuel | VIII §47.5 · ADR-0022 |
 | Une mesure M1–M10 hors critère est acceptée | ajustement de la cible | VII §45.4 · VIII §52 |
 | Nouveau modèle d'embeddings après la mise en production | changement de modèle (ré-embedding sur titre + résumé) | III §12.5 |
 | APScheduler 4.x stable, ou 3.x sans correctif de sécurité | migration de scheduler (remplace 0006) | DV-08 |
@@ -269,7 +277,7 @@ ai-tech-radar/
     ├── sprints/
     │   ├── sprint-00-cadrage.md
     │   └── sprint-NN.md       # plan (validé avant implémentation) + bilan
-    ├── architecture.md · database.md · collectors.md · llm-gateway.md · trends.md
+    ├── architecture.md · database.md · collectors.md · llm.md · trends.md
     ├── deployment.md · monitoring.md · backup-restore.md · measurements.md
     └── runbook.md · testing.md · go-live.md
 ```
@@ -318,10 +326,10 @@ Contenu :
 | `adr/` | ADR 0001–0019 | 0 | sur décision |
 | `runbook.md` | §56 | 1 (`validate-config`, `health`, commandes de base) | à chaque commande CLI ou procédure (VIII §51.1-9) |
 | `testing.md` | niveaux, doubles, blocage réseau, horloge, marqueurs `spec`, e2e en local, **environnement local par `scripts/radar-dev`** (sous-commandes, projet Compose de développement, écarts du Docker rootless avec la CI, ADR-0021), traitement d'un échec d'audit, `record-llm-fixtures` | 1 | à chaque double ou règle de test |
-| `deployment.md` | développement (Compose local, `https://localhost`) ; production : installation initiale de l'hôte, choix de déploiement (fournisseur, architecture, dépôt restic, monitoring externe, gateway) | 1 (dev) · 11 (prod) | — |
+| `deployment.md` | développement (Compose local, `https://localhost`) ; production : installation initiale de l'hôte, choix de déploiement (fournisseur, architecture, dépôt restic, monitoring externe) | 1 (dev) · 11 (prod) | — |
 | `collectors.md` | types, configuration, ajout d'une source ou d'un collector (Partie I §2.4) | 2 | à chaque type |
 | `measurements.md` | format, protocole de charge dans le projet `radar-load`, résultats M1–M10, calibration | 4 | à chaque mesure |
-| `llm-gateway.md` | choix, installation, configuration, providers, fallback, quota, modes de panne, RAM/CPU | 6 | sur changement de gateway |
+| `llm.md` | API Claude (ADR-0022) : modèle, clé, budget mensuel et plafond, limite de la Console Anthropic, modes de panne | 6 | sur changement de modèle, de tarif ou de plafond |
 | `trends.md` | formules lisibles, cold start, discontinuités assumées (V-B §29.7) | 8 | — |
 | `monitoring.md` | table des conditions, seuils, qui alerte sur quoi, service externe | 11 | — |
 | `backup-restore.md` | mécanisme, restauration pas à pas, exercice sur machine neuve, migration de VPS | 11 | après toute évolution majeure du schéma |
@@ -468,7 +476,7 @@ Hors périmètre, par renvoi : installation initiale (`deployment.md`) · mise e
 
 | Secret | Étapes | Vérification |
 |---|---|---|
-| `GITHUB_TOKEN` · `LLM_API_KEY` · `SMTP_PASSWORD` · `TELEGRAM_BOT_TOKEN` · identifiants du backend restic | créer le nouveau chez le fournisseur → `.env` (droits `600`) → `docker compose up -d worker` → révoquer l'ancien → gestionnaire de mots de passe | `/api/health` (sources, `llm_gateway`) ; `send-test-alert` pour les canaux ; `backup-now` pour restic |
+| `GITHUB_TOKEN` · `ANTHROPIC_API_KEY` · `SMTP_PASSWORD` · `TELEGRAM_BOT_TOKEN` · identifiants du backend restic | créer le nouveau chez le fournisseur → `.env` (droits `600`) → `docker compose up -d worker` → révoquer l'ancien → gestionnaire de mots de passe | `/api/health` (sources, `llm_gateway`) ; `send-test-alert` pour les canaux ; `backup-now` pour restic |
 | `RESTIC_PASSWORD` | `restic key add` (nouveau mot de passe) → `.env` → `docker compose up -d worker` → `backup-now` réussi → `restic key remove <ancienne clé>` → copie hors VPS mise à jour | `backup-now` puis `restore-test` |
 | Jeton GitHub de `deploy.sh` (dépôt privé) | nouveau jeton *fine-grained* lecture seule → fichier hors `.env`, droits `600` → révoquer l'ancien | `deploy.sh` sur le sha courant |
 
@@ -519,8 +527,8 @@ Sans copie de `RESTIC_PASSWORD` hors du VPS, tous les backups sont perdus avec l
 | `ram_high` | `docker stats` ; mémoire du worker dans `app.cli health` | relancer le worker (`restart`) ; si récurrent, mesure M1 et `mem_limit` |
 | `wal_large` | job analytique ou backup en cours ; `db_locked` | attendre la fin de l'opération ; si persistant, relancer le worker ; recaler `ops.wal_max_bytes` d'après M3 |
 | `db_locked` | logs `database is locked`, plus longue transaction (M4) | relancer le worker ; ouvrir une issue avec les logs (transaction trop longue = bug) |
-| `llm_config_error` | `llm_gateway.reason`, variables `LLM_*` | corriger `.env`, `docker compose up -d worker` |
-| `llm_down_long` | état du gateway ou du provider, quota | rétablir le gateway ; sinon rien : le produit tourne en repli |
+| `llm_config_error` | `llm_gateway.reason`, variables `ANTHROPIC_API_KEY` et `LLM_MODEL` | corriger `.env`, `docker compose up -d worker` |
+| `llm_down_long` | état de l'API Claude, clé | rien à rétablir côté produit : il tourne en repli jusqu'au retour de l'API |
 | `embeddings_down` | logs du worker (`embeddings`) | relancer le worker ; si l'échec persiste, issue (modèle, RAM) |
 | `backup_not_configured` | `RESTIC_REPOSITORY` | configurer le dépôt dans `.env`, `docker compose up -d worker`, `backup-now` |
 | `backup_failed` · `backup_stale` | `backup_last_attempt.error` dans `app.cli health` | corriger la cause (identifiants, dépôt, espace), puis `backup-now` |

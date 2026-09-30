@@ -1,7 +1,7 @@
 # Partie VII — Ops & Production
 
 > **Partie VII — Ops & Production.** Version durcie issue de la revue §35–§45.
-> Dernière révision : 2026-09-23. Prend les Parties I, II, III, IV, V-A, V-B et VI durcies comme acquis.
+> Dernière révision : 2026-09-30 (ADR-0022, #122). Prend les Parties I, II, III, IV, V-A, V-B et VI durcies comme acquis.
 
 > **Nature de cette partie** : essentiellement une **consolidation**. Les décisions Ops fléchées par les Parties I à VI sont rassemblées ici ; les doublons et contradictions sont réconciliés (§ « Réconciliations ») ; seul ce qui manquait est durci à neuf.
 
@@ -11,7 +11,7 @@
 
 ## Décisions tranchées dans cette revue (Partie VII)
 
-1. **Topologie** : trois services permanents `caddy · app · worker`, un one-shot `migrate`, et `gateway` optionnel via un **profil Compose**. Le critère « ≤ 3–4 services » (Partie I §4.3) compte les services **permanents** ; `migrate` n'en fait pas partie.
+1. **Topologie** : trois services permanents `caddy · app · worker` et un one-shot `migrate`. *Le `gateway` optionnel, en profil Compose, est retiré par l'ADR-0022 (#122).* Le critère « ≤ 3–4 services » (Partie I §4.3) compte les services **permanents** ; `migrate` n'en fait pas partie.
 2. **Une seule image backend** (`radar-backend:<git sha>`) pour `migrate`, `app` et `worker` ; une image `radar-caddy:<git sha>` qui embarque le build Vite. Le tag Git sert au rollback.
 3. **Segmentation réseau** : `app` n'a **aucune sortie Internet** et n'est joignable que par Caddy ; `worker` **ne peut pas joindre** `app` ; `migrate` n'a aucun réseau.
 4. **Moindre privilège des secrets** : chaque service ne reçoit que ses variables. **`app` ne reçoit aucun secret** (il lit l'état des canaux et du LLM dans `SystemState`).
@@ -36,7 +36,7 @@
 23. **Rédaction des secrets à trois niveaux**, dont un **nettoyage par valeur** qui remplace toute occurrence d'un secret configuré, y compris dans les URLs d'exceptions (le token Telegram figure dans l'URL de l'API). Le même nettoyage s'applique à `Source.last_error` et `AlertLog.error`.
 24. **Garde anti-SSRF** dans le `HttpClient` (Partie IV §21.1) : refus des destinations privées, locales ou internes, vérifié après résolution DNS et à chaque redirection.
 25. **`.env.example` unique** (§36.7), avec statut obligatoire / obligatoire en production / optionnel / réservé V2.
-26. **« Estimated cost » LLM retiré en V1** : sans table de prix par provider, l'estimation serait fausse ; on suit requêtes et tokens.
+26. **« Estimated cost » LLM retiré en V1** : sans table de prix par provider, l'estimation serait fausse ; on suit requêtes et tokens. *Remplacée par l'ADR-0022 (#122) : le coût réel de l'API Claude est suivi contre un plafond mensuel (§45.1 ; détail en Partie V-A §24.3).*
 27. **Check-list des mesures avant production** unique (§45.4), avec critère d'acceptation et effet de chaque mesure.
 
 ---
@@ -45,8 +45,8 @@
 
 | Source du conflit | Avant | Tranché |
 |---|---|---|
-| V0.3 §36 | services `app · worker · caddy` | + `migrate` (one-shot), `gateway` en profil optionnel |
-| Partie I §4.3 | « ≤ 3–4 services Docker » | compté en services **permanents** : 3, ou 4 avec `gateway` |
+| V0.3 §36 | services `app · worker · caddy` | + `migrate` (one-shot) ; le `gateway` en profil optionnel est retiré par l'ADR-0022 |
+| Partie I §4.3 | « ≤ 3–4 services Docker » | compté en services **permanents** : 3 (sans `gateway` depuis l'ADR-0022) |
 | V0.3 §40 | `/health` public détaillé, champ `scheduler` | public réduit à `{status}` ; détail en `/api/health` ; `scheduler` absorbé par `worker` (supervision fail-fast, décision 15) |
 | V0.3 §39 | `container stopped → critical` | remplacé par le tableau de couverture §39.5 (pas de socket Docker) |
 | V0.3 §39 | LLM `estimated cost` | retiré en V1 (décision 26) |
@@ -71,6 +71,7 @@ Consolidation des choix déjà faits, plus ce que cette partie ajoute (**en gras
 | Worker | asyncio · APScheduler **3.x** (`AsyncIOScheduler`) |
 | Collecte | httpx · feedparser · trafilatura · lingua |
 | Embeddings | fastembed (onnxruntime) · numpy |
+| LLM (optionnel) | **SDK `anthropic`** (API Claude), importé par le seul `LLMClient` du worker (ADR-0022) |
 | Logs | **structlog** (rendu JSON) |
 | Backup | **restic** (binaire statique dans l'image backend) |
 | Qualité | pytest · ruff · mypy |
@@ -97,14 +98,12 @@ Consolidation des choix déjà faits, plus ce que cette partie ajoute (**en gras
 | `migrate` | `radar-backend:<sha>` | `alembic upgrade head`, puis sortie | aucun (`network_mode: none`) | — | `no` |
 | `app` | `radar-backend:<sha>` | FastAPI : `/api`, `/health` | `edge` | — (`expose: 8000`) | `unless-stopped` |
 | `worker` | `radar-backend:<sha>` | scheduler, pipeline, AI, alertes, ops, backup | `egress` | — | `unless-stopped` |
-| `gateway` | image épinglée du gateway retenu | gateway LLM auto-hébergé, **profil `gateway`** | `egress` | — | `unless-stopped` |
 
 **Réseaux** :
 
 - `edge` : `internal: true`. Seuls `caddy` et `app` y sont. **`app` n'a donc aucune sortie Internet** — il n'en a pas besoin : il n'appelle ni LLM, ni canal d'alerte, ni source.
 - `public` : réseau par défaut de `caddy`, pour ACME et le trafic entrant.
-- `egress` : réseau du `worker` (et du `gateway`). Le worker **ne peut pas joindre `app`**, ce qui supprime une cible d'SSRF interne.
-- Avec un gateway auto-hébergé : `LLM_BASE_URL=http://gateway:<port>/v1`.
+- `egress` : réseau du `worker`, qui y joint les sources, les canaux d'alerte, le dépôt restic et l'API Claude. Le worker **ne peut pas joindre `app`**, ce qui supprime une cible d'SSRF interne.
 
 ### 36.3 Ordre de démarrage
 
@@ -117,7 +116,7 @@ docker compose up -d
 
 - `app` et `worker` déclarent `depends_on: migrate: condition: service_completed_successfully`.
 - **Ni `app` ni `worker` ne migrent.** Chacun vérifie au démarrage que la révision en base est `head` et **refuse de démarrer** sinon (III §10.1).
-- **Reboot du VPS** : le démon Docker relance `caddy`, `app`, `worker` (et `gateway`) **sans rejouer `migrate`** ni évaluer `depends_on`. C'est sans risque : le schéma n'a pas changé, et la vérification de révision reste le garde-fou.
+- **Reboot du VPS** : le démon Docker relance `caddy`, `app`, `worker` **sans rejouer `migrate`** ni évaluer `depends_on`. C'est sans risque : le schéma n'a pas changé, et la vérification de révision reste le garde-fou.
 - Échec de `migrate` → `app` et `worker` ne démarrent pas → `/health` injoignable (502) → monitoring externe.
 
 ### 36.4 Volumes
@@ -208,12 +207,6 @@ services:
     logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
     restart: unless-stopped
 
-  gateway:
-    profiles: [gateway]
-    image: <gateway-retenu>:<version épinglée>
-    networks: [egress]
-    restart: unless-stopped
-
 networks:
   edge: { internal: true }
   public: {}
@@ -225,7 +218,7 @@ volumes:
   caddy_config: {}
 ```
 
-- **`mem_limit`** sur `worker` (et `gateway`) : fixé **après** la mesure M1, à pic mesuré × 1,5. Sans limite, l'OOM killer de l'hôte choisit sa victime.
+- **`mem_limit`** sur `worker` : fixé **après** la mesure M1, à pic mesuré × 1,5. Sans limite, l'OOM killer de l'hôte choisit sa victime.
 - **Modèle d'embeddings** : téléchargé **au build** dans l'image (cache fastembed en lecture seule). Aucun accès à un hub de modèles au runtime.
 - Le système de fichiers racine en lecture seule est actif dès le Sprint 1 et validé en continu (Partie VIII décision 4) ; le Sprint 11 confirme le cas de restic (Partie VIII §47.3). Le cache restic vit dans `/tmp` (tmpfs), la préparation du backup dans `/data/backup/`, jamais dans le tmpfs.
 
@@ -263,9 +256,10 @@ RESTIC_PASSWORD=             # à conserver AUSSI hors du VPS (gestionnaire de m
 AWS_ACCESS_KEY_ID=           # identifiants du backend restic choisi (S3-compatible ici)
 AWS_SECRET_ACCESS_KEY=
 
-# ── Optionnel : LLM (sans eux, le produit tourne sans LLM, à 0 €) ──────────
-LLM_BASE_URL=
-LLM_API_KEY=
+# ── Optionnel : LLM, API Claude (ADR-0022) ─────────────────────────────────
+# Clé absente → LLM « not_configured » : le produit tourne sans LLM, aperçus
+# et titres en repli. Le plafond mensuel de dépense n'est pas ici (§45.1).
+ANTHROPIC_API_KEY=
 LLM_MODEL=
 
 # ── Optionnel : canaux d'alerte (canal désactivé si incomplet) ─────────────
@@ -289,6 +283,10 @@ RADAR_VERSION=               # tag d'image (sha Git) déployé
 # Lue seulement si APP_ENV=test ; renseignée avec APP_ENV=production → le worker
 # refuse de démarrer (Partie VIII décision 23, Partie IV §21.1).
 # HTTP_TEST_ALLOW_HOSTS=
+# Lue d'office par le SDK anthropic : adresse du double de l'API Claude.
+# Acceptée seulement si APP_ENV=test ; renseignée avec un autre APP_ENV → le
+# worker refuse de démarrer (ADR-0022, sur le modèle de T-CFG-09).
+# ANTHROPIC_BASE_URL=
 
 # ── Réservé V2 (non lu en V1) ──────────────────────────────────────────────
 # REDDIT_CLIENT_ID= REDDIT_CLIENT_SECRET= YOUTUBE_API_KEY=
@@ -638,7 +636,6 @@ Une **condition** est une règle booléenne évaluée par `ops.tick`. Elle déte
 | `app` | Caddy répond 502 sur `/health` → monitoring externe |
 | `caddy` / VPS | `/health` injoignable → monitoring externe |
 | `migrate` en échec | `app` et `worker` absents → 502 → monitoring externe |
-| `gateway` | disjoncteur LLM ouvert → `llm_down_long` au-delà de 24 h |
 
 ### 39.6 Alertes `system`
 
@@ -689,7 +686,7 @@ Les trois sont calculés par **un seul module** (`app/ops/health.py`) : même le
 ### 40.2 `/health` public
 
 - **Codes HTTP** : `ok` → 200 · `degraded` → 200 · `down` → **503**.
-- **Calcul**, à chaque requête, **sans aucun appel réseau** (ni gateway, ni worker) :
+- **Calcul**, à chaque requête, **sans aucun appel réseau** (ni API LLM, ni worker) :
   1. une lecture courte en `read_session` : `SystemState` (heartbeat, conditions actives). Échec ou timeout de 2 s → `down` (condition `database_down`) ;
   2. heartbeat dont l'âge, calculé **au moment de la requête**, dépasse `ops.heartbeat_stale_after` → `down` ;
   3. au moins une condition active de la table §39.5 → `degraded` ;
@@ -745,7 +742,7 @@ Les trois sont calculés par **un seul module** (`app/ops/health.py`) : même le
 ### 42.1 Format et transport
 
 - **JSON, une ligne par événement, sur stdout**, pour `app`, `worker` et `migrate` ; Caddy en JSON sur stdout également.
-- **structlog** ; les loggers des bibliothèques (uvicorn, httpx, APScheduler, SQLAlchemy, alembic) passent par le même rendu JSON.
+- **structlog** ; les loggers des bibliothèques (uvicorn, httpx, APScheduler, SQLAlchemy, alembic, anthropic) passent par le même rendu JSON.
 - **Collecte et rotation** par le driver Docker `json-file` : `max-size 10m`, `max-file 5` par service. Aucun fichier de log dans un volume, aucun service d'agrégation en V1.
 - Les logs sont **éphémères** : l'historique durable est en base (`CollectorRun`, `AIJob`, `AlertLog`, `SystemState`).
 - Niveau par défaut `INFO` (`LOG_LEVEL`). `DEBUG` n'est jamais laissé actif en production.
@@ -813,7 +810,7 @@ Trois niveaux, cumulatifs :
 - Pas de CORS ; `/docs`, `/redoc`, `/openapi.json` désactivés ; en-têtes de sécurité du §37.3 ; corps de requête limité à 1 Mo.
 - **Sorties LLM** rendues en texte brut, `dangerouslySetInnerHTML` interdit (VI).
 - Aucun secret renvoyé par l'API ni stocké dans `Setting` (VI §32.3).
-- **Anti-SSRF** (Partie IV §21.1) : les URLs à récupérer proviennent de flux tiers. Le `HttpClient` refuse toute destination dont l'adresse résolue est privée, de bouclage, lien-local (dont `169.254.169.254`, métadonnées cloud), unique-local IPv6 ou non routable, **vérifiée après résolution DNS et à chaque redirection**. Appliqué à toutes les requêtes du `HttpClient`, **sans exception**. Le `LLMClient` a son propre client HTTP, qui n'appelle que `LLM_BASE_URL` (éventuellement interne) et ne suit aucune redirection vers un autre hôte (Partie V-A §25.2) ; restic, binaire externe, ne passe pas par le `HttpClient` (§38.2).
+- **Anti-SSRF** (Partie IV §21.1) : les URLs à récupérer proviennent de flux tiers. Le `HttpClient` refuse toute destination dont l'adresse résolue est privée, de bouclage, lien-local (dont `169.254.169.254`, métadonnées cloud), unique-local IPv6 ou non routable, **vérifiée après résolution DNS et à chaque redirection**. Appliqué à toutes les requêtes du `HttpClient`, **sans exception**. Le `LLMClient` passe par le client du SDK `anthropic`, qui n'appelle que l'API Claude (`ANTHROPIC_BASE_URL`, pour le double de test, n'est acceptée qu'avec `APP_ENV=test`) et ne suit aucune redirection vers un autre hôte (Partie V-A §25.2 ; ADR-0022) ; restic, binaire externe, ne passe pas par le `HttpClient` (§38.2).
 
 ### 43.4 Secrets
 
@@ -851,16 +848,22 @@ Sur 40 Go, le budget est large ; le seuil de 80 % garantit la place d'une copie 
 
 ## 45. Coût & performance cibles
 
-### 45.1 Coût (acquis Partie I)
+### 45.1 Coût (acquis Partie I §4.3, ADR-0022)
+
+Deux critères séparés : l'infrastructure d'un côté, le LLM de l'autre.
 
 | Poste | Cible |
 |---|---|
 | VPS | 5–10 €/mois |
 | Stockage des backups | 0–1 €/mois (dépôt restic chiffré ; offres gratuites ou quasi gratuites de quelques Go) |
 | Monitoring externe | 0 € |
-| LLM | **0 €** — le produit fonctionne sans abonnement LLM payant, et sans LLM du tout |
 | Domaine | faible (≈ 1 €/mois) |
-| **Total** | **≤ 12 €/mois** |
+| **Total infrastructure** | **≤ 12 €/mois** |
+| **LLM (API Claude)** | **≤ plafond mensuel**, configuré en USD (devise de facturation), défaut ≈ **15 €** ; suivi en tokens et en coût réel ; **plafond dur** appliqué par le worker ; remise à zéro le 1er du mois (UTC). **0 €** si le LLM n'est pas configuré : le produit fonctionne sans lui |
+
+La **limite de dépense mensuelle de la Console Anthropic**, réglée au même montant, est la seconde ligne de défense :
+elle borne la dépense même si le plafond du worker faillait. Le détail du budget (clés, comptage, réservation avant
+appel) relève de la Partie V-A §24.3.
 
 ### 45.2 Principe
 
@@ -897,7 +900,7 @@ Chaque mesure est consignée dans `docs/measurements.md` (date, VPS, profil, ré
 | M3 | Taille du fichier **`-wal`** en collecte soutenue, **pendant un `VACUUM INTO`** et pendant le job analytique | échantillonnage `ops.tick` | reste sous `ops.wal_max_bytes` | recale le seuil `wal_large` |
 | M4 | Durée de la **plus longue transaction** du worker | métrique dédiée | ≤ 500 ms | valide le découpage en lots (II §8.6) |
 | M5 | Durée du **job analytique** au volume nominal | chronométrage, profil cible | ≤ 5 min | valide le calcul horaire (V-B §29.4) |
-| M6 | **Gateway LLM** — check-list de référence : RAM/CPU si auto-hébergé, requêtes multiples, quota épuisé, timeout, provider indisponible, **comportement 429 / `Retry-After`**, **disponibilité de `GET /models`**. Gateways candidats : OmniRoute, Free Model Router, FreeLLMAPI ; si trop lourd, déployable séparément | contre le gateway retenu | 429 conforme aux attentes du disjoncteur (V-A §24.2) ; `health()` fiable | valide le gateway ; sinon `health()` adapté, tracé en ADR |
+| M6 | **API Claude** — check-list de référence : requêtes multiples, **comportement 429 / `retry-after`**, surcharge (529), timeout, crédit épuisé, **disponibilité de `GET /v1/models`**, **tokens et coût réels par tâche** comparés au plafond mensuel (§45.1) | contre l'API Claude, avec le modèle configuré, par un enregistrement manuel imputé au budget (aucun test automatisé n'appelle l'API réelle, VIII §50.1) | 429 et 529 conformes aux attentes du disjoncteur (V-A §24.2) ; `health()` fiable ; coût mensuel estimé au volume nominal ≤ plafond | valide l'accès à l'API et le plafond ; sinon `health()` adapté ou plafond ajusté, tracé en ADR |
 | M7 | **Backup et restauration** : durée, taille, exercice complet sur machine neuve | §38.4 | backup ≤ 10 min ; restauration ≤ 30 min | valide le RTO |
 | M8 | **Taille des images** et empreinte disque totale | `docker system df` | image courante + précédente + base + marge backup < 50 % du disque | valide le budget disque |
 | M9 | **Latence de l'API** (Overview, Feed, recherche, `/health`) | charge légère sur profil cible | p95 ≤ 300 ms ; `/health` ≤ 50 ms | valide la pagination et les index |
@@ -913,13 +916,13 @@ Rappels hors Partie VII, également bloquants : calibration du clustering (`clus
 
 **Laissés à l'implémenteur, sans impact sur le contrat** : tags exacts des images, chemins des Dockerfiles, noms d'`event` de log au-delà des exemples, forme de l'instantané `ops_metrics` tant qu'il couvre le §39.2.
 
-**Choix de déploiement, hors spec** (à noter dans `docs/deployment.md`) : fournisseur du VPS et distribution Linux · fournisseur du dépôt restic · service de monitoring externe · gateway LLM retenu.
+**Choix de déploiement, hors spec** (à noter dans `docs/deployment.md`) : fournisseur du VPS et distribution Linux · fournisseur du dépôt restic · service de monitoring externe.
 
 **Décisions à poids réel, prises par défaut puis validées avec la partie** (Partie IX décision 12) :
 
 1. **Backup exécuté par le worker** (plutôt qu'un conteneur ou un cron hôte) : cohérent avec l'écrivain unique de `SystemState.last_backup` et le plafond de services ; en contrepartie, le worker embarque restic et les identifiants du dépôt.
 2. **`down` quand le worker est mort**, alors que le dashboard reste lisible : c'est ce qui permet au monitoring externe d'alerter sur l'arrêt de la collecte.
-3. **Seuil de 24 h** pour le disjoncteur LLM ouvert : ne se déclenche pas sur un quota quotidien épuisé puis rétabli, mais signale un gateway cassé depuis une journée.
+3. **Seuil de 24 h** pour le disjoncteur LLM ouvert : ne se déclenche pas sur un quota quotidien épuisé puis rétabli, mais signale une API LLM ou une configuration en panne depuis une journée.
 4. **Test de restauration automatisé** par le worker, en plus de l'exercice manuel avant la production.
 5. **Segmentation réseau** et **racine en lecture seule** des conteneurs.
 
@@ -932,7 +935,6 @@ Rappels hors Partie VII, également bloquants : calibration du clustering (`clus
 - **Notifications de rétablissement** des conditions `system`.
 - **Agrégation centralisée des logs.**
 - **Réplication continue** de la base (type Litestream) pour réduire le RPO sous 24 h.
-- **Estimation du coût LLM** par provider.
 - **Alertes sur le taux d'échec d'extraction** et sur une source isolée en panne prolongée.
 - **Déploiement continu** (déjà reporté par la V0.3 §49).
 - **`auto_vacuum` / `VACUUM` incrémental** de la base vivante.
