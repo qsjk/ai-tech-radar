@@ -10,7 +10,18 @@
 
 ## 58. Cadre
 
-### 58.1 Statut d'une capacité
+### 58.1 Nature et statut
+
+**Nature** (décision du 2026-09-30, revue de #127). Seules les **capacités du produit** sont des capacités au sens de
+l'ADR-0022 : X.1 à X.4, X.8 et X.9. Les autres éléments de cette partie n'en sont pas :
+
+| Nature | Éléments | Adoption |
+|---|---|---|
+| **Capacité du produit** | X.1 · X.2 · X.3 · X.4 · X.8 · X.9 | ADR, puis ligne du tableau des capacités de VIII §47.5 (§58.2) |
+| **Exigence transverse** | X.5 : durcit l'existant et les capacités, ne s'ajoute pas au produit | ADR si la décision est structurante (Partie IX §53.1), puis ligne de la section distincte de VIII §47.5 |
+| **Outillage de développement** | X.6 · X.7 : hors du produit | idem |
+
+**Statut** :
 
 | Statut | Sens | Où |
 |---|---|---|
@@ -19,6 +30,9 @@
 | **rejetée** | ADR rejeté ; le paragraphe est conservé pour éviter de reproposer la même chose sans élément nouveau | ici |
 
 ### 58.2 Cycle d'adoption
+
+Ce cycle vaut pour les capacités du produit ; X.5, X.6 et X.7 le suivent à l'identique, l'ADR n'étant exigé que si la
+décision est structurante (§58.1).
 
 1. Le chapitre de formation de la capacité arrive (ordre au §58.5).
 2. Un ADR est proposé au prochain numéro libre (déclencheur du registre, Partie IX §54.3). Dans la même PR, le
@@ -33,11 +47,10 @@ ici (VIII §47.5, « rien par anticipation »).
 
 ### 58.3 Règles communes
 
-- **Désactivable par configuration** : les capacités produit (X.1 à X.4, X.8, X.9). Désactivées, elles laissent le
-  produit dans l'état antérieur, cœur déterministe et repli compris (DV-05). La clé est fixée par l'ADR.
-  **Exemptées** : X.5 (protection, qui ne se désactive pas), X.6 et X.7 (outillage de développement, hors
-  configuration du produit).
-- **Dans le budget** : le coût de chaque capacité entre dans le plafond mensuel du LLM (Partie I §4.3, VII §45.1,
+- **Désactivable par configuration** : toute capacité du produit (X.1 à X.4, X.8, X.9 ; ADR-0022). Désactivée, elle
+  laisse le produit dans l'état antérieur, cœur déterministe et repli compris (DV-05). La clé est fixée par l'ADR.
+  X.5, X.6 et X.7 ne sont pas des capacités du produit (§58.1) : la règle ne les concerne pas.
+- **Dans le budget** : le coût de chaque capacité du produit entre dans le plafond mensuel du LLM (Partie I §4.3, VII §45.1,
   V-A §24.3).
 - **Socle de sécurité** : tout créneau qui expose des outils (X.1, X.2, X.3, X.8) livre des outils en lecture seule,
   le moindre privilège et un test d'injection par le contenu d'article ; X.5 durcit ensuite l'ensemble (VIII §48,
@@ -56,17 +69,17 @@ Chaque paragraphe du §59 au §67 porte cinq rubriques : **objectif produit** (c
 Ordre des chapitres de la formation : Ch04–Ch06 couche LLM · Ch07–Ch11 assistant et MCP · Ch12–Ch13 agents · Ch14
 Claude Code · Ch15 sécurité · Ch16 évaluations · Ch17 cycle de vie. La spec ne fixe que cet ordre, jamais de date.
 
-| Capacité | § | Chapitre | Créneau (VIII §47.2) |
-|---|---|---|---|
-| X.1 Assistant de veille conversationnel | §59 | Ch07, Ch09, Ch11 | C-X.1, après S9 |
-| X.2 Serveur MCP `radar-mcp` | §60 | Ch10 | C-X.2, après C-X.1 |
-| X.3 Synthèse hebdomadaire | §61 | Ch12, Ch13 | C-X.3, après S11 |
-| X.4 Lecture des PDF et images | §62 | Ch07 | C-X.4, après S7 |
-| X.5 Sécurité LLM | §63 | Ch15 | C-X.5, après C-X.7 |
-| X.6 Évaluations | §64 | Ch16 | C-X.6, après C-X.5 |
-| X.7 Outillage Claude Code du dépôt | §65 | Ch14, puis phase Architect | C-X.7, après C-X.3 ; phase 2 après la V1 |
-| X.8 Recherche approfondie | §66 | phase Architect | après la V1 |
-| X.9 RAG sur l'historique | §67 | phase Architect Professional | après la V1 |
+| Élément | § | Nature | Chapitre | Créneau (VIII §47.2) |
+|---|---|---|---|---|
+| X.1 Assistant de veille conversationnel | §59 | capacité du produit | Ch07, Ch09, Ch11 | C-X.1, après S9 |
+| X.2 Serveur MCP `radar-mcp` | §60 | capacité du produit | Ch10 | C-X.2, après C-X.1 |
+| X.3 Synthèse hebdomadaire | §61 | capacité du produit | Ch12, Ch13 | C-X.3, après S11 |
+| X.4 Lecture des PDF et images | §62 | capacité du produit | Ch07 | C-X.4, après S7 |
+| X.5 Sécurité LLM | §63 | exigence transverse | Ch15 | C-X.5, après C-X.7 |
+| X.6 Évaluations | §64 | outillage de développement | Ch16 | C-X.6, après C-X.5 |
+| X.7 Outillage Claude Code du dépôt | §65 | outillage de développement | Ch14, puis phase Architect | C-X.7, après C-X.3 ; phase 2 après la V1 |
+| X.8 Recherche approfondie | §66 | capacité du produit | phase Architect | après la V1 |
+| X.9 RAG sur l'historique | §67 | capacité du produit | phase Architect Professional | après la V1 |
 
 ### 58.6 Conflits transverses
 
@@ -158,10 +171,9 @@ Claude Code · Ch15 sécurité · Ch16 évaluations · Ch17 cycle de vie. La spe
 | Périmètre V1 minimal | Injection de prompt par le contenu des articles ; moindre privilège des outils ; données personnelles (PII) |
 | Dépendances | V-A §25.5 · socle livré par X.1, X.2, X.3 (§58.3) |
 | Chapitre | Ch15 |
-| Statut | candidate — à spécifier au chapitre Ch15 |
+| Statut | candidate — à spécifier au chapitre Ch15 ; **exigence transverse**, pas une capacité du produit (§58.1) : ADR si la décision est structurante (Partie IX §53.1) |
 
 **Conflits** :
-- exemptée de la désactivation (§58.3) : la règle de VIII §47.5 est à adapter pour elle ;
 - recouvre V-A §25.5 et T-LLM-15 ;
 - périmètre des PII dans des articles publics à définir ;
 - dépendance inversée : les outils de X.1, X.2 et X.3 sont livrés avant Ch15, d'où le socle du §58.3.
@@ -174,7 +186,7 @@ Claude Code · Ch15 sécurité · Ch16 évaluations · Ch17 cycle de vie. La spe
 | Périmètre V1 minimal | Jeu d'articles étiquetés ; graders ; régression par `PROMPT_VERSION` et par modèle, en CI |
 | Dépendances | S7 (prompts, `PROMPT_VERSION`, fixtures) |
 | Chapitre | Ch16 |
-| Statut | candidate — à spécifier au chapitre Ch16 |
+| Statut | candidate — à spécifier au chapitre Ch16 ; **outillage de développement**, hors du produit (§58.1) : ADR si la décision est structurante (Partie IX §53.1) |
 
 **Conflits** :
 - des graders qui appellent l'API en CI contredisent VIII §50.1 (réseau bloqué) et §49.3 (« aucun test n'appelle un
@@ -182,7 +194,6 @@ Claude Code · Ch15 sécurité · Ch16 évaluations · Ch17 cycle de vie. La spe
 - DV-20 : une évaluation bloquante ou seulement mesurée ;
 - coût des graders dans le plafond ;
 - droits sur un jeu d'articles étiquetés versionné dans le dépôt ;
-- exemptée de la désactivation (§58.3), dans la règle de VIII §47.5 ;
 - utile dès le S7 : le chapitre arrive après la mise en production.
 
 ## 65. X.7 — Outillage Claude Code du dépôt
@@ -193,7 +204,7 @@ Claude Code · Ch15 sécurité · Ch16 évaluations · Ch17 cycle de vie. La spe
 | Périmètre V1 minimal | `CLAUDE.md` hiérarchique, rules par chemin, skills, hooks ; puis (phase 2) revue de PR en CI en headless, sortie JSON validée |
 | Dépendances | aucune dépendance produit ; skill `radar-dev` (#107) ; ADR-0021 |
 | Chapitre | Ch14, puis phase Architect (phase 2) |
-| Statut | candidate — à spécifier au chapitre Ch14 |
+| Statut | candidate — à spécifier au chapitre Ch14 ; **outillage de développement**, hors du produit (§58.1) : ADR si la décision est structurante (Partie IX §53.1) |
 
 **Conflits** :
 - une revue de PR en CI appelle l'API réelle (VIII §49.3) avec un secret GitHub ; budget imputé (plafond du produit ou
@@ -201,7 +212,6 @@ Claude Code · Ch15 sécurité · Ch16 évaluations · Ch17 cycle de vie. La spe
 - DV-19 : la revue bloque-t-elle la CI ?
 - `CLAUDE.md` hiérarchique face à Partie IX §55.3 (« règles permanentes, courtes, qui renvoient à la spec ») ;
 - hooks et skills face à ADR-0021 (Docker seulement par `scripts/radar-dev`) ;
-- exemptée de la désactivation (§58.3), dans la règle de VIII §47.5 ;
 - utile dès maintenant : une partie existe déjà (`CLAUDE.md`, #107) avant le chapitre.
 
 ## 66. X.8 — Recherche approfondie sur un sujet émergent

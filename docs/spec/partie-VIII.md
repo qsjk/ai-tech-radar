@@ -169,7 +169,7 @@ ai-tech-radar/
 - **Plan et bilan** : le plan détaillé de chaque sprint est rédigé dans `docs/sprints/sprint-NN.md` et **validé avant l'implémentation** ; le bilan (écarts à la spec, dette tracée, identifiants couverts) y est ajouté en fin de sprint (Partie IX §57.8).
 - **Une fonction [core] ne dépend jamais d'un sprint AI** : tout ce qui est livré avant le Sprint 6 fonctionne sans LLM, et continue de fonctionner sans lui ensuite.
 - **Migrations par sprint** : chaque sprint ajoute ses tables et colonnes par migration Alembic. Le schéma cible complet est proposé au Sprint 0, mais pas créé d'un bloc.
-- **Créneaux de capacité** `C-X.n` : intercalés entre les sprints, **non numérotés**, chacun réservé à une capacité candidate de la Partie X et **conditionné à son ADR** (§47.5, D16). Sans ADR accepté, le créneau est sauté, sans renuméroter les sprints. Les sprints S3 à S11 gardent leur numéro et leur contenu.
+- **Créneaux de capacité** `C-X.n` : intercalés entre les sprints, **non numérotés**, chacun réservé à un élément candidat de la Partie X et **conditionné à son adoption** : ADR accepté pour une capacité du produit, ADR si la décision est structurante pour X.5, X.6 et X.7 (§47.5, D16). Sans ADR accepté, le créneau est sauté, sans renuméroter les sprints. Les sprints S3 à S11 gardent leur numéro et leur contenu.
 
 ### 47.2 Plan
 
@@ -191,10 +191,10 @@ ai-tech-radar/
 | S10 | Alertes | — | — | S9 |
 | S11 | Production | — | — | tout ce qui précède |
 | C-X.3 | Synthèse hebdomadaire, sous réserve de l'ADR | X.3 | Ch12, Ch13 | S8, S10, budget (D17, D18) |
-| C-X.7 | Outillage Claude Code, phase 1, sous réserve de l'ADR | X.7 | Ch14 | aucune |
-| C-X.5 | Sécurité LLM, sous réserve de l'ADR | X.5 | Ch15 | créneaux qui exposent des outils (D19) |
-| C-X.6 | Évaluations, sous réserve de l'ADR | X.6 | Ch16 | S7 |
-| après la V1 | X.8, X.9, X.7 phase 2, chacune sous réserve de son ADR | X.8 · X.9 · X.7 | phase Architect | S8 · S4 et X.1 · — |
+| C-X.7 | Outillage Claude Code, phase 1, sous réserve de son adoption (outillage de développement) | X.7 | Ch14 | aucune dépendance produit |
+| C-X.5 | Sécurité LLM, sous réserve de son adoption (exigence transverse) | X.5 | Ch15 | créneaux qui exposent des outils (D19) |
+| C-X.6 | Évaluations, sous réserve de son adoption (outillage de développement) | X.6 | Ch16 | S7 |
+| après la V1 | X.8, X.9 (sous réserve de leur ADR), X.7 phase 2 (sous réserve de son adoption) | X.8 · X.9 · X.7 | phase Architect | S8 · S4 et X.1 · — |
 
 **Tensions entre chapitre et dépendances** (Partie X, §59 à §67) : Ch07 arrive avec C-X.4, deux sprints avant les
 dépendances de X.1 (S8, S9) ; Ch10 (X.2) tombe entre Ch09 et Ch11 (X.1) ; X.5 (Ch15) durcit des outils livrés avant
@@ -361,21 +361,21 @@ Capacité X.2, Partie X §60 ; chapitre Ch10 ; dépendances : S3, S4, S8, socle 
 
 Capacité X.3, Partie X §61 ; chapitre Ch12, Ch13 ; dépendances : S8, S10, budget mensuel (D17, D18), socle de sécurité (D19). Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
 
-#### Créneau C-X.7 — Outillage Claude Code, phase 1 *(sous réserve de l'ADR)*
+#### Créneau C-X.7 — Outillage Claude Code, phase 1 *(sous réserve de son adoption)*
 
-Capacité X.7, Partie X §65 ; chapitre Ch14 ; dépendances : aucune dépendance produit. Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
+Outillage de développement X.7, Partie X §65 ; chapitre Ch14 ; dépendances : aucune dépendance produit. Contenu, acceptation et tests : fixés par le plan du créneau, et par un ADR si la décision est structurante (Partie IX §53.1), puis reportés dans la section distincte du §47.5. Sans cette inscription, le créneau est sauté.
 
-#### Créneau C-X.5 — Sécurité LLM *(sous réserve de l'ADR)*
+#### Créneau C-X.5 — Sécurité LLM *(sous réserve de son adoption)*
 
-Capacité X.5, Partie X §63 ; chapitre Ch15 ; dépendances : créneaux qui exposent des outils (D19). Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
+Exigence transverse X.5, Partie X §63 ; chapitre Ch15 ; dépendances : créneaux qui exposent des outils (D19). Contenu, acceptation et tests : fixés par le plan du créneau, et par un ADR si la décision est structurante (Partie IX §53.1), puis reportés dans la section distincte du §47.5. Sans cette inscription, le créneau est sauté.
 
-#### Créneau C-X.6 — Évaluations *(sous réserve de l'ADR)*
+#### Créneau C-X.6 — Évaluations *(sous réserve de son adoption)*
 
-Capacité X.6, Partie X §64 ; chapitre Ch16 ; dépendances : S7. Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
+Outillage de développement X.6, Partie X §64 ; chapitre Ch16 ; dépendances : S7. Contenu, acceptation et tests : fixés par le plan du créneau, et par un ADR si la décision est structurante (Partie IX §53.1), puis reportés dans la section distincte du §47.5. Sans cette inscription, le créneau est sauté.
 
 #### Après la V1
 
-X.8 (Partie X §66, phase Architect), X.9 (§67, phase Architect Professional) et la phase 2 de X.7 (§65, phase Architect), chacune sous réserve de son ADR.
+X.8 (Partie X §66, phase Architect), X.9 (§67, phase Architect Professional), chacune sous réserve de son ADR, et la phase 2 de X.7 (§65, phase Architect), sous réserve de son adoption (§47.5, section distincte).
 
 ### 47.3 Ce qui est validé au Sprint 11
 
@@ -406,19 +406,30 @@ Entre la fin du Sprint 11 et la décision de mise en production, **au moins 14 j
 
 Les capacités de l'écosystème Claude (Agent SDK, MCP, outils, etc.) n'entrent dans le produit que **une par une**
 (ADR-0022, #122). Les capacités **candidates** sont décrites en squelette dans la **Partie X** ; ce tableau ne liste
-que les capacités **adoptées**, une ligne par ADR accepté (Partie X §58.1–§58.2). Règle :
+que les capacités **adoptées**, une ligne par ADR accepté (Partie X §58.1–§58.2). Seules les **capacités du produit**
+(X.1 à X.4, X.8, X.9) relèvent de cette règle ; l'exigence transverse X.5 et l'outillage de développement X.6 et X.7
+ont leur propre section, ci-dessous. Règle :
 
 - **une décision par capacité** : un ADR au prochain numéro libre (déclencheur du registre, Partie IX §54.3), accepté
   par le propriétaire, puis **une ligne dans le tableau ci-dessous**, avant toute implémentation ;
 - **rien par anticipation** : une capacité absente du tableau n'est ni codée, ni préparée, ni ajoutée aux dépendances ;
 - **désactivable par configuration** : désactivée, la capacité laisse le produit dans l'état antérieur, cœur
-  déterministe et repli compris (DV-05) ; X.5, X.6 et X.7 en sont exemptées (protection, outillage ; Partie X §58.3) ;
+  déterministe et repli compris (DV-05) ;
 - **dans le budget** : son coût entre dans le plafond mensuel du LLM (Partie I §4.3, VII §45.1) ;
 - **dans un sprint** : la ligne indique le sprint ou le créneau `C-X.n` (§47.2) qui la livre, avec ses identifiants de tests au catalogue (§50.5).
 
 | Capacité | Partie X | ADR | Sprint ou créneau | Clé de désactivation | Tests |
 |---|---|---|---|---|---|
 | *aucune à ce jour* | | | | | |
+
+**Exigence transverse et outillage de développement** (X.5, X.6, X.7 ; Partie X §58.1). Ils ne sont pas des
+capacités du produit au sens de l'ADR-0022 : ils ne portent pas de clé de désactivation. Leur adoption passe par un
+ADR si la décision est structurante (Partie IX §53.1) ; elle est inscrite ici avant toute implémentation, avec son
+créneau et ses tests.
+
+| Élément | Partie X | Nature | ADR (si structurante) | Sprint ou créneau | Tests |
+|---|---|---|---|---|---|
+| *aucun à ce jour* | | | | | |
 
 ---
 
@@ -443,7 +454,7 @@ L'ordre des sprints (§47) est l'ordre d'implémentation. À l'intérieur d'un s
 | D13 | Séquence d'envoi des alertes (Sprint 10) **avant** les alertes `system` (Sprint 11) | même séquence T1 → envoi → T2 |
 | D14 | `ops.tick` et conditions **avant** le statut `degraded` | l'app ne fait que lire `SystemState` |
 | D15 | Backup et `restore-test` **avant** la pré-production | aucune donnée réelle sans backup |
-| D16 | ADR accepté et ligne au §47.5 **avant** tout créneau `C-X.n` | aucune capacité par anticipation (ADR-0022, §47.5) |
+| D16 | ADR accepté et ligne au §47.5 **avant** tout créneau `C-X.n` (pour X.5, X.6 et X.7 : ligne de la section distincte, ADR si la décision est structurante) | aucune capacité par anticipation (ADR-0022, §47.5) |
 | D17 | Budget mensuel plafonné (Partie V-A §24.3) **avant** tout créneau qui appelle l'API hors de la file `AIJob` (X.1, X.3, X.8) | le plafond doit tenir aussi pour les appels interactifs ou agentiques |
 | D18 | S9 **avant** C-X.1 ; S10 **avant** C-X.3 | l'assistant vit dans le dashboard ; la synthèse part par les canaux d'alerte |
 | D19 | Tout créneau qui expose des outils (X.1, X.2, X.3, X.8) livre un **socle de sécurité** : outils en lecture seule, moindre privilège, un test d'injection par le contenu d'article ; X.5 durcit ensuite l'ensemble | les outils sont livrés avant le chapitre sécurité (Ch15) |
