@@ -29,7 +29,7 @@ prix (IX §54.1). Format, règles et registre : IX §54.2–§54.3. Gabarit : [`
 | [0018](0018-tracabilite-du-catalogue.md) | Traçabilité du catalogue, pas de seuil de couverture | Accepté | 2026-09-23 | DV-20 | — |
 | [0019](0019-spec-dans-le-depot.md) | Spec dans le dépôt, SPEC.md en index | Accepté | 2026-09-23 | DV-21 | — |
 | [0021](0021-acces-cloisonne-a-docker-en-developpement.md) | Accès cloisonné de Claude Code à Docker en développement | Accepté | 2026-09-23 | aucune (structurante) ; E22 | — |
-| [0022](0022-api-claude-directe-et-budget-plafonne.md) | API Claude en direct, LLM optionnel à budget mensuel plafonné | Proposé | 2026-09-30 | DV-09, DV-11 | remplace 0007 et 0009 |
+| [0022](0022-api-claude-directe-et-budget-plafonne.md) | API Claude en direct, LLM optionnel à budget mensuel plafonné | Accepté | 2026-09-30 | DV-09, DV-11 | remplace 0007 et 0009 |
 
 **Numéro 0020** : réservé au « gateway LLM retenu » (Sprint 6), créneau clos sans objet par l'ADR-0022 ; jamais
 attribué, jamais réutilisé (IX §54.2, §54.3).
