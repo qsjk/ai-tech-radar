@@ -1,7 +1,7 @@
 # Partie VIII — Livraison
 
 > **Partie VIII — Livraison.** Version durcie issue de la revue §46–§52.
-> Dernière révision : 2026-09-30 (ADR-0022, #122 ; créneaux de capacité, #126 ; contrat du `LLMClient`, #123 ; développer puis activer, `lab/`, #130 ; points d'arrêt de formation, #133). Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
+> Dernière révision : 2026-09-30 (ADR-0022, #122 ; créneaux de capacité, #126 ; contrat du `LLMClient`, #123 ; développer puis activer, `lab/`, #130 ; points d'arrêt de formation, #133 ; signal en deux temps, tranches, #135). Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
 
 **Nature de cette partie : une agrégation.** Les tests, étapes CI et critères de production fléchés par les Parties I à VII sont rassemblés ici, rattachés à un identifiant et organisés par domaine. Les doublons sont réconciliés (§ « Réconciliations ») et seul ce qui manquait est durci à neuf.
 
@@ -182,7 +182,7 @@ n'engage pas le contrat du produit** : ce qu'il essaie n'est ni spécifié ni ad
 - **Le système est exécutable à la fin de chaque sprint** : `docker compose up -d` démarre, `/health` répond, la CI est verte.
 - **Critères d'acceptation = identifiants du catalogue §50.5 verts + démonstration** du scénario du sprint sur le Compose local.
 - **Un sprint ne démarre pas tant que le précédent ne satisfait pas la DoD de sprint** (§51.2).
-- **Plan et bilan** : le plan détaillé de chaque sprint est rédigé dans `docs/sprints/sprint-NN.md` et **validé avant l'implémentation** ; le bilan (écarts à la spec, dette tracée, identifiants couverts) y est ajouté en fin de sprint (Partie IX §57.8).
+- **Plan et bilan** : le plan détaillé de chaque sprint est rédigé dans `docs/sprints/sprint-NN.md` et **validé avant l'implémentation**, par tranche pour un sprint découpé (§47.5) ; le bilan (écarts à la spec, dette tracée, identifiants couverts) y est ajouté en fin de sprint (Partie IX §57.8).
 - **Une fonction [core] ne dépend jamais d'un sprint AI** : tout ce qui est livré avant le Sprint 6 fonctionne sans LLM, et continue de fonctionner sans lui ensuite.
 - **Migrations par sprint** : chaque sprint ajoute ses tables et colonnes par migration Alembic. Le schéma cible complet est proposé au Sprint 0, mais pas créé d'un bloc.
 - **Créneaux de capacité** `C-X.n` : **non numérotés**, chacun réservé à un élément candidat de la Partie X et **conditionné à son adoption** : ADR accepté pour une capacité du produit, ADR si la décision est structurante pour X.5, X.6 et X.7 (§47.5, D16). Sans cette adoption, le créneau est sauté, sans renuméroter les sprints. Les sprints S3 à S11 gardent leur numéro et leur contenu.
@@ -198,8 +198,8 @@ n'engage pas le contrat du produit** : ce qu'il essaie n'est ni spécifié ni ad
 | S3 | Feed | — | — | S2 | — |
 | S4 | Embeddings & clustering | — | — | S2 | — |
 | S5 | File de jobs | — | Ch04–Ch06 (couche LLM ; indicatif, zone libre) | S2 | — |
-| S6 | API Claude & LLMClient | — | Ch04–Ch06 et relecture de V-A (point d'arrêt, §47.5) | S5 | — |
-| S7 | Intelligence & purge | — | Ch04–Ch06 et relecture de V-A (point d'arrêt, §47.5) | S4, S6 | — |
+| S6 | API Claude & LLMClient, par tranches | — | Ch04, Ch05, Ch06 : une tranche par chapitre (point d'arrêt, §47.5) | S5 | — |
+| S7 | Intelligence & purge | — | Ch04–Ch06 validés (point d'arrêt, §47.5) | S4, S6 | — |
 | S8 | Trends & émergence | — | — (volet `discover_topics` : Ch04–Ch06, §47.5) | S4, S7 | — |
 | S9 | Dashboard | — | — | S3, S8 | — |
 | S10 | Alertes | — | — | S9 | — |
@@ -304,6 +304,7 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - **Client** : `LLMClient` sur le SDK `anthropic` (V-A §25 : `max_retries=0`, client `httpx2` sans redirection, `llm.model` épinglé, structured outputs, traitement de chaque `stop_reason`, `TolerantList` / `SoftStr`, erreurs typées, `health()` par `GET /v1/models`) ; disjoncteur LLM à trois états ; budget mensuel plafonné (V-A §24.3, à réviser, ADR-0022) ; LLM non configuré ; observabilité (§25.6).
 - **Doubles** : double de l'API Messages de Claude, joint par `ANTHROPIC_BASE_URL` en test seulement.
 - **API Claude** : SDK `anthropic` confiné au `LLMClient`, modèle et budget documentés dans `docs/llm.md` ; première mesure M6 contre l'API Claude.
+- **Tranches** (§47.5) : S6-Ch04 client et transport · S6-Ch05 prompts, dont celui d'`enrich_article`, avancé du Sprint 7 · S6-Ch06 sortie structurée ; chacune ouverte par son chapitre.
 
 **Acceptation** :
 - les huit scénarios de V-A §26.3 passent contre le double de l'API ;
@@ -316,7 +317,7 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - **Tâches LLM** : `enrich_article` (topics, entités et résumé en un appel, canonicalisation des entités) et `resolve_event` (titre et description, déclenchement par marqueur) ; création d'`enrich_article` au changement de représentant.
 - **Actions de l'app** : régénération (202, `already_active`, `jobs_in_progress`), relance et abandon d'un `dead_letter` ; middleware anti-CSRF (premier endpoint d'écriture).
 - **Purge** : étage de purge et passe `processed_at`, rétention III §13.
-- **Prompts** : fixtures par `PROMPT_VERSION`, avec les sorties de référence enregistrées.
+- **Prompts** : celui de `resolve_event` ; fixtures par `PROMPT_VERSION`, avec les sorties de référence enregistrées. Le prompt d'`enrich_article` et ses fixtures sont avancés en S6-Ch05 (§47.5) ; le handler et l'écriture restent ici.
 
 **Acceptation** :
 - API LLM coupée puis rétablie : reprise sans doublon, les plus récents d'abord ;
@@ -470,13 +471,14 @@ est la référence ; la Partie X §58.7 en reprend les capacités, et `CLAUDE.md
   - l'outillage déjà adopté : `scripts/radar-dev`, skill `radar-dev` (#63), `.claude/settings.json` (#62) (E22,
     ADR-0021) ; le `CLAUDE.md` racine (Partie IX §55.3) ;
   - les issues transverses sans point d'arrêt (#128, #131).
-- **Zones soumises à un point d'arrêt** : chacune n'est démarrée qu'une fois **tous** ses chapitres validés.
+- **Zones soumises à un point d'arrêt** (décision du 2026-09-30, #135) : une zone, ou sa part, ne démarre qu'une fois
+  son chapitre **ouvert** ; ce qui dépend d'un chapitre attend sa **validation**.
 
-  | Zone | Débloquée par |
+  | Zone | Chapitres (ouverture, puis validation) |
   |---|---|
-  | S6, plan et développement (API Claude et `LLMClient`) ; modèle **provisoire** (#27) | Ch04, Ch05, Ch06 et relecture de la Partie V-A |
-  | S7 (tâches LLM, purge) : écrit explicitement, bien que S7 dépende déjà de S6 (D9) | Ch04, Ch05, Ch06 et relecture de la Partie V-A |
-  | S8, volet `discover_topics` (levé avec le S6) | Ch04, Ch05, Ch06 |
+  | S6 (API Claude et `LLMClient`), par tranches (ci-dessous) ; modèle **provisoire** (#27) | Ch04, Ch05, Ch06 : chaque chapitre ouvre sa tranche |
+  | S7 (tâches LLM, purge) : démarre après S6 clos, donc après la validation de Ch04 à Ch06 ; écrit explicitement, bien que S7 dépende déjà de S6 (D9) | Ch04, Ch05, Ch06 validés |
+  | S8, volet `discover_topics` (levé avec le S6) | Ch04, Ch05, Ch06 validés |
   | Modèle épinglé **définitif** et **montant** du plafond mensuel (#125) | Ch08 |
   | M6 de référence (pré-production, VII §45.4) | Ch08 |
   | X.4 (PDF et images) | Ch07 |
@@ -489,20 +491,51 @@ est la référence ; la Partie X §58.7 en reprend les capacités, et `CLAUDE.md
   | X.6 (évaluations) | Ch16 |
   | X.8, X.9 | phase Architect (chapitres à préciser par le propriétaire) |
 
-- **Signal de déblocage** : un **commentaire** dans l'issue du sprint ou du créneau concerné, dont la **première
-  ligne** est exactement `[propriétaire] ChXX validé` (numéro sur deux chiffres, un commentaire par chapitre) ; pour la
-  relecture de la Partie V-A : `[propriétaire] relecture V-A faite`. Le signal n'est valide que là : ni corps d'issue,
-  ni PR, ni commit, ni message de session. Claude Code cite l'URL du commentaire dans le plan ou la PR qu'il démarre.
+- **Deux signaux par chapitre** (décision du 2026-09-30, #135) : chacun est un **commentaire** dans l'issue du sprint
+  (#27 pour le S6) ou du créneau concerné, un commentaire par signal et par chapitre, dont la **première ligne** est
+  exactement l'une des deux formes suivantes, sans tiret, numéro sur deux chiffres :
+  - `[propriétaire] ChXX pratique ouverte` : **ouvre** la pratique du chapitre : relecture de la spec, proposition
+    d'ADR, développement. Pour une capacité, le développement se fait derrière son flag désactivé ; pour un sprint, sur
+    le produit, le LLM restant optionnel (`not_configured`) ;
+  - `[propriétaire] ChXX validé` : **clôt** le chapitre et débloque ce qui en dépend : tranche ou sprint suivants,
+    activation d'une capacité. Il ne vaut que validation, jamais ouverture.
+
+  Un signal n'est valide que là : ni corps d'issue, ni PR, ni commit, ni message de session. Claude Code cite l'URL du
+  commentaire dans le plan ou la PR qu'il démarre. Aucun signal n'a été posé sous la règle précédente (#133).
 - **Forme réservée** : ni Claude Code ni le copilote n'écrivent jamais ce préfixe dans un commentaire, une issue, une
-  PR ou un commit, même en citation ; ils parlent du « signal de validation du chapitre ChXX ». Seules la définition de
-  la forme, ici, et le renvoi de `CLAUDE.md` le citent. **Limite** : tous écrivent sous le même compte GitHub ; cette
-  forme est une **convention**, pas une preuve d'identité.
-- **Ordre** : signal, puis ADR de la capacité (D16), puis développement (D18) ; aucun ADR de capacité n'est proposé
-  avant le signal (D20).
+  PR ou un commit, même en citation ; ils parlent du « signal d'ouverture » ou du « signal de validation » du chapitre
+  ChXX. Seules la définition des formes, ici, et le renvoi de `CLAUDE.md` le citent. **Limite** : tous écrivent sous
+  le même compte GitHub ; ces formes sont une **convention**, pas une preuve d'identité.
+- **Zones multi-chapitres** (S6, X.1, X.3…) : chaque chapitre ouvre sa part. Les parts sont fixées par le **plan du
+  sprint** pour un sprint, par l'**ADR** pour une capacité.
+- **Tranches du S6** : le plan de chaque tranche est validé à son ouverture ; les identifiants partagés entre tranches
+  sont suivis par volets `ch04`, `ch05`, `ch06` (§50.3).
+
+  | Tranche | Contenu (Partie V-A) | Identifiants | Dépend de |
+  |---|---|---|---|
+  | Hors tranche, zone libre | mécanisme du budget (§24.3, #125) ; canonicalisation des entités (§27.2, déterministe) | T-LLM-13, T-LLM-14 | — |
+  | S6-Ch04 : client et transport | `LLMClient` sur `AsyncAnthropic` (§25.1, §25.2 : `max_retries=0`, client `httpx2` sans redirection, timeouts, `llm.model`, `ANTHROPIC_BASE_URL` limitée au test) ; `health()` ; erreurs typées (§25.4) ; disjoncteur (§24.2) ; `not_configured` ; observabilité (§25.6) ; double de l'API ; M6 indicative | T-LLM-01 à 08, T-LLM-09 (volet `ch04`), 17, 19, 20, 21 ; T-CFG-12 ; volets de T-SEC-08 et T-SEC-02 ; T-RES-01 (partie file de jobs) | S5 |
+  | S6-Ch05 : prompts | cadre des prompts (§25.5 : un module par tâche, `PROMPT_VERSION`, contenu non fiable entre délimiteurs, snapshot) ; **prompt d'`enrich_article`** (§27.2), avancé du S7, avec ses fixtures | T-LLM-15 ; T-LLM-16 (volet `ch05` : mécanisme et `enrich_article`) | S6-Ch04 |
+  | S6-Ch06 : sortie structurée | §25.3 : schéma dérivé du `response_model` dans `output_config.format`, table des `stop_reason`, validation (`TolerantList`, `SoftStr`), `LLMRefused` et `LLMMalformed` | T-LLM-09 (volet `ch06`), 10, 11, 12, 22 | S6-Ch04 |
+
+  - **Préalables de S6-Ch04** : la relecture de la Partie V-A est la **première étape** de la pratique du Ch04, et le
+    plan de la tranche est validé après elle ; la tâche du propriétaire (compte de facturation Anthropic, clé, limite
+    de dépense de la Console) est faite **avant** l'ouverture de la tranche. **Aucun appel réel à l'API** (M6
+    indicative, fixtures) sans limite de dépense de la Console en place.
+  - `generate` n'atteint son contrat complet (§25.2) qu'à la fin de S6-Ch06 ; entre deux, S6-Ch04 le livre en mode
+    texte, contre le double. Cet état intermédiaire est toléré tant que le sprint est en cours.
+  - **Statut par tranche** dans `sprint-06.md` : une seule ligne de statut pour le sprint ; une section « Tranches »,
+    en tableau (tranche, chapitre, contenu, identifiants, plan validé, URL d'ouverture, URL de validation, état :
+    fermée, ouverte ou validée). Le sprint est clos après la validation de sa dernière tranche, avec **un seul bilan**
+    (Partie IX §57.8).
+- **Ordre pour une capacité** : ouverture de son chapitre, puis ADR (D16), développement derrière son flag désactivé
+  (D18), validation de **tous** ses chapitres, et enfin activation (P12, Partie IX §56.6) (D20).
 - **Sans signal** : Claude Code ne démarre pas la zone, rend compte, et propose une tâche déterministe prise dans ce
   vivier, dans cet ordre : les issues libres du sprint courant, puis les issues transverses sans point d'arrêt
   (#128, #131, mécanisme de #125).
 - Ce point d'arrêt s'ajoute à la validation du plan de chaque sprint (Partie IX §57.8) : deux verrous distincts.
+- **Attente** : tant qu'une tranche attend son chapitre, S6 reste en cours ; S7, S8, puis S9 et S10, qui en dépendent,
+  attendent aussi. Seul le vivier occupe l'attente, d'où un glissement du calendrier (`planning.md` §8).
 
 ---
 
@@ -531,7 +564,7 @@ L'ordre des sprints (§47) est l'ordre d'implémentation. À l'intérieur d'un s
 | D17 | Budget mensuel plafonné (Partie V-A §24.3) **avant** tout créneau qui appelle l'API hors de la file `AIJob` (X.1, X.3, X.8) | le plafond doit tenir aussi pour les appels interactifs ou agentiques |
 | D18 | **Développement** d'un créneau au plus tôt après ses dépendances produit (S9 **avant** C-X.1, S10 **avant** C-X.3), derrière son flag désactivé ; **activation en production** d'une capacité du produit seulement après la décision de mise en production (§47.4, check-list §52), par P12, et, si elle expose des outils, avec son socle D19 vert | développer au chapitre, activer après la mise en production (décision du 2026-09-30, #130) ; l'assistant vit dans le dashboard ; la synthèse part par les canaux d'alerte |
 | D19 | Tout créneau qui expose des outils (X.1, X.2, X.3, X.8) livre un **socle de sécurité** : outils en lecture seule, moindre privilège, un test d'injection par le contenu d'article ; X.5 durcit ensuite l'ensemble | les outils sont livrés avant le chapitre sécurité (Ch15) |
-| D20 | Signal de validation de chapitre (§47.5, points d'arrêt de formation) **avant** le démarrage d'une zone soumise ; pour une capacité, **avant** la proposition de son ADR (D16) | la matière est vue avant le travail qui l'exerce (décision du 2026-09-30, #133) |
+| D20 | **Ouverture** du chapitre (§47.5, points d'arrêt de formation) **avant** le démarrage d'une zone soumise ou de sa part ; pour une capacité, **avant** la proposition de son ADR (D16). **Validation** du chapitre **avant** ce qui en dépend ; pour une capacité, validation de **tous** ses chapitres **avant** son activation (P12) | la pratique du chapitre se fait sur le projet ; la matière est validée avant ce qui s'en sert (décisions du 2026-09-30, #133, #135) |
 
 ---
 
