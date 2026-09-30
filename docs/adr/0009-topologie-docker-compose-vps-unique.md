@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Statut** | Accepté |
-| **Date** | 2026-09-23 |
+| **Statut** | Remplacé par [0022](0022-api-claude-directe-et-budget-plafonne.md) |
+| **Date** | 2026-09-30 |
 | **Décision(s) couverte(s)** | DV-11 ; I §4.3 · VII §36.1–§36.4, §36.9 · VIII §49.5 ; `docs/architecture.md` §1, §4 |
 
 ## Contexte
