@@ -1,7 +1,7 @@
 # Partie VIII — Livraison
 
 > **Partie VIII — Livraison.** Version durcie issue de la revue §46–§52.
-> Dernière révision : 2026-09-30 (ADR-0022, #122). Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
+> Dernière révision : 2026-09-30 (ADR-0022, #122 ; créneaux de capacité, #126). Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
 
 **Nature de cette partie : une agrégation.** Les tests, étapes CI et critères de production fléchés par les Parties I à VII sont rassemblés ici, rattachés à un identifiant et organisés par domaine. Les doublons sont réconciliés (§ « Réconciliations ») et seul ce qui manquait est durci à neuf.
 
@@ -134,7 +134,7 @@ ai-tech-radar/
 ├── tests/                     # §50.2
 └── docs/                      # arbre détaillé : Partie IX §55.1
     ├── spec/                  # partie-I.md … partie-IV.md, partie-V-A.md, partie-V-B.md,
-    │                          # partie-VI.md … partie-IX.md
+    │                          # partie-VI.md … partie-IX.md, partie-X.md
     ├── adr/                   # README.md (index), _template.md, NNNN-slug.md
     ├── sprints/               # sprint-00-cadrage.md, sprint-NN.md (plan + bilan)
     ├── architecture.md · database.md · collectors.md · llm.md · trends.md
@@ -169,8 +169,37 @@ ai-tech-radar/
 - **Plan et bilan** : le plan détaillé de chaque sprint est rédigé dans `docs/sprints/sprint-NN.md` et **validé avant l'implémentation** ; le bilan (écarts à la spec, dette tracée, identifiants couverts) y est ajouté en fin de sprint (Partie IX §57.8).
 - **Une fonction [core] ne dépend jamais d'un sprint AI** : tout ce qui est livré avant le Sprint 6 fonctionne sans LLM, et continue de fonctionner sans lui ensuite.
 - **Migrations par sprint** : chaque sprint ajoute ses tables et colonnes par migration Alembic. Le schéma cible complet est proposé au Sprint 0, mais pas créé d'un bloc.
+- **Créneaux de capacité** `C-X.n` : intercalés entre les sprints, **non numérotés**, chacun réservé à une capacité candidate de la Partie X et **conditionné à son ADR** (§47.5, D16). Sans ADR accepté, le créneau est sauté, sans renuméroter les sprints. Les sprints S3 à S11 gardent leur numéro et leur contenu.
 
 ### 47.2 Plan
+
+**Ordre** (décision du 2026-09-30, #126). La spec fixe l'ordre des chapitres de formation, jamais leurs dates (Partie X §58.5).
+
+| Étape | Contenu | Capacité | Chapitre | Dépendances produit |
+|---|---|---|---|---|
+| S0 à S2 | cadrage, foundation, collecte (inchangés) | — | — | — |
+| S3 | Feed | — | — | S2 |
+| S4 | Embeddings & clustering | — | — | S2 |
+| S5 | File de jobs | — | Ch04–Ch06 (couche LLM) | S2 |
+| S6 | API Claude & LLMClient | — | Ch04–Ch06 | S5 |
+| S7 | Intelligence & purge | — | Ch04–Ch06 | S4, S6 |
+| C-X.4 | PDF et images, sous réserve de l'ADR | X.4 | Ch07 | S7 |
+| S8 | Trends & émergence | — | — | S4, S7 |
+| S9 | Dashboard | — | — | S3, S8 |
+| C-X.1 | Assistant de veille, sous réserve de l'ADR | X.1 | Ch07, Ch09, Ch11 | S3, S4, S8, S9, budget (D17, D18) |
+| C-X.2 | `radar-mcp`, sous réserve de l'ADR | X.2 | Ch10 | S3, S4, S8 |
+| S10 | Alertes | — | — | S9 |
+| S11 | Production | — | — | tout ce qui précède |
+| C-X.3 | Synthèse hebdomadaire, sous réserve de l'ADR | X.3 | Ch12, Ch13 | S8, S10, budget (D17, D18) |
+| C-X.7 | Outillage Claude Code, phase 1, sous réserve de l'ADR | X.7 | Ch14 | aucune |
+| C-X.5 | Sécurité LLM, sous réserve de l'ADR | X.5 | Ch15 | créneaux qui exposent des outils (D19) |
+| C-X.6 | Évaluations, sous réserve de l'ADR | X.6 | Ch16 | S7 |
+| après la V1 | X.8, X.9, X.7 phase 2, chacune sous réserve de son ADR | X.8 · X.9 · X.7 | phase Architect | S8 · S4 et X.1 · — |
+
+**Tensions entre chapitre et dépendances** (Partie X, §59 à §67) : Ch07 arrive avec C-X.4, deux sprints avant les
+dépendances de X.1 (S8, S9) ; Ch10 (X.2) tombe entre Ch09 et Ch11 (X.1) ; X.5 (Ch15) durcit des outils livrés avant
+lui, d'où le socle de D19 ; X.6 (Ch16) et X.7 (Ch14) seraient utiles plus tôt, dès le S7 et dès maintenant ; Ch17
+n'est rattaché à aucune étape.
 
 #### Sprint 0 — Cadrage *(sans code applicatif)*
 
@@ -271,6 +300,10 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - API complète avec le LLM indisponible.
 - **Tests** : T-LLM-18 (hors volet `discover_topics`, complété au Sprint 8) · T-JOB-06 · T-CLU-08 et 12 · T-PRG-* (T-PRG-06 complété au Sprint 8, volet `AlertLog` de T-PRG-05 au Sprint 10) · T-API-08 à 10, 14 · T-SEC-04 · T-RES-01 · T-RES-02 (hors alertes).
 
+#### Créneau C-X.4 — PDF et images *(sous réserve de l'ADR)*
+
+Capacité X.4, Partie X §62 ; chapitre Ch07 ; dépendances : S7. Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
+
 #### Sprint 8 — Trends & émergence
 
 **Contenu** : Trend Engine (Signal horaire, formules, cold start, agrégation parent, catégories) ; moteur d'émergence (termes, critères, warm-up, évolution significative, candidats) ; `discover_topics` ; décisions `follow` / `ignore` / `mute` / `create_topic` et cycle « Create topic » avec backfill ; job analytique horaire.
@@ -290,6 +323,14 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - la sourdine donne le même résultat côté app et côté worker ;
 - produit utilisable de bout en bout LLM indisponible, hors alertes.
 - **Tests** : T-API-01 à 04, 11 à 13 · T-FE-06 · T-CFG-08.
+
+#### Créneau C-X.1 — Assistant de veille conversationnel *(sous réserve de l'ADR)*
+
+Capacité X.1, Partie X §59 ; chapitre Ch07, Ch09, Ch11 ; dépendances : S3, S4, S8, S9, budget mensuel (D17, D18), socle de sécurité (D19). Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
+
+#### Créneau C-X.2 — Serveur MCP `radar-mcp` *(sous réserve de l'ADR)*
+
+Capacité X.2, Partie X §60 ; chapitre Ch10 ; dépendances : S3, S4, S8, socle de sécurité (D19). Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
 
 #### Sprint 10 — Alertes
 
@@ -315,6 +356,26 @@ Description canonique, contenu, livrables et acceptation : **Partie IX §57**.
 - tous les tests automatisés du catalogue sont verts ;
 - la pré-production démarre sur le VPS cible, déployée par `scripts/deploy.sh`.
 - **Tests** : T-OPS-* (dont T-OPS-17) · T-BKP-* (dont T-BKP-10 à 12) · T-SEC-* · T-RES-* · T-CFG-04 (complet).
+
+#### Créneau C-X.3 — Synthèse hebdomadaire *(sous réserve de l'ADR)*
+
+Capacité X.3, Partie X §61 ; chapitre Ch12, Ch13 ; dépendances : S8, S10, budget mensuel (D17, D18), socle de sécurité (D19). Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
+
+#### Créneau C-X.7 — Outillage Claude Code, phase 1 *(sous réserve de l'ADR)*
+
+Capacité X.7, Partie X §65 ; chapitre Ch14 ; dépendances : aucune dépendance produit. Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
+
+#### Créneau C-X.5 — Sécurité LLM *(sous réserve de l'ADR)*
+
+Capacité X.5, Partie X §63 ; chapitre Ch15 ; dépendances : créneaux qui exposent des outils (D19). Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
+
+#### Créneau C-X.6 — Évaluations *(sous réserve de l'ADR)*
+
+Capacité X.6, Partie X §64 ; chapitre Ch16 ; dépendances : S7. Contenu, acceptation et tests : fixés par l'ADR et le plan du créneau, puis reportés dans le tableau du §47.5. Sans ADR accepté, le créneau est sauté.
+
+#### Après la V1
+
+X.8 (Partie X §66, phase Architect), X.9 (§67, phase Architect Professional) et la phase 2 de X.7 (§65, phase Architect), chacune sous réserve de son ADR.
 
 ### 47.3 Ce qui est validé au Sprint 11
 
@@ -344,19 +405,20 @@ Entre la fin du Sprint 11 et la décision de mise en production, **au moins 14 j
 ### 47.5 Feuille de route des capacités de l'écosystème Claude
 
 Les capacités de l'écosystème Claude (Agent SDK, MCP, outils, etc.) n'entrent dans le produit que **une par une**
-(ADR-0022, #122). Règle :
+(ADR-0022, #122). Les capacités **candidates** sont décrites en squelette dans la **Partie X** ; ce tableau ne liste
+que les capacités **adoptées**, une ligne par ADR accepté (Partie X §58.1–§58.2). Règle :
 
 - **une décision par capacité** : un ADR au prochain numéro libre (déclencheur du registre, Partie IX §54.3), accepté
   par le propriétaire, puis **une ligne dans le tableau ci-dessous**, avant toute implémentation ;
 - **rien par anticipation** : une capacité absente du tableau n'est ni codée, ni préparée, ni ajoutée aux dépendances ;
 - **désactivable par configuration** : désactivée, la capacité laisse le produit dans l'état antérieur, cœur
-  déterministe et repli compris (DV-05) ;
+  déterministe et repli compris (DV-05) ; X.5, X.6 et X.7 en sont exemptées (protection, outillage ; Partie X §58.3) ;
 - **dans le budget** : son coût entre dans le plafond mensuel du LLM (Partie I §4.3, VII §45.1) ;
-- **dans un sprint** : la ligne indique le sprint qui la livre, avec ses identifiants de tests au catalogue (§50.5).
+- **dans un sprint** : la ligne indique le sprint ou le créneau `C-X.n` (§47.2) qui la livre, avec ses identifiants de tests au catalogue (§50.5).
 
-| Capacité | ADR | Sprint | Clé de désactivation | Tests |
-|---|---|---|---|---|
-| *aucune à ce jour* | | | | |
+| Capacité | Partie X | ADR | Sprint ou créneau | Clé de désactivation | Tests |
+|---|---|---|---|---|---|
+| *aucune à ce jour* | | | | | |
 
 ---
 
@@ -381,6 +443,10 @@ L'ordre des sprints (§47) est l'ordre d'implémentation. À l'intérieur d'un s
 | D13 | Séquence d'envoi des alertes (Sprint 10) **avant** les alertes `system` (Sprint 11) | même séquence T1 → envoi → T2 |
 | D14 | `ops.tick` et conditions **avant** le statut `degraded` | l'app ne fait que lire `SystemState` |
 | D15 | Backup et `restore-test` **avant** la pré-production | aucune donnée réelle sans backup |
+| D16 | ADR accepté et ligne au §47.5 **avant** tout créneau `C-X.n` | aucune capacité par anticipation (ADR-0022, §47.5) |
+| D17 | Budget mensuel plafonné (Partie V-A §24.3) **avant** tout créneau qui appelle l'API hors de la file `AIJob` (X.1, X.3, X.8) | le plafond doit tenir aussi pour les appels interactifs ou agentiques |
+| D18 | S9 **avant** C-X.1 ; S10 **avant** C-X.3 | l'assistant vit dans le dashboard ; la synthèse part par les canaux d'alerte |
+| D19 | Tout créneau qui expose des outils (X.1, X.2, X.3, X.8) livre un **socle de sécurité** : outils en lecture seule, moindre privilège, un test d'injection par le contenu d'article ; X.5 durcit ensuite l'ensemble | les outils sont livrés avant le chapitre sécurité (Ch15) |
 
 ---
 
