@@ -179,13 +179,14 @@ S11, inchangés ; une capacité du produit n'est activée qu'après la décision
 | Rubrique | Contenu |
 |---|---|
 | Objectif produit | Rendre sûres les capacités qui lisent du contenu tiers ou exposent des outils |
-| Périmètre V1 minimal | Injection de prompt par le contenu des articles ; moindre privilège des outils ; données personnelles (PII) |
+| Périmètre V1 minimal | Injection de prompt par le contenu des articles ; moindre privilège des outils ; données personnelles (PII). **Suite de tests d'injection par le contenu d'article** (décision du 2026-09-30, #130) : un corpus d'articles piégés, défini par X.5, rejoué contre le double de l'API ; elle vérifie la **plomberie** du produit (délimiteurs, sortie bornée par le schéma, topics en liste fermée, aucun outil exécuté, sortie échappée). Le comportement réel du modèle face à ce corpus relève de X.6 (§64) |
 | Dépendances | V-A §25.5 · socle livré par X.1, X.2, X.3 (§58.3) |
 | Chapitre | Ch15 |
 | Statut | candidate — à spécifier au chapitre Ch15 ; **exigence transverse**, pas une capacité du produit (§58.1) : ADR si la décision est structurante (Partie IX §53.1) |
 
 **Conflits** :
-- recouvre V-A §25.5 et T-LLM-15 ;
+- la suite **complète** T-LLM-15 et le test d'injection du socle D19 de chaque créneau, sans les remplacer ;
+  l'activation d'une capacité à outils reste conditionnée au socle D19 vert, pas à cette suite (VIII §48) ;
 - périmètre des PII dans des articles publics à définir ;
 - dépendance inversée : les outils de X.1, X.2 et X.3 sont livrés avant Ch15, d'où le socle du §58.3.
 
@@ -194,8 +195,8 @@ S11, inchangés ; une capacité du produit n'est activée qu'après la décision
 | Rubrique | Contenu |
 |---|---|
 | Objectif produit | Mesurer la qualité des tâches LLM et détecter les régressions |
-| Périmètre V1 minimal | Jeu d'articles étiquetés ; graders ; régression par `PROMPT_VERSION` et par modèle, en CI |
-| Dépendances | S7 (prompts, `PROMPT_VERSION`, fixtures) |
+| Périmètre V1 minimal | Jeu d'articles étiquetés ; graders ; régression par `PROMPT_VERSION` et par modèle, en CI ; comportement réel du modèle face au corpus d'injection défini par X.5 (§63). Suite **maintenue** sur les prompts du produit, à distinguer des exercices jetables de `lab/` (VIII §46.1) |
+| Dépendances | S7 (prompts, `PROMPT_VERSION`, fixtures) · corpus d'injection de X.5 |
 | Chapitre | Ch16 |
 | Statut | candidate — à spécifier au chapitre Ch16 ; **outillage de développement**, hors du produit (§58.1) : ADR si la décision est structurante (Partie IX §53.1) |
 
