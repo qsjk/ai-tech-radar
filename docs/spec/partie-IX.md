@@ -27,7 +27,7 @@
 7. **« Gateway LLM externe » reformulé** : accès LLM uniquement par une API OpenAI-compatible, derrière un gateway hors de l'app, sans SDK de provider, et **optionnel**. *Remplacée le 2026-09-30 par l'ADR-0022 (#122) : API Claude en direct par le SDK `anthropic`, LLM optionnel à budget mensuel plafonné (§53.2, DV-09).*
 8. **ADR produits à trois moments** : 19 ADR au Sprint 0 · l'ADR du gateway retenu au **Sprint 6** (et non au Sprint 0) · des ADR **conditionnels**, sur déclencheur listé. *Le créneau du Sprint 6 est clos sans objet par l'ADR-0022 (§54.3).*
 9. **Format ADR fixé** : `docs/adr/NNNN-slug.md`, statut `Proposé` · `Accepté` · `Rejeté` · `Remplacé par NNNN`, champ **Preuve** obligatoire quand l'ADR remplace une décision verrouillée. Un ADR accepté n'est jamais réécrit.
-10. **La spec vit dans `docs/spec/`**, un fichier par partie : `partie-I.md` … `partie-IV.md`, `partie-V-A.md`, `partie-V-B.md`, `partie-VI.md` … `partie-IX.md`. **`SPEC.md` devient l'index** : sommaire, règles de lecture, lien vers §53, **sans copie** de la liste (précise VIII décision 22).
+10. **La spec vit dans `docs/spec/`**, un fichier par partie : `partie-I.md` … `partie-IV.md`, `partie-V-A.md`, `partie-V-B.md`, `partie-VI.md` … `partie-IX.md`, puis `partie-X.md` (squelette, #126). **`SPEC.md` devient l'index** : sommaire, règles de lecture, lien vers §53, **sans copie** de la liste (précise VIII décision 22).
 11. **Report des impacts = première tâche du Sprint 0**, dans une PR dédiée relue avant toute autre tâche. Une fois reportées, les sections « Impacts à répercuter » et les marqueurs « (proposé) » / « à confirmer » disparaissent de `docs/spec/`.
 12. **Les points « (proposé) » et « à confirmer » des Parties I à VIII sont réputés validés**, les parties ayant été validées.
 13. **`CLAUDE.md` à la racine** : règles permanentes de Claude Code, courtes, qui renvoient à la spec sans la recopier.
@@ -245,7 +245,7 @@ L'ADR 0021 figure ici, et non parmi les conditionnels : il n'attend aucun décle
 |---|---|---|
 | Une bibliothèque frontend exige des styles injectés | élargissement de `style-src` | VII §37.3 · VIII §46.2 |
 | M6 montre `GET /v1/models` de l'API Claude absent ou peu fiable | `LLMClient.health()` adapté | VII §45.4 M6 |
-| Adoption d'une capacité de l'écosystème Claude (Agent SDK, MCP…) | la capacité, sa désactivation par configuration, son coût dans le plafond mensuel | VIII §47.5 · ADR-0022 |
+| Adoption d'une capacité de l'écosystème Claude (Agent SDK, MCP…) | la capacité, sa désactivation par configuration, son coût dans le plafond mensuel ; spécification de son paragraphe de la Partie X | VIII §47.5 · Partie X §58.2 · ADR-0022 |
 | Une mesure M1–M10 hors critère est acceptée | ajustement de la cible | VII §45.4 · VIII §52 |
 | Nouveau modèle d'embeddings après la mise en production | changement de modèle (ré-embedding sur titre + résumé) | III §12.5 |
 | APScheduler 4.x stable, ou 3.x sans correctif de sécurité | migration de scheduler (remplace 0006) | DV-08 |
@@ -269,7 +269,7 @@ ai-tech-radar/
     ├── spec/
     │   ├── partie-I.md   · partie-II.md  · partie-III.md · partie-IV.md
     │   ├── partie-V-A.md · partie-V-B.md
-    │   └── partie-VI.md  · partie-VII.md · partie-VIII.md · partie-IX.md
+    │   └── partie-VI.md  · partie-VII.md · partie-VIII.md · partie-IX.md · partie-X.md
     ├── adr/
     │   ├── README.md          # index
     │   ├── _template.md

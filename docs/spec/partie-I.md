@@ -16,7 +16,7 @@
 6. **« Sans refonte »** défini en **3 niveaux** (config / config / nouveau collector) + garde-fou « toucher au modèle core ou au pipeline = refonte ». Cf. §2.
 7. **Portable** et **LLM isolé** traités comme **contraintes transverses** (toujours vraies), hors ordre de priorité §4. *« LLM isolé » remplace « Provider-independent » (ADR-0022, #122).*
 8. Chaque **fonction (§3) est étiquetée** *core déterministe* ou *AI-dépendante*.
-9. **LLM = API Claude en direct**, par le SDK `anthropic`, **optionnel** et tenu par un **budget mensuel plafonné** ; les capacités de l'écosystème Claude (Agent SDK, MCP…) n'arrivent qu'une par une, chacune par sa décision (ADR-0022, #122). Cf. §4, §4.3, §5.
+9. **LLM = API Claude en direct**, par le SDK `anthropic`, **optionnel** et tenu par un **budget mensuel plafonné** ; les capacités de l'écosystème Claude (Agent SDK, MCP…) n'arrivent qu'une par une, chacune par sa décision (ADR-0022, #122) ; les capacités candidates sont décrites en Partie X (#126). Cf. §4, §4.3, §5.
 
 ---
 
@@ -201,7 +201,7 @@ Ne **pas** développer en V1 :
   `robots.txt`* ;
 - **agent web autonome** — *les capacités agentiques de l'écosystème Claude
   (Agent SDK, MCP…) n'entrent que une par une, chacune par sa décision inscrite
-  à la feuille de route de la Partie VIII §47.5, désactivable par configuration
+  à la feuille de route de la Partie VIII §47.5 (candidates : Partie X), désactivable par configuration
   (ADR-0022)* ;
 - **gateway LLM**, maison ou auto-hébergé — *l'API Claude est appelée en
   direct par le worker (ADR-0022).*
