@@ -1,7 +1,7 @@
 # Partie VIII — Livraison
 
 > **Partie VIII — Livraison.** Version durcie issue de la revue §46–§52.
-> Dernière révision : 2026-09-30 (ADR-0022, #122 ; créneaux de capacité, #126 ; contrat du `LLMClient`, #123). Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
+> Dernière révision : 2026-09-30 (ADR-0022, #122 ; créneaux de capacité, #126 ; contrat du `LLMClient`, #123 ; développer puis activer, `lab/`, #130). Prend les Parties I, II, III, IV, V-A, V-B, VI et VII durcies comme acquis.
 
 **Nature de cette partie : une agrégation.** Les tests, étapes CI et critères de production fléchés par les Parties I à VII sont rassemblés ici, rattachés à un identifiant et organisés par domaine. Les doublons sont réconciliés (§ « Réconciliations ») et seul ce qui manquait est durci à neuf.
 
@@ -132,6 +132,7 @@ ai-tech-radar/
 │   ├── load.py                # script de charge
 │   └── radar-dev              # environnement local de développement (E22, ADR-0021)
 ├── tests/                     # §50.2
+├── lab/                       # exercices de formation hors produit, projet uv séparé (règle ci-dessous)
 └── docs/                      # arbre détaillé : Partie IX §55.1
     ├── spec/                  # partie-I.md … partie-IV.md, partie-V-A.md, partie-V-B.md,
     │                          # partie-VI.md … partie-IX.md, partie-X.md
@@ -147,6 +148,21 @@ ai-tech-radar/
 - **Aucun argument libre n'est transmis à `docker`** : le seul argument admis, un nom de service, est validé contre une liste fermée. Une sous-commande ou un argument hors liste renvoie le code `2` sans rien exécuter (contrat de la Partie IX §56.3).
 - Projet Compose de développement dédié, jamais `radar` ni `radar-load`.
 - Outil de développement seulement : ni la CI ni le VPS ne l'utilisent.
+
+**`lab/`** (décision du 2026-09-30, #130) : exercices de formation **jetables**, hors produit (par exemple : strict tool use
+en mode `auto`, tool use forcé sur un modèle qui l'accepte encore, comparaisons ponctuelles de modèles). **`lab/`
+n'engage pas le contrat du produit** : ce qu'il essaie n'est ni spécifié ni adopté (Partie X, §47.5).
+- **Projet uv séparé** : `lab/pyproject.toml` et `lab/uv.lock`, hors du lock racine ; ses dépendances n'entrent ni dans
+  `uv.lock` ni dans l'image.
+- **Isolé du produit** : jamais importé par `app/`, `tests/` ni `scripts/`, et n'importe pas `app/`.
+- **Exclusions** : de l'image (`.dockerignore`, vérifié à l'étape 5), de la CI (§49.2), de la traçabilité du catalogue
+  et de la couverture (§50.3, §50.8).
+- **Restent applicables** : l'analyse de secrets, qui porte sur tout le dépôt (§49.2, étape 1) ; la règle de langue
+  du dépôt ; `ruff`, lancé localement dans `lab/`.
+- **API réelle** : appelée à la main seulement, jamais en CI, avec une **clé et un workspace de la Console Anthropic
+  distincts** du produit, qui ont leur propre limite de dépense ; la clé vit dans `lab/.env`, ignoré par git.
+- **Frontière avec X.6** (Partie X §64) : `lab/` accueille des exercices jetables ; les évaluations maintenues sur les
+  prompts du produit relèvent de X.6.
 
 ### 46.2 Règles
 
@@ -481,11 +497,11 @@ Chaque étape bloque les suivantes. Les travaux d'une même étape peuvent tourn
 
 | # | Étape | Contenu | Bloquant |
 |---|---|---|---|
-| 1 | **Statique** | `ruff check` · `ruff format --check` · `mypy` (strict sur `app/`) · eslint (dont `react/no-danger` : interdiction de `dangerouslySetInnerHTML`) · `tsc --noEmit` · `uv lock --check` · `npm ci` · analyse de secrets de type gitleaks, **sur tout l'historique** · **traçabilité du catalogue** (`scripts/check-test-catalog.py`, §50.3) | oui |
+| 1 | **Statique** | hors `lab/` (§46.1), sauf l'analyse de secrets : `ruff check` · `ruff format --check` · `mypy` (strict sur `app/`) · eslint (dont `react/no-danger` : interdiction de `dangerouslySetInnerHTML`) · `tsc --noEmit` · `uv lock --check` · `npm ci` · analyse de secrets de type gitleaks, **sur tout l'historique** · **traçabilité du catalogue** (`scripts/check-test-catalog.py`, §50.3) | oui |
 | 2 | **Configuration** | `python -m app.cli validate-config` sur `config/`, invariant `clustering.embedding_wait + clustering.tick < llm.delay.enrich_article` compris · `docker compose config` avec `.env.example` · `caddy validate` sur `docker/Caddyfile`, variables de `.env.example` injectées · **politique Compose** (T-SEC-08) sur la sortie de `docker compose config` | oui |
 | 3 | **Audit** | audit des dépendances backend (type `pip-audit`, à partir de `uv.lock`) et frontend (`npm audit --audit-level=high`), confronté à `.audit-exceptions.yaml` (§49.4) | oui, sur `high` et `critical` |
-| 4 | **Tests** | pytest unitaire et intégration, réseau bloqué (§50.1), couverture mesurée et publiée dans le résumé du job · vitest | oui |
-| 5 | **Build** | images `radar-backend:<sha>` et `radar-caddy:<sha>` ; vérifications : modèle d'embeddings présent dans l'image (**activée au Sprint 4**, avec les embeddings), utilisateur non-root, aucun `.env` dans les couches | oui |
+| 4 | **Tests** | pytest unitaire et intégration (hors `lab/`), réseau bloqué (§50.1), couverture mesurée et publiée dans le résumé du job · vitest | oui |
+| 5 | **Build** | images `radar-backend:<sha>` et `radar-caddy:<sha>` ; vérifications : modèle d'embeddings présent dans l'image (**activée au Sprint 4**, avec les embeddings), utilisateur non-root, aucun `.env` dans les couches, aucun fichier de `lab/` dans l'image | oui |
 | 6 | **e2e Compose** | `docker compose -f docker-compose.yml -f docker-compose.test.yml up` sur les images de l'étape 5, avec les doubles (double de l'API Claude, faux serveur de sources, dépôt restic local) · tests `@pytest.mark.e2e` : `/health`, auth, en-têtes et logs Caddy, réseau, racine en lecture seule, backup et restauration, scénarios `T-RES-*` | oui |
 
 `scripts/deploy.sh` exige que **l'étape 6** soit verte pour le sha déployé.
@@ -555,6 +571,7 @@ Fixtures et doubles : `tests/fixtures/` (réponses HTTP par type, configurations
 
 - Chaque ligne du §50.5 porte un identifiant `T-<DOMAINE>-nn` et un niveau.
 - **Source unique** : `scripts/check-test-catalog.py` extrait les identifiants de `docs/spec/partie-VIII.md`.
+- **`lab/` hors traçabilité** (§46.1) : il n'est pas lu par `check-test-catalog.py`, et aucun marqueur `spec` n'y est admis.
 - **Marqueur** : un test couvre un identifiant par `@pytest.mark.spec("T-CLU-03")`, ou par un tag `[T-FE-01]` dans le nom d'un test vitest. Un identifiant peut être couvert par plusieurs tests ; un test peut en couvrir plusieurs.
 - **Contrôles bloquants** :
   - tout identifiant de niveau U, I, E ou F **d'un sprint clos** a au moins un test. La liste de ces identifiants est lue dans les `docs/sprints/sprint-NN.md` de ces sprints ; le contrôle devient **complet** (tous les identifiants du catalogue) au Sprint 11, critère §52 A2 ;
@@ -713,7 +730,7 @@ Niveaux : **U** unitaire · **I** intégration · **E** e2e Compose · **F** fro
 | T-LLM-16 | Fixtures de prompts : snapshot du prompt construit par `PROMPT_VERSION` ; template modifié sans changement de version → échec ; parsing des sorties de référence enregistrées | U | V-A → VIII · décision 15 |
 | T-LLM-17 | Observabilité : log par appel avec `task`, `job_id`, `model`, `stop_reason`, tokens d'entrée et de sortie, champs de cache tels que renvoyés, `request_id`, latence, classe d'erreur et `PROMPT_VERSION` ; jamais le prompt ni la réponse au niveau `info` | U | V-A §25.6 |
 | T-LLM-18 | `enrich_article` remplace les trois familles `method=llm` en une transaction et passe `summary_origin` à `llm` ; `resolve_event` ne touche ni à l'appartenance ni aux compteurs et passe `title_origin` à `llm` ; `discover_topics` écrit les colonnes `llm_*` du candidat sans jamais l'écarter | I | V-A §27 |
-| T-LLM-19 | LLM isolé : changer de modèle par la seule clé `llm.model` de `pipeline.yaml`, sans changement de code ; aucun identifiant de modèle en dur dans le code ; aucun module hors du `LLMClient` n'importe le SDK `anthropic` | I | Partie I §4.3 |
+| T-LLM-19 | LLM isolé : changer de modèle par la seule clé `llm.model` de `pipeline.yaml`, sans changement de code ; aucun identifiant de modèle en dur dans le code ; aucun module de `app/` hors du `LLMClient` n'importe le SDK `anthropic` (`lab/` exclu, §46.1) | I | Partie I §4.3 |
 | T-LLM-20 | Le `LLMClient` ne suit aucune redirection (client `httpx2` avec `follow_redirects=False`) : une réponse de redirection → `LLMConfigError` | U | V-A §25.2 |
 
 #### T-EMB — Embeddings *(III §12 · V-A §24.4)*
@@ -918,7 +935,7 @@ Le critère « Résilient » de la Partie I est atteint quand toutes les lignes 
 
 ### 50.8 Couverture
 
-Mesurée à l'étape 4 (branches comprises) et publiée dans le résumé du job. **Non bloquante.** Une baisse notable est un signal de revue, pas un critère d'échec : le critère bloquant est la traçabilité (§50.3).
+Mesurée à l'étape 4 (branches comprises), hors `lab/` (§46.1), et publiée dans le résumé du job. **Non bloquante.** Une baisse notable est un signal de revue, pas un critère d'échec : le critère bloquant est la traçabilité (§50.3).
 
 ---
 
