@@ -674,15 +674,34 @@ Les priorités par type sont des constantes du registre (§23.1), pas des régla
 
 ---
 
+## À durcir pendant la formation
+
+Points connus, **non spécifiés** (#123). Chacun entre par la règle de la Partie VIII §47.5 (une décision, puis une
+ligne du tableau, avant toute implémentation), au chapitre indiqué ; rien n'est préparé d'ici là. Quand un point
+recoupe un élément de la Partie X, il y renvoie au lieu de le décrire.
+
+- **Réparation d'une sortie invalide par un second appel** (Ch06) : renvoyer au modèle l'erreur de validation avant de
+  compter l'échec. Déplacé de « Reporté en V2 ».
+- **Thinking et effort pour `discover_topics`** (Ch07) : régler la réflexion et le niveau d'effort de la tâche la plus
+  analytique ; le thinking adaptatif ne se désactive pas sur Claude Opus 5.5 et compte dans `max_tokens` (doc :
+  `build-with-claude/effort`).
+- **Modèle par tâche** (Ch08) : un modèle par tâche au lieu d'un `llm.model` unique. Déplacé de « Reporté en V2 ». La
+  comparaison des modèles relève des évaluations (Partie X §64, X.6).
+- **Prompt caching de la liste des topics** (Ch08) : mettre en cache le préfixe commun des prompts d'`enrich_article`
+  et de `discover_topics` ; le minimum de tokens cachables dépend du modèle (doc : `build-with-claude/prompt-caching`).
+- **Batching** (Ch08) : Message Batches API pour les jobs non urgents (doc : `build-with-claude/batch-processing`), et
+  regroupement de plusieurs jobs par appel (décision 14). Déplacé de « Reporté en V2 ».
+- **Taux de cache et analyse du coût par tâche** (Ch08) : exploiter les champs de cache journalisés (§25.6) et ventiler
+  le coût réel par tâche. Le suivi du coût réel lui-même est en V1 (§24.3, #125).
+
+---
+
 ## Reporté en V2 (tracé depuis la Partie V-A)
 
 - **`analyze_trend`** : lecture qualitative des tendances par le LLM, avec sa table de résultats.
-- **Conversation** avec l'historique.
+- **Conversation** avec l'historique : candidate en Partie X §59 (X.1).
 - **Arbitrage des cas ambigus par `resolve_event`** : il suppose de pouvoir modifier l'appartenance des articles, ce que la V1 interdit.
-- **Batching** de plusieurs jobs par appel LLM.
 - **Enrichissement des membres non représentatifs** d'un Event.
-- **Modèle par tâche** (au lieu d'un `LLM_MODEL` unique).
 - **Ré-enrichissement en masse** après un changement de `PROMPT_VERSION` ou de modèle.
-- **Réparation d'une sortie malformée** par un second appel correctif.
 - **Priorité dynamique** (relever la priorité d'un job quand son Event devient chaud).
 - **Nettoyage des entités `origin=llm` orphelines** et fusion d'entités de types différents.
