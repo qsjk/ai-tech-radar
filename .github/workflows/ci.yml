@@ -21,9 +21,11 @@ on:
 permissions:
   contents: read
 
+# On main, one group per sha and no cancellation: every merged sha keeps its stage 6, which deploy.sh requires
+# (VIII §49.5). Elsewhere, a new push cancels the previous run of the same branch or pull request.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   UV_VERSION: "0.12.18"

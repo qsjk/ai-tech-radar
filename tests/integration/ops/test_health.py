@@ -108,6 +108,28 @@ def test_unreadable_heartbeat_down(migrated_db: str) -> None:
     assert report.detail["components"]["worker"]["status"] == "down"
 
 
+@pytest.mark.spec("T-OPS-02")
+@pytest.mark.parametrize(
+    ("at", "started_at"),
+    [
+        ("2026-09-27T08:00:00", "2026-09-27T08:00:00+00:00"),
+        ("2026-09-27T08:00:00+00:00", "2026-09-27T08:00:00"),
+    ],
+    ids=["naive-at", "naive-started-at"],
+)
+def test_heartbeat_without_timezone_down(migrated_db: str, at: str, started_at: str) -> None:
+    """A timestamp without timezone cannot be compared with the `Clock`: `down` (503), never a 500."""
+
+    async def read(db: Database) -> StateSnapshot:
+        heartbeat = {"at": at, "started_at": started_at, "version": "w-1"}
+        return StateSnapshot(schema_revision="0001", heartbeat=heartbeat)
+
+    report = asyncio.run(check(migrated_db, ManualClock(START), reader=read))
+    assert (report.status, report.http_code, report.public()) == (Status.DOWN, 503, {"status": "down"})
+    assert report.detail["components"]["worker"] == {"status": "down", "heartbeat_at": None, "heartbeat_age_s": None}
+    assert report.detail["components"]["database"]["status"] == "ok"
+
+
 @pytest.mark.spec("T-OPS-03")
 def test_unreachable_database_down(migrated_db: str) -> None:
     """SQLite error on open, injected: it is what the driver raises when the file is unreachable."""

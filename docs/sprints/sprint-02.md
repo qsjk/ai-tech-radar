@@ -1,6 +1,6 @@
 # Sprint 2 — Collecte & pipeline déterministe
 
-Statut : planifié
+Statut : en cours
 
 > Plan rédigé le 2026-09-29 (#105), à valider par le propriétaire avant toute implémentation (IX §57.8, VIII §47.1,
 > #19). Contenu et acceptation : **VIII §47.2, Sprint 2** ; ce plan les découpe en tâches et ne les redéfinit pas.
